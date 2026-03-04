@@ -1,0 +1,11 @@
+[package]
+name = "kwybars-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kwybars-common = { path = "../common" }
+
+[lints]
+workspace = true
