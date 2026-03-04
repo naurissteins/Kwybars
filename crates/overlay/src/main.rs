@@ -1,4 +1,5 @@
 mod app;
+mod ui;
 
 fn main() {
     if let Err(err) = app::run() {

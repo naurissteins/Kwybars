@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+gtk = { package = "gtk4", version = "0.10" }
+gtk4-layer-shell = "0.6"
 kwybars-common = { path = "../common" }
 kwybars-engine = { path = "../engine" }
 

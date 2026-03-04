@@ -1,8 +1,10 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use gtk::prelude::*;
 use kwybars_common::config;
-use kwybars_engine::pipeline::{DummySineSource, FrameSource};
+
+const APP_ID: &str = "io.kwybars.overlay";
 
 #[derive(Debug)]
 pub enum AppError {
@@ -28,18 +30,15 @@ impl Error for AppError {
 pub fn run() -> Result<(), AppError> {
     let config_path = config::default_config_path();
     let app_config = config::load_or_default(&config_path).map_err(AppError::Config)?;
-    let mut source = DummySineSource::new(app_config.visualizer.bars);
-    let frame = source.next_frame();
-
-    println!("kwybars-overlay bootstrap");
+    println!("kwybars-overlay starting");
     println!("config path: {}", config_path.display());
-    println!(
-        "overlay position: {:?}, bars: {}, sample peak: {:.3}",
-        app_config.overlay.position,
-        frame.bar_count(),
-        frame.peak
-    );
-    println!("next step: replace dummy source with PipeWire/libcava + GTK layer-shell renderer");
+
+    let app = gtk::Application::builder().application_id(APP_ID).build();
+    app.connect_activate(move |app| {
+        crate::ui::build_overlay_window(app, app_config.clone());
+    });
+
+    let _exit = app.run();
 
     Ok(())
 }
