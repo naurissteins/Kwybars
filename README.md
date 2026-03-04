@@ -12,20 +12,22 @@ Current status: GTK4 + layer-shell + live audio backend scaffold.
 - GTK4 application window for visualizer rendering.
 - Wayland layer-shell anchoring via `gtk4-layer-shell`.
 - Edge placement from config: `bottom`, `top`, `left`, `right`.
-- Live frame backend with `auto` source selection:
-  - tries `cava` raw output first
-  - falls back to dummy animation when unavailable
+- Live frame backend with selectable input:
+  - `pipewire`: reads raw PCM from `pw-cat`
+  - `cava`: reads raw bar stream from `cava`
+  - `dummy`: synthetic animation
+  - `auto`: tries `pipewire`, then `cava`, then `dummy`
 
 Not implemented yet:
 
-- Native PipeWire capture path (without `cava`).
+- Direct in-process PipeWire client (without external `pw-cat`).
 - Multi-monitor control.
 - User theming controls.
 
 ## Requirements (Arch Linux)
 
 ```bash
-sudo pacman -S --needed rust gtk4 gtk4-layer-shell cava
+sudo pacman -S --needed rust gtk4 gtk4-layer-shell pipewire cava
 ```
 
 ## Build
@@ -62,11 +64,30 @@ position = "bottom"
 anchor_margin = 12
 
 [visualizer]
-backend = "auto" # auto | cava | dummy
+backend = "auto" # auto | pipewire | cava | dummy
 bars = 48
 bar_width = 6
 gap = 3
 framerate = 60
+
+# PipeWire tuning (applies when backend = "pipewire" or "auto" picks pipewire)
+pipewire_attack = 0.14
+pipewire_decay = 0.975
+pipewire_gain = 1.20
+pipewire_curve = 0.95
+pipewire_neighbor_mix = 0.24
+```
+
+Softer preset (closer to cava feel):
+
+```toml
+[visualizer]
+backend = "pipewire"
+pipewire_attack = 0.10
+pipewire_decay = 0.985
+pipewire_gain = 1.05
+pipewire_curve = 1.05
+pipewire_neighbor_mix = 0.30
 ```
 
 ## Workspace Layout

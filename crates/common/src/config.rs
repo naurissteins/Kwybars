@@ -44,6 +44,7 @@ impl Default for OverlayConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VisualizerBackend {
     Auto,
+    Pipewire,
     Cava,
     Dummy,
 }
@@ -52,6 +53,7 @@ impl VisualizerBackend {
     fn parse(value: &str) -> Result<Self, ConfigLoadError> {
         match value {
             "auto" => Ok(Self::Auto),
+            "pipewire" => Ok(Self::Pipewire),
             "cava" => Ok(Self::Cava),
             "dummy" => Ok(Self::Dummy),
             _ => Err(ConfigLoadError::Parse(format!(
@@ -61,13 +63,18 @@ impl VisualizerBackend {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VisualizerConfig {
     pub backend: VisualizerBackend,
     pub bars: usize,
     pub bar_width: u32,
     pub gap: u32,
     pub framerate: u32,
+    pub pipewire_attack: f32,
+    pub pipewire_decay: f32,
+    pub pipewire_gain: f32,
+    pub pipewire_curve: f32,
+    pub pipewire_neighbor_mix: f32,
 }
 
 impl Default for VisualizerConfig {
@@ -78,11 +85,16 @@ impl Default for VisualizerConfig {
             bar_width: 6,
             gap: 3,
             framerate: 60,
+            pipewire_attack: 0.14,
+            pipewire_decay: 0.975,
+            pipewire_gain: 1.20,
+            pipewire_curve: 0.95,
+            pipewire_neighbor_mix: 0.24,
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AppConfig {
     pub overlay: OverlayConfig,
     pub visualizer: VisualizerConfig,
@@ -208,6 +220,11 @@ fn parse_visualizer_key(
         "bar_width" => visualizer.bar_width = parse_u32(key, value)?,
         "gap" => visualizer.gap = parse_u32(key, value)?,
         "framerate" => visualizer.framerate = parse_u32(key, value)?,
+        "pipewire_attack" => visualizer.pipewire_attack = parse_f32(key, value)?,
+        "pipewire_decay" => visualizer.pipewire_decay = parse_f32(key, value)?,
+        "pipewire_gain" => visualizer.pipewire_gain = parse_f32(key, value)?,
+        "pipewire_curve" => visualizer.pipewire_curve = parse_f32(key, value)?,
+        "pipewire_neighbor_mix" => visualizer.pipewire_neighbor_mix = parse_f32(key, value)?,
         _ => {
             return Err(ConfigLoadError::Parse(format!(
                 "unknown visualizer key: {key}"
@@ -229,6 +246,12 @@ fn parse_usize(key: &str, value: &str) -> Result<usize, ConfigLoadError> {
         .map_err(|_| ConfigLoadError::Parse(format!("invalid usize for {key}: {value}")))
 }
 
+fn parse_f32(key: &str, value: &str) -> Result<f32, ConfigLoadError> {
+    value
+        .parse::<f32>()
+        .map_err(|_| ConfigLoadError::Parse(format!("invalid f32 for {key}: {value}")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{AppConfig, OverlayPosition, VisualizerBackend, parse_config};
@@ -246,6 +269,11 @@ mod tests {
         bar_width = 5
         gap = 2
         framerate = 75
+        pipewire_attack = 0.2
+        pipewire_decay = 0.9
+        pipewire_gain = 1.5
+        pipewire_curve = 0.8
+        pipewire_neighbor_mix = 0.3
         "#;
 
         let parsed = match parse_config(raw) {
@@ -259,6 +287,11 @@ mod tests {
         assert_eq!(parsed.visualizer.bar_width, 5);
         assert_eq!(parsed.visualizer.gap, 2);
         assert_eq!(parsed.visualizer.framerate, 75);
+        assert_eq!(parsed.visualizer.pipewire_attack, 0.2);
+        assert_eq!(parsed.visualizer.pipewire_decay, 0.9);
+        assert_eq!(parsed.visualizer.pipewire_gain, 1.5);
+        assert_eq!(parsed.visualizer.pipewire_curve, 0.8);
+        assert_eq!(parsed.visualizer.pipewire_neighbor_mix, 0.3);
     }
 
     #[test]
