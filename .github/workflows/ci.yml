@@ -1,4 +1,4 @@
-name: CI
+name: ci
 
 on:
   push:
@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   rust-checks:
-    name: Rust Checks
+    name: rust-checks
     runs-on: ubuntu-latest
 
     steps:
@@ -22,6 +22,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-rust-cache
 
       - name: Install System Dependencies
         shell: bash
@@ -59,3 +64,48 @@ jobs:
 
       - name: Cargo Test
         run: cargo test --workspace
+
+  release-build:
+    name: release-build
+    runs-on: ubuntu-latest
+    needs: rust-checks
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-rust-cache
+
+      - name: Install System Dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            pkg-config \
+            git \
+            meson \
+            ninja-build \
+            libgtk-4-dev \
+            libcairo2-dev \
+            libglib2.0-dev \
+            libwayland-dev \
+            wayland-protocols
+
+          if ! pkg-config --exists gtk4-layer-shell-0; then
+            git clone --depth 1 https://github.com/wmww/gtk4-layer-shell.git /tmp/gtk4-layer-shell
+            meson setup /tmp/gtk4-layer-shell/build /tmp/gtk4-layer-shell
+            meson compile -C /tmp/gtk4-layer-shell/build
+            sudo meson install -C /tmp/gtk4-layer-shell/build
+            sudo ldconfig
+          fi
+
+      - name: Cargo Build Release
+        run: cargo build --release --workspace
