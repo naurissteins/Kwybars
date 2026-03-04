@@ -39,6 +39,8 @@ jobs:
             git \
             meson \
             ninja-build \
+            gobject-introspection \
+            libgirepository1.0-dev \
             libgtk-4-dev \
             libcairo2-dev \
             libglib2.0-dev \
@@ -93,6 +95,8 @@ jobs:
             git \
             meson \
             ninja-build \
+            gobject-introspection \
+            libgirepository1.0-dev \
             libgtk-4-dev \
             libcairo2-dev \
             libglib2.0-dev \
