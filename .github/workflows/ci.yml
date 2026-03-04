@@ -39,6 +39,7 @@ jobs:
             git \
             meson \
             ninja-build \
+            valac \
             gobject-introspection \
             libgirepository1.0-dev \
             libgtk-4-dev \
@@ -95,6 +96,7 @@ jobs:
             git \
             meson \
             ninja-build \
+            valac \
             gobject-introspection \
             libgirepository1.0-dev \
             libgtk-4-dev \
