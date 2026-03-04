@@ -66,6 +66,8 @@ Config path resolution order:
 position = "bottom"
 layer = "background" # background | bottom | top
 anchor_margin = 12
+margin_left = 24
+margin_right = 24
 full_length = true
 height = 120
 
@@ -110,6 +112,26 @@ width = 900
 height = 120
 horizontal_alignment = "right"
 ```
+
+### Add left/right margins while keeping full width
+
+```toml
+[overlay]
+position = "bottom"
+full_length = true
+margin_left = 80
+margin_right = 260
+```
+
+`anchor_margin` controls the primary anchored edge:
+- `bottom` position -> bottom margin
+- `top` position -> top margin
+- `left` position -> left margin
+- `right` position -> right margin
+
+Per-edge margins control the cross-axis:
+- `margin_left`, `margin_right`, `margin_top`, `margin_bottom`
+- Example: for `position = "bottom"`, use `margin_left`/`margin_right`.
 
 ### PipeWire tuning (used only for PipeWire backend)
 

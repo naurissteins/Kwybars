@@ -9,18 +9,28 @@ pub fn apply_default_size(window: &gtk::ApplicationWindow, overlay: &OverlayConf
     let width = overlay.width.max(1).min(i32::MAX as u32) as i32;
     let height = overlay.height.max(1).min(i32::MAX as u32) as i32;
     let full_extent = monitor_extent(&overlay.position);
+    let margin_left = to_margin_i32(overlay.margin_left);
+    let margin_right = to_margin_i32(overlay.margin_right);
+    let margin_top = to_margin_i32(overlay.margin_top);
+    let margin_bottom = to_margin_i32(overlay.margin_bottom);
 
     let (width, height) = match overlay.position {
         OverlayPosition::Bottom | OverlayPosition::Top => {
             if overlay.full_length {
-                (full_extent.unwrap_or(width), height)
+                (
+                    shrunk_extent(full_extent.unwrap_or(width), margin_left, margin_right),
+                    height,
+                )
             } else {
                 (width, height)
             }
         }
         OverlayPosition::Left | OverlayPosition::Right => {
             if overlay.full_length {
-                (width, full_extent.unwrap_or(height))
+                (
+                    width,
+                    shrunk_extent(full_extent.unwrap_or(height), margin_top, margin_bottom),
+                )
             } else {
                 (width, height)
             }
@@ -63,55 +73,86 @@ pub fn configure_layer_shell(window: &gtk::ApplicationWindow, overlay: &OverlayC
         window.set_margin(edge, 0);
     }
 
-    let margin = overlay.anchor_margin.min(i32::MAX as u32) as i32;
+    let primary_margin = to_margin_i32(overlay.anchor_margin);
     match overlay.position {
         OverlayPosition::Bottom => {
             window.set_anchor(Edge::Bottom, true);
-            window.set_margin(Edge::Bottom, margin);
+            window.set_margin(Edge::Bottom, primary_margin);
             apply_horizontal_span_anchors(window, overlay);
         }
         OverlayPosition::Top => {
             window.set_anchor(Edge::Top, true);
-            window.set_margin(Edge::Top, margin);
+            window.set_margin(Edge::Top, primary_margin);
             apply_horizontal_span_anchors(window, overlay);
         }
         OverlayPosition::Left => {
             window.set_anchor(Edge::Left, true);
-            window.set_margin(Edge::Left, margin);
+            window.set_margin(Edge::Left, primary_margin);
             apply_vertical_span_anchors(window, overlay);
         }
         OverlayPosition::Right => {
             window.set_anchor(Edge::Right, true);
-            window.set_margin(Edge::Right, margin);
+            window.set_margin(Edge::Right, primary_margin);
             apply_vertical_span_anchors(window, overlay);
         }
     }
 }
 
 fn apply_horizontal_span_anchors(window: &gtk::ApplicationWindow, overlay: &OverlayConfig) {
+    let margin_left = to_margin_i32(overlay.margin_left);
+    let margin_right = to_margin_i32(overlay.margin_right);
+
     if overlay.full_length {
         window.set_anchor(Edge::Left, true);
         window.set_anchor(Edge::Right, true);
+        window.set_margin(Edge::Left, margin_left);
+        window.set_margin(Edge::Right, margin_right);
         return;
     }
 
     match overlay.horizontal_alignment {
-        HorizontalAlignment::Left => window.set_anchor(Edge::Left, true),
+        HorizontalAlignment::Left => {
+            window.set_anchor(Edge::Left, true);
+            window.set_margin(Edge::Left, margin_left);
+        }
         HorizontalAlignment::Center => {}
-        HorizontalAlignment::Right => window.set_anchor(Edge::Right, true),
+        HorizontalAlignment::Right => {
+            window.set_anchor(Edge::Right, true);
+            window.set_margin(Edge::Right, margin_right);
+        }
     }
 }
 
 fn apply_vertical_span_anchors(window: &gtk::ApplicationWindow, overlay: &OverlayConfig) {
+    let margin_top = to_margin_i32(overlay.margin_top);
+    let margin_bottom = to_margin_i32(overlay.margin_bottom);
+
     if overlay.full_length {
         window.set_anchor(Edge::Top, true);
         window.set_anchor(Edge::Bottom, true);
+        window.set_margin(Edge::Top, margin_top);
+        window.set_margin(Edge::Bottom, margin_bottom);
         return;
     }
 
     match overlay.vertical_alignment {
-        VerticalAlignment::Top => window.set_anchor(Edge::Top, true),
+        VerticalAlignment::Top => {
+            window.set_anchor(Edge::Top, true);
+            window.set_margin(Edge::Top, margin_top);
+        }
         VerticalAlignment::Center => {}
-        VerticalAlignment::Bottom => window.set_anchor(Edge::Bottom, true),
+        VerticalAlignment::Bottom => {
+            window.set_anchor(Edge::Bottom, true);
+            window.set_margin(Edge::Bottom, margin_bottom);
+        }
     }
+}
+
+fn to_margin_i32(value: u32) -> i32 {
+    value.min(i32::MAX as u32) as i32
+}
+
+fn shrunk_extent(extent: i32, before: i32, after: i32) -> i32 {
+    let total_margin = before.saturating_add(after);
+    extent.saturating_sub(total_margin).max(1)
 }

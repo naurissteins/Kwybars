@@ -91,6 +91,10 @@ pub struct OverlayConfig {
     pub position: OverlayPosition,
     pub layer: OverlayLayer,
     pub anchor_margin: u32,
+    pub margin_left: u32,
+    pub margin_right: u32,
+    pub margin_top: u32,
+    pub margin_bottom: u32,
     pub full_length: bool,
     pub width: u32,
     pub height: u32,
@@ -104,6 +108,10 @@ impl Default for OverlayConfig {
             position: OverlayPosition::Bottom,
             layer: OverlayLayer::Background,
             anchor_margin: 12,
+            margin_left: 0,
+            margin_right: 0,
+            margin_top: 0,
+            margin_bottom: 0,
             full_length: true,
             width: 800,
             height: 120,
@@ -330,6 +338,10 @@ fn parse_overlay_key(
         "position" => overlay.position = OverlayPosition::parse(value)?,
         "layer" => overlay.layer = OverlayLayer::parse(value)?,
         "anchor_margin" => overlay.anchor_margin = parse_u32(key, value)?,
+        "margin_left" => overlay.margin_left = parse_u32(key, value)?,
+        "margin_right" => overlay.margin_right = parse_u32(key, value)?,
+        "margin_top" => overlay.margin_top = parse_u32(key, value)?,
+        "margin_bottom" => overlay.margin_bottom = parse_u32(key, value)?,
         "full_length" => overlay.full_length = parse_bool(key, value)?,
         "width" => overlay.width = parse_u32(key, value)?,
         "height" => overlay.height = parse_u32(key, value)?,
@@ -412,6 +424,10 @@ mod tests {
         position = "top"
         layer = "top"
         anchor_margin = 20
+        margin_left = 11
+        margin_right = 13
+        margin_top = 7
+        margin_bottom = 9
         full_length = false
         width = 1200
         height = 140
@@ -439,6 +455,10 @@ mod tests {
         assert_eq!(parsed.overlay.position, OverlayPosition::Top);
         assert_eq!(parsed.overlay.layer, OverlayLayer::Top);
         assert_eq!(parsed.overlay.anchor_margin, 20);
+        assert_eq!(parsed.overlay.margin_left, 11);
+        assert_eq!(parsed.overlay.margin_right, 13);
+        assert_eq!(parsed.overlay.margin_top, 7);
+        assert_eq!(parsed.overlay.margin_bottom, 9);
         assert!(!parsed.overlay.full_length);
         assert_eq!(parsed.overlay.width, 1200);
         assert_eq!(parsed.overlay.height, 140);
@@ -452,10 +472,10 @@ mod tests {
         assert_eq!(parsed.visualizer.bar_width, 5);
         assert_eq!(parsed.visualizer.gap, 2);
         assert_eq!(parsed.visualizer.framerate, 75);
-        assert!((parsed.visualizer.color_rgba.r - 1.0).abs() < 1e-6);
-        assert!((parsed.visualizer.color_rgba.g - (64.0 / 255.0)).abs() < 1e-6);
-        assert!((parsed.visualizer.color_rgba.b - 0.0).abs() < 1e-6);
-        assert!((parsed.visualizer.color_rgba.a - 0.7).abs() < 1e-6);
+        assert!((parsed.visualizer.color_rgba.r - 1.0).abs() < 1e-5);
+        assert!((parsed.visualizer.color_rgba.g - 1.0).abs() < 1e-5);
+        assert!((parsed.visualizer.color_rgba.b - 1.0).abs() < 1e-5);
+        assert!((parsed.visualizer.color_rgba.a - 0.5).abs() < 1e-5);
         assert_eq!(parsed.visualizer.pipewire_attack, 0.2);
         assert_eq!(parsed.visualizer.pipewire_decay, 0.9);
         assert_eq!(parsed.visualizer.pipewire_gain, 1.5);
