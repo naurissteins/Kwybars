@@ -27,9 +27,54 @@ impl OverlayPosition {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HorizontalAlignment {
+    Left,
+    Center,
+    Right,
+}
+
+impl HorizontalAlignment {
+    fn parse(value: &str) -> Result<Self, ConfigLoadError> {
+        match value {
+            "left" => Ok(Self::Left),
+            "center" => Ok(Self::Center),
+            "right" => Ok(Self::Right),
+            _ => Err(ConfigLoadError::Parse(format!(
+                "unknown overlay.horizontal_alignment value: {value}"
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VerticalAlignment {
+    Top,
+    Center,
+    Bottom,
+}
+
+impl VerticalAlignment {
+    fn parse(value: &str) -> Result<Self, ConfigLoadError> {
+        match value {
+            "top" => Ok(Self::Top),
+            "center" => Ok(Self::Center),
+            "bottom" => Ok(Self::Bottom),
+            _ => Err(ConfigLoadError::Parse(format!(
+                "unknown overlay.vertical_alignment value: {value}"
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OverlayConfig {
     pub position: OverlayPosition,
     pub anchor_margin: u32,
+    pub full_length: bool,
+    pub width: u32,
+    pub height: u32,
+    pub horizontal_alignment: HorizontalAlignment,
+    pub vertical_alignment: VerticalAlignment,
 }
 
 impl Default for OverlayConfig {
@@ -37,6 +82,11 @@ impl Default for OverlayConfig {
         Self {
             position: OverlayPosition::Bottom,
             anchor_margin: 12,
+            full_length: true,
+            width: 800,
+            height: 120,
+            horizontal_alignment: HorizontalAlignment::Center,
+            vertical_alignment: VerticalAlignment::Center,
         }
     }
 }
@@ -200,6 +250,11 @@ fn parse_overlay_key(
     match key {
         "position" => overlay.position = OverlayPosition::parse(value)?,
         "anchor_margin" => overlay.anchor_margin = parse_u32(key, value)?,
+        "full_length" => overlay.full_length = parse_bool(key, value)?,
+        "width" => overlay.width = parse_u32(key, value)?,
+        "height" => overlay.height = parse_u32(key, value)?,
+        "horizontal_alignment" => overlay.horizontal_alignment = HorizontalAlignment::parse(value)?,
+        "vertical_alignment" => overlay.vertical_alignment = VerticalAlignment::parse(value)?,
         _ => {
             return Err(ConfigLoadError::Parse(format!(
                 "unknown overlay key: {key}"
@@ -252,9 +307,22 @@ fn parse_f32(key: &str, value: &str) -> Result<f32, ConfigLoadError> {
         .map_err(|_| ConfigLoadError::Parse(format!("invalid f32 for {key}: {value}")))
 }
 
+fn parse_bool(key: &str, value: &str) -> Result<bool, ConfigLoadError> {
+    match value {
+        "true" | "1" => Ok(true),
+        "false" | "0" => Ok(false),
+        _ => Err(ConfigLoadError::Parse(format!(
+            "invalid bool for {key}: {value}"
+        ))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{AppConfig, OverlayPosition, VisualizerBackend, parse_config};
+    use super::{
+        AppConfig, HorizontalAlignment, OverlayPosition, VerticalAlignment, VisualizerBackend,
+        parse_config,
+    };
 
     #[test]
     fn parses_valid_config() {
@@ -262,6 +330,11 @@ mod tests {
         [overlay]
         position = "top"
         anchor_margin = 20
+        full_length = false
+        width = 1200
+        height = 140
+        horizontal_alignment = "right"
+        vertical_alignment = "bottom"
 
         [visualizer]
         backend = "dummy"
@@ -282,6 +355,14 @@ mod tests {
         };
         assert_eq!(parsed.overlay.position, OverlayPosition::Top);
         assert_eq!(parsed.overlay.anchor_margin, 20);
+        assert!(!parsed.overlay.full_length);
+        assert_eq!(parsed.overlay.width, 1200);
+        assert_eq!(parsed.overlay.height, 140);
+        assert_eq!(
+            parsed.overlay.horizontal_alignment,
+            HorizontalAlignment::Right
+        );
+        assert_eq!(parsed.overlay.vertical_alignment, VerticalAlignment::Bottom);
         assert_eq!(parsed.visualizer.backend, VisualizerBackend::Dummy);
         assert_eq!(parsed.visualizer.bars, 64);
         assert_eq!(parsed.visualizer.bar_width, 5);

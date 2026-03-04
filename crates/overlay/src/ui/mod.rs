@@ -11,9 +11,6 @@ use gtk::prelude::*;
 use kwybars_common::config::{AppConfig, OverlayPosition};
 use kwybars_engine::live::LiveFrameStream;
 
-const HORIZONTAL_THICKNESS: i32 = 120;
-const VERTICAL_THICKNESS: i32 = 150;
-
 pub fn build_overlay_window(app: &gtk::Application, config: AppConfig) {
     style::install_css();
 
@@ -30,7 +27,7 @@ pub fn build_overlay_window(app: &gtk::Application, config: AppConfig) {
     let drawing_area = build_drawing_area(&config);
     window.set_child(Some(&drawing_area));
 
-    layer::apply_default_size(&window, &config.overlay.position);
+    layer::apply_default_size(&window, &config.overlay);
     layer::configure_layer_shell(&window, &config.overlay);
 
     window.present();
@@ -49,14 +46,22 @@ fn build_drawing_area(config: &AppConfig) -> gtk::DrawingArea {
 
     let drawing_area = gtk::DrawingArea::new();
     drawing_area.set_widget_name("kwybars-bars");
-    drawing_area.set_hexpand(true);
-    drawing_area.set_vexpand(true);
     drawing_area.set_can_target(false);
 
     if is_horizontal {
-        drawing_area.set_content_height(HORIZONTAL_THICKNESS);
+        drawing_area.set_content_height(to_i32(config.overlay.height));
+        if !config.overlay.full_length {
+            drawing_area.set_content_width(to_i32(config.overlay.width));
+        }
+        drawing_area.set_hexpand(config.overlay.full_length);
+        drawing_area.set_vexpand(false);
     } else {
-        drawing_area.set_content_width(VERTICAL_THICKNESS);
+        drawing_area.set_content_width(to_i32(config.overlay.width));
+        if !config.overlay.full_length {
+            drawing_area.set_content_height(to_i32(config.overlay.height));
+        }
+        drawing_area.set_hexpand(false);
+        drawing_area.set_vexpand(config.overlay.full_length);
     }
 
     let stream = Rc::new(LiveFrameStream::spawn(config.visualizer.clone()));
@@ -122,4 +127,8 @@ fn build_drawing_area(config: &AppConfig) -> gtk::DrawingArea {
     }
 
     drawing_area
+}
+
+fn to_i32(value: u32) -> i32 {
+    value.max(1).min(i32::MAX as u32) as i32
 }
