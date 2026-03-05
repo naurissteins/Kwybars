@@ -14,7 +14,7 @@ Current status: GTK4 + layer-shell + live audio backend scaffold.
 - Edge placement from config: `bottom`, `top`, `left`, `right`.
 - Configurable overlay layer mode: `background`, `bottom`, `top`.
 - Configurable overlay size and alignment.
-- Configurable bar color via RGBA in config.
+- Configurable bar color via solid or gradient RGBA styles.
 - Live frame backend with selectable input:
   - `cava`: primary/default backend
   - `pipewire`: fallback or explicit backend
@@ -77,12 +77,23 @@ bars = 48
 bar_width = 6
 gap = 3
 framerate = 60
+color_mode = "solid" # solid | gradient
 color_rgba = "rgba(31, 224, 173, 0.90)"
+color2_rgba = "rgba(31, 224, 173, 0.90)" # used when color_mode = "gradient"
 ```
 
-`color_rgba` accepts:
+`color_rgba` and `color2_rgba` accept:
 - CSS-like string: `"rgba(31, 224, 173, 0.90)"`
 - plain comma string: `"31,224,173,0.90"` or `"0.12,0.88,0.68,0.90"`
+
+### Gradient bars
+
+```toml
+[visualizer]
+color_mode = "gradient"
+color_rgba = "rgba(31, 224, 173, 0.95)"
+color2_rgba = "rgba(53, 144, 255, 0.95)"
+```
 
 ### Keep visualizer above windows
 

@@ -198,6 +198,24 @@ impl Default for RgbaColor {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VisualizerColorMode {
+    Solid,
+    Gradient,
+}
+
+impl VisualizerColorMode {
+    fn parse(value: &str) -> Result<Self, ConfigLoadError> {
+        match value {
+            "solid" => Ok(Self::Solid),
+            "gradient" => Ok(Self::Gradient),
+            _ => Err(ConfigLoadError::Parse(format!(
+                "unknown visualizer.color_mode value: {value}"
+            ))),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct VisualizerConfig {
     pub backend: VisualizerBackend,
@@ -205,7 +223,9 @@ pub struct VisualizerConfig {
     pub bar_width: u32,
     pub gap: u32,
     pub framerate: u32,
+    pub color_mode: VisualizerColorMode,
     pub color_rgba: RgbaColor,
+    pub color2_rgba: RgbaColor,
     pub pipewire_attack: f32,
     pub pipewire_decay: f32,
     pub pipewire_gain: f32,
@@ -221,7 +241,9 @@ impl Default for VisualizerConfig {
             bar_width: 6,
             gap: 3,
             framerate: 60,
+            color_mode: VisualizerColorMode::Solid,
             color_rgba: RgbaColor::default(),
+            color2_rgba: RgbaColor::default(),
             pipewire_attack: 0.14,
             pipewire_decay: 0.975,
             pipewire_gain: 1.20,
@@ -367,7 +389,9 @@ fn parse_visualizer_key(
         "bar_width" => visualizer.bar_width = parse_u32(key, value)?,
         "gap" => visualizer.gap = parse_u32(key, value)?,
         "framerate" => visualizer.framerate = parse_u32(key, value)?,
+        "color_mode" => visualizer.color_mode = VisualizerColorMode::parse(value)?,
         "color_rgba" => visualizer.color_rgba = RgbaColor::parse(value)?,
+        "color2_rgba" => visualizer.color2_rgba = RgbaColor::parse(value)?,
         "pipewire_attack" => visualizer.pipewire_attack = parse_f32(key, value)?,
         "pipewire_decay" => visualizer.pipewire_decay = parse_f32(key, value)?,
         "pipewire_gain" => visualizer.pipewire_gain = parse_f32(key, value)?,
@@ -414,7 +438,7 @@ fn parse_bool(key: &str, value: &str) -> Result<bool, ConfigLoadError> {
 mod tests {
     use super::{
         AppConfig, HorizontalAlignment, OverlayLayer, OverlayPosition, VerticalAlignment,
-        VisualizerBackend, parse_config,
+        VisualizerBackend, VisualizerColorMode, parse_config,
     };
 
     #[test]
@@ -440,7 +464,9 @@ mod tests {
         bar_width = 5
         gap = 2
         framerate = 75
+        color_mode = "gradient"
         color_rgba = "rgba(255, 255, 255, 0.5)"
+        color2_rgba = "rgba(255, 0, 0, 1.0)"
         pipewire_attack = 0.2
         pipewire_decay = 0.9
         pipewire_gain = 1.5
@@ -472,10 +498,15 @@ mod tests {
         assert_eq!(parsed.visualizer.bar_width, 5);
         assert_eq!(parsed.visualizer.gap, 2);
         assert_eq!(parsed.visualizer.framerate, 75);
+        assert_eq!(parsed.visualizer.color_mode, VisualizerColorMode::Gradient);
         assert!((parsed.visualizer.color_rgba.r - 1.0).abs() < 1e-5);
         assert!((parsed.visualizer.color_rgba.g - 1.0).abs() < 1e-5);
         assert!((parsed.visualizer.color_rgba.b - 1.0).abs() < 1e-5);
         assert!((parsed.visualizer.color_rgba.a - 0.5).abs() < 1e-5);
+        assert!((parsed.visualizer.color2_rgba.r - 1.0).abs() < 1e-5);
+        assert!(parsed.visualizer.color2_rgba.g.abs() < 1e-5);
+        assert!(parsed.visualizer.color2_rgba.b.abs() < 1e-5);
+        assert!((parsed.visualizer.color2_rgba.a - 1.0).abs() < 1e-5);
         assert_eq!(parsed.visualizer.pipewire_attack, 0.2);
         assert_eq!(parsed.visualizer.pipewire_decay, 0.9);
         assert_eq!(parsed.visualizer.pipewire_gain, 1.5);

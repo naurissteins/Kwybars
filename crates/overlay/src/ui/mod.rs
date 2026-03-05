@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use gtk::glib;
 use gtk::prelude::*;
-use kwybars_common::config::{AppConfig, OverlayPosition};
+use kwybars_common::config::{AppConfig, OverlayPosition, VisualizerColorMode};
 use kwybars_engine::live::LiveFrameStream;
 
 pub fn build_overlay_window(app: &gtk::Application, config: AppConfig) {
@@ -43,7 +43,9 @@ fn build_drawing_area(config: &AppConfig) -> gtk::DrawingArea {
     let bar_count = config.visualizer.bars.max(1);
     let fps = config.visualizer.framerate.max(1);
     let interval_ms = (1000_u64 / u64::from(fps)).max(1);
+    let bar_color_mode = config.visualizer.color_mode;
     let bar_color = config.visualizer.color_rgba;
+    let bar_color2 = config.visualizer.color2_rgba;
 
     let drawing_area = gtk::DrawingArea::new();
     drawing_area.set_widget_name("kwybars-bars");
@@ -77,12 +79,54 @@ fn build_drawing_area(config: &AppConfig) -> gtk::DrawingArea {
                 return;
             }
 
-            ctx.set_source_rgba(
-                f64::from(bar_color.r),
-                f64::from(bar_color.g),
-                f64::from(bar_color.b),
-                f64::from(bar_color.a),
-            );
+            match bar_color_mode {
+                VisualizerColorMode::Solid => {
+                    ctx.set_source_rgba(
+                        f64::from(bar_color.r),
+                        f64::from(bar_color.g),
+                        f64::from(bar_color.b),
+                        f64::from(bar_color.a),
+                    );
+                }
+                VisualizerColorMode::Gradient => {
+                    let (x0, y0, x1, y1) = if is_horizontal {
+                        if is_top {
+                            (0.0, 0.0, 0.0, f64::from(height))
+                        } else {
+                            (0.0, f64::from(height), 0.0, 0.0)
+                        }
+                    } else if is_left {
+                        (0.0, 0.0, f64::from(width), 0.0)
+                    } else {
+                        (f64::from(width), 0.0, 0.0, 0.0)
+                    };
+
+                    let gradient = gtk::cairo::LinearGradient::new(x0, y0, x1, y1);
+                    gradient.add_color_stop_rgba(
+                        0.0,
+                        f64::from(bar_color.r),
+                        f64::from(bar_color.g),
+                        f64::from(bar_color.b),
+                        f64::from(bar_color.a),
+                    );
+                    gradient.add_color_stop_rgba(
+                        1.0,
+                        f64::from(bar_color2.r),
+                        f64::from(bar_color2.g),
+                        f64::from(bar_color2.b),
+                        f64::from(bar_color2.a),
+                    );
+
+                    if ctx.set_source(&gradient).is_err() {
+                        ctx.set_source_rgba(
+                            f64::from(bar_color.r),
+                            f64::from(bar_color.g),
+                            f64::from(bar_color.b),
+                            f64::from(bar_color.a),
+                        );
+                    }
+                }
+            }
 
             if is_horizontal {
                 draw::draw_horizontal_bars(
