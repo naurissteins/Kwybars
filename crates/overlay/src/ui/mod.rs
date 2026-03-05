@@ -12,9 +12,12 @@ use gtk::prelude::*;
 use kwybars_common::config::{AppConfig, OverlayPosition, VisualizerColorMode};
 use kwybars_engine::live::LiveFrameStream;
 
+use crate::theme::ThemePalette;
+
 pub fn build_overlay_windows(
     app: &gtk::Application,
     config: AppConfig,
+    theme_palette: Option<ThemePalette>,
 ) -> Vec<gtk::ApplicationWindow> {
     style::install_css();
 
@@ -23,18 +26,33 @@ pub fn build_overlay_windows(
 
     let monitors = layer::selected_monitors(&config.overlay);
     if monitors.is_empty() {
-        return vec![build_overlay_window(app, &config, Rc::clone(&stream), None)];
+        return vec![build_overlay_window(
+            app,
+            &config,
+            theme_palette.clone(),
+            Rc::clone(&stream),
+            None,
+        )];
     }
 
     monitors
         .into_iter()
-        .map(|monitor| build_overlay_window(app, &config, Rc::clone(&stream), Some(monitor)))
+        .map(|monitor| {
+            build_overlay_window(
+                app,
+                &config,
+                theme_palette.clone(),
+                Rc::clone(&stream),
+                Some(monitor),
+            )
+        })
         .collect()
 }
 
 fn build_overlay_window(
     app: &gtk::Application,
     config: &AppConfig,
+    theme_palette: Option<ThemePalette>,
     stream: Rc<LiveFrameStream>,
     monitor: Option<gdk::Monitor>,
 ) -> gtk::ApplicationWindow {
@@ -48,7 +66,7 @@ fn build_overlay_window(
     window.set_resizable(false);
     window.set_focusable(false);
 
-    let drawing_area = build_drawing_area(config, stream);
+    let drawing_area = build_drawing_area(config, stream, theme_palette);
     window.set_child(Some(&drawing_area));
 
     layer::apply_default_size(&window, &config.overlay, monitor.as_ref());
@@ -58,7 +76,11 @@ fn build_overlay_window(
     window
 }
 
-fn build_drawing_area(config: &AppConfig, stream: Rc<LiveFrameStream>) -> gtk::DrawingArea {
+fn build_drawing_area(
+    config: &AppConfig,
+    stream: Rc<LiveFrameStream>,
+    theme_palette: Option<ThemePalette>,
+) -> gtk::DrawingArea {
     let position = config.overlay.position.clone();
     let is_horizontal = matches!(position, OverlayPosition::Bottom | OverlayPosition::Top);
     let is_left = matches!(position, OverlayPosition::Left);
@@ -71,6 +93,9 @@ fn build_drawing_area(config: &AppConfig, stream: Rc<LiveFrameStream>) -> gtk::D
     let bar_color_mode = config.visualizer.color_mode;
     let bar_color = config.visualizer.color_rgba;
     let bar_color2 = config.visualizer.color2_rgba;
+    let theme_colors = theme_palette
+        .map(|theme| theme.colors)
+        .filter(|colors| !colors.is_empty());
 
     let drawing_area = gtk::DrawingArea::new();
     drawing_area.set_widget_name("kwybars-bars");
@@ -99,6 +124,59 @@ fn build_drawing_area(config: &AppConfig, stream: Rc<LiveFrameStream>) -> gtk::D
         drawing_area.set_draw_func(move |_, ctx, width, height| {
             let values = values_for_draw.borrow();
             if values.is_empty() || width <= 0 || height <= 0 {
+                return;
+            }
+
+            if let Some(colors) = theme_colors.as_ref() {
+                if is_horizontal {
+                    draw::for_each_horizontal_bar(
+                        &values,
+                        f64::from(width),
+                        f64::from(height),
+                        bar_thickness,
+                        gap,
+                        is_top,
+                        |index, x, y, bar_width, bar_height| {
+                            let color_idx =
+                                draw::bar_color_index(index, values.len(), colors.len());
+                            let color = colors[color_idx];
+                            ctx.set_source_rgba(
+                                f64::from(color.r),
+                                f64::from(color.g),
+                                f64::from(color.b),
+                                f64::from(color.a),
+                            );
+                            ctx.rectangle(x, y, bar_width, bar_height);
+                            if ctx.fill().is_err() {
+                                eprintln!("kwybars: cairo fill failed");
+                            }
+                        },
+                    );
+                } else {
+                    draw::for_each_vertical_bar(
+                        &values,
+                        f64::from(width),
+                        f64::from(height),
+                        bar_thickness,
+                        gap,
+                        is_left,
+                        |index, x, y, bar_width, bar_height| {
+                            let color_idx =
+                                draw::bar_color_index(index, values.len(), colors.len());
+                            let color = colors[color_idx];
+                            ctx.set_source_rgba(
+                                f64::from(color.r),
+                                f64::from(color.g),
+                                f64::from(color.b),
+                                f64::from(color.a),
+                            );
+                            ctx.rectangle(x, y, bar_width, bar_height);
+                            if ctx.fill().is_err() {
+                                eprintln!("kwybars: cairo fill failed");
+                            }
+                        },
+                    );
+                }
                 return;
             }
 

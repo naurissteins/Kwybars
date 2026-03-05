@@ -16,6 +16,7 @@ Current status: GTK4 + layer-shell + live audio backend scaffold.
 - Configurable overlay size and alignment.
 - Configurable bar color via solid or gradient RGBA styles.
 - Hot reload of config file changes while app is running.
+- Optional theme palettes from `assets/themes/*.toml`.
 - Live frame backend with selectable input:
   - `cava`: primary/default backend
   - `pipewire`: fallback or explicit backend
@@ -76,6 +77,11 @@ color_rgba = "rgba(122, 162, 247, 0.95)"
 color2_rgba = "rgba(187, 154, 247, 0.95)"
 ```
 
+Theme files:
+- Built-in theme directory: `assets/themes`.
+- Active theme is selected with `theme` in `config.toml` (optional).
+- `theme_opacity` multiplies the theme alpha for all bars.
+
 ### Full-width bottom visualizer behind windows (default style)
 
 ```toml
@@ -98,11 +104,24 @@ framerate = 60
 color_mode = "solid" # solid | gradient
 color_rgba = "rgba(31, 224, 173, 0.90)"
 color2_rgba = "rgba(31, 224, 173, 0.90)" # used when color_mode = "gradient"
+theme = "" # optional, e.g. "catppuccin-mocha"
+theme_opacity = 1.0 # 0.0..1.0
 ```
 
 `color_rgba` and `color2_rgba` accept:
 - CSS-like string: `"rgba(31, 224, 173, 0.90)"`
 - plain comma string: `"31,224,173,0.90"` or `"0.12,0.88,0.68,0.90"`
+
+### Enable a 6-color theme palette
+
+```toml
+theme = "catppuccin-mocha"
+theme_opacity = 0.85
+```
+
+You can place theme keys at root (shown above) or under `[visualizer]`.
+When theme loading succeeds, theme colors are used for per-bar coloring and
+regular `color_rgba`/`color2_rgba` are ignored.
 
 ### Gradient bars
 

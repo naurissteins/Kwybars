@@ -178,8 +178,8 @@ pub struct RgbaColor {
 impl RgbaColor {
     fn parse(value: &str) -> Result<Self, ConfigLoadError> {
         let normalized = value.trim();
-        let raw_components = if normalized.starts_with("rgba(") && normalized.ends_with(')') {
-            &normalized[5..normalized.len() - 1]
+        let raw_components = if let Some(inner) = normalized.strip_prefix("rgba(") {
+            inner.strip_suffix(')').unwrap_or(inner)
         } else {
             normalized
         };
@@ -250,6 +250,8 @@ pub struct VisualizerConfig {
     pub color_mode: VisualizerColorMode,
     pub color_rgba: RgbaColor,
     pub color2_rgba: RgbaColor,
+    pub theme: Option<String>,
+    pub theme_opacity: f32,
     pub pipewire_attack: f32,
     pub pipewire_decay: f32,
     pub pipewire_gain: f32,
@@ -268,6 +270,8 @@ impl Default for VisualizerConfig {
             color_mode: VisualizerColorMode::Solid,
             color_rgba: RgbaColor::default(),
             color2_rgba: RgbaColor::default(),
+            theme: None,
+            theme_opacity: 1.0,
             pipewire_attack: 0.14,
             pipewire_decay: 0.975,
             pipewire_gain: 1.20,
@@ -399,9 +403,11 @@ fn parse_config(raw: &str) -> Result<AppConfig, ConfigLoadError> {
                 return Err(ConfigLoadError::Parse(format!("unknown section [{other}]")));
             }
             None => {
-                return Err(ConfigLoadError::Parse(
-                    "key/value before a section header".to_owned(),
-                ));
+                if !parse_root_key(&mut config, key, &value)? {
+                    return Err(ConfigLoadError::Parse(
+                        "key/value before a section header".to_owned(),
+                    ));
+                }
             }
         }
     }
@@ -490,6 +496,8 @@ fn parse_visualizer_key(
         "color_mode" => visualizer.color_mode = VisualizerColorMode::parse(value)?,
         "color_rgba" => visualizer.color_rgba = RgbaColor::parse(value)?,
         "color2_rgba" => visualizer.color2_rgba = RgbaColor::parse(value)?,
+        "theme" => visualizer.theme = parse_optional_string(value),
+        "theme_opacity" => visualizer.theme_opacity = parse_f32(key, value)?.clamp(0.0, 1.0),
         "pipewire_attack" => visualizer.pipewire_attack = parse_f32(key, value)?,
         "pipewire_decay" => visualizer.pipewire_decay = parse_f32(key, value)?,
         "pipewire_gain" => visualizer.pipewire_gain = parse_f32(key, value)?,
@@ -529,6 +537,29 @@ fn parse_bool(key: &str, value: &str) -> Result<bool, ConfigLoadError> {
         _ => Err(ConfigLoadError::Parse(format!(
             "invalid bool for {key}: {value}"
         ))),
+    }
+}
+
+fn parse_root_key(config: &mut AppConfig, key: &str, value: &str) -> Result<bool, ConfigLoadError> {
+    match key {
+        "theme" => {
+            config.visualizer.theme = parse_optional_string(value);
+            Ok(true)
+        }
+        "theme_opacity" => {
+            config.visualizer.theme_opacity = parse_f32(key, value)?.clamp(0.0, 1.0);
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
+fn parse_optional_string(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_owned())
     }
 }
 
@@ -619,6 +650,8 @@ mod tests {
         color_mode = "gradient"
         color_rgba = "rgba(255, 255, 255, 0.5)"
         color2_rgba = "rgba(255, 0, 0, 1.0)"
+        theme = "catppuccin-mocha"
+        theme_opacity = 0.8
         pipewire_attack = 0.2
         pipewire_decay = 0.9
         pipewire_gain = 1.5
@@ -661,6 +694,8 @@ mod tests {
         assert!(parsed.visualizer.color2_rgba.g.abs() < 1e-5);
         assert!(parsed.visualizer.color2_rgba.b.abs() < 1e-5);
         assert!((parsed.visualizer.color2_rgba.a - 1.0).abs() < 1e-5);
+        assert_eq!(parsed.visualizer.theme.as_deref(), Some("catppuccin-mocha"));
+        assert!((parsed.visualizer.theme_opacity - 0.8).abs() < 1e-5);
         assert_eq!(parsed.visualizer.pipewire_attack, 0.2);
         assert_eq!(parsed.visualizer.pipewire_decay, 0.9);
         assert_eq!(parsed.visualizer.pipewire_gain, 1.5);
@@ -758,5 +793,24 @@ mod tests {
         assert!(config.visualizer.color_rgba.b.abs() < 1e-5);
         assert!((config.visualizer.color_rgba.a - 0.75).abs() < 1e-5);
         assert_eq!(config.visualizer.color2_rgba, original_color2);
+    }
+
+    #[test]
+    fn parses_root_theme_keys() {
+        let raw = r#"
+        theme = "catppuccin-mocha"
+        theme_opacity = 0.7
+
+        [overlay]
+        position = "bottom"
+        "#;
+
+        let parsed = match parse_config(raw) {
+            Ok(value) => value,
+            Err(err) => panic!("root theme keys should parse, got error: {err}"),
+        };
+
+        assert_eq!(parsed.visualizer.theme.as_deref(), Some("catppuccin-mocha"));
+        assert!((parsed.visualizer.theme_opacity - 0.7).abs() < 1e-5);
     }
 }
