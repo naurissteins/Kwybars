@@ -32,14 +32,6 @@ impl std::error::Error for ThemeLoadError {}
 pub fn resolve_theme_path(config_path: &Path, theme_name: &str) -> PathBuf {
     let theme_file = format!("{theme_name}.toml");
 
-    let cwd_path = std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("assets/themes")
-        .join(&theme_file);
-    if cwd_path.exists() {
-        return cwd_path;
-    }
-
     let config_path_candidate = config_path
         .parent()
         .map(|parent| parent.join("themes").join(&theme_file))
@@ -48,7 +40,15 @@ pub fn resolve_theme_path(config_path: &Path, theme_name: &str) -> PathBuf {
         return config_path_candidate;
     }
 
-    cwd_path
+    let cwd_path = std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("assets/themes")
+        .join(&theme_file);
+    if cwd_path.exists() {
+        return cwd_path;
+    }
+
+    config_path_candidate
 }
 
 pub fn load_theme_palette(
