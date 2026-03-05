@@ -1,10 +1,10 @@
 # Kwybars
 
-**Kwybars** is a desktop **audio visualizer for GNU/Linux (Wayland)**.
+Kwybars is a desktop audio visualizer for GNU/Linux (Wayland).
 
 Think of it like `cava`... but instead of living in the terminal, it becomes a transparent overlay on your desktop.
 
-You can pin it to the **top, bottom, left, or right** of your screen and watch your music bounce in real time.
+You can pin it to the top, bottom, left, or right of your screen and watch your music bounce in real time.
 
 ## 🔥 Features
 
@@ -191,10 +191,6 @@ Root keys:
 - `pipewire_curve`: PipeWire response curve shaping.
 - `pipewire_neighbor_mix`: PipeWire neighbor bar smoothing amount.
 
-`colors.toml` supported keys:
-- `color_rgba`: overrides `[visualizer].color_rgba` when present.
-- `color2_rgba`: overrides `[visualizer].color2_rgba` when present.
-
 `[daemon]` keys:
 - `enabled`: run daemon logic (`true|false`).
 - `poll_interval_ms`: daemon poll period in milliseconds.
@@ -204,6 +200,10 @@ Root keys:
 - `stop_on_silence`: if `true`, daemon stops overlay after silence delay.
 - `overlay_command`: command used to launch overlay (`kwybars-overlay` by default).
 - `overlay_args`: optional command arguments list.
+
+`colors.toml` supported keys:
+- `color_rgba`: overrides `[visualizer].color_rgba` when present.
+- `color2_rgba`: overrides `[visualizer].color2_rgba` when present.
 
 For local development without installing binaries:
 
