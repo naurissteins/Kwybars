@@ -1,13 +1,10 @@
 # Kwybars
 
-**Kwybars** is a desktop **audio visualizer for Linux (Wayland)**.
+**Kwybars** is a desktop **audio visualizer for GNU/Linux (Wayland)**.
 
-Think of it like `cava`... but instead of living in the terminal, it
-becomes a **cool transparent overlay on your desktop**.
+Think of it like `cava`... but instead of living in the terminal, it becomes a transparent overlay on your desktop.
 
-You can pin it to the **top, bottom, left, or right** of your screen and
-watch your music bounce in real time.
-
+You can pin it to the **top, bottom, left, or right** of your screen and watch your music bounce in real time.
 
 ## 🔥 Features
 
@@ -18,17 +15,9 @@ watch your music bounce in real time.
 -   Hot reload config changes (no restart needed!)
 -   Optional theme palettes (`assets/themes/*.toml`)
 -   Multiple audio backends: `cava` (default), `pipewire`, `dummy` (test animation), `auto` → `cava → pipewire → dummy`
+-   Optional `kwybars-daemon` that auto starts/stops overlay based on audio activity
 
-
-### Planned Features
-
-Not implemented yet:
-
--   Direct **PipeWire client** (without `pw-cat`)
--   GUI user theming controls
-
-
-## Requirements (Arch Linux)
+## Requirements
 
 Install dependencies:
 
@@ -44,15 +33,20 @@ cargo run -p kwybars-overlay
 ```
 *you must run this inside a Wayland graphical session*
 
+Run daemon mode (auto launch on audio):
+
+``` bash
+cargo run -p kwybars-daemon
+```
 
 ## Configuration
 
 Kwybars looks for config files in this order:
 
-1️⃣ `KWYBARS_CONFIG` environment variable\
-2️⃣ `$XDG_CONFIG_HOME/kwybars/config.toml`\
-3️⃣ `~/.config/kwybars/config.toml`\
-4️⃣ `./kwybars.toml`
+- `KWYBARS_CONFIG` environment variable\
+- `$XDG_CONFIG_HOME/kwybars/config.toml`\
+- `~/.config/kwybars/config.toml`\
+- `./kwybars.toml`
 
 *config files auto reload while the app is running*
 
@@ -121,50 +115,33 @@ theme_opacity = 0.85
 
 ``` toml
 [overlay]
-position = "bottom"
-layer = "background"
-anchor_margin = 12
-margin_left = 24
-margin_right = 24
-full_length = true
-height = 120
 monitor_mode = "primary"
+layer = "background"
+position = "bottom"
+full_length = true
+height = 620
+anchor_margin = 20
 
 [visualizer]
 backend = "cava"
-bars = 48
-bar_width = 6
-bar_corner_radius = 3.0
-gap = 3
+bar_corner_radius = 20
+bars = 50
+bar_width = 8
+gap = 20
 framerate = 60
-color_mode = "solid"
-color_rgba = "rgba(31, 224, 173, 0.90)"
-color2_rgba = "rgba(31, 224, 173, 0.90)"
-theme = ""
-theme_opacity = 1.0
-```
-
-### Gradient Bars
-
-``` toml
-[visualizer]
 color_mode = "gradient"
-color_rgba = "rgba(31, 224, 173, 0.95)"
-color2_rgba = "rgba(53, 144, 255, 0.95)"
-```
+color_rgba = "rgba(175, 198, 255, 0.7)"
+color2_rgba = "rgba(191, 198, 220, 0.7)"
 
-### Rounded Bars
-
-``` toml
-[visualizer]
-bar_corner_radius = 4.0
-```
-
-### Keep Visualizer Above Windows
-
-``` toml
-[overlay]
-layer = "top"
+[daemon]
+enabled = true
+poll_interval_ms = 90
+activity_threshold = 0.035
+activate_delay_ms = 180
+deactivate_delay_ms = 2200
+stop_on_silence = true
+overlay_command = "kwybars-overlay"
+overlay_args = []
 ```
 
 ### Monitor Selection
@@ -173,19 +150,6 @@ layer = "top"
 For `monitor_mode = "list"`, each monitor entry can be:
 - Connector name (recommended), e.g. `"DP-1"`
 - 1-based index string, e.g. `"1"`, `"2"`, or `"index:1"`
-
-``` toml
-[overlay]
-monitor_mode = "all"
-```
-
-or
-
-``` toml
-[overlay]
-monitor_mode = "list"
-monitors = ["DP-1", "HDMI-A-1"]
-```
 
 ## Config Reference
 
@@ -207,7 +171,7 @@ Root keys:
 - `horizontal_alignment`: alignment for top/bottom when `full_length=false`: `left|center|right`.
 - `vertical_alignment`: alignment for left/right when `full_length=false`: `top|center|bottom`.
 - `monitor_mode`: monitor targeting: `primary|all|list`.
-- `monitors`: monitor selector list (connector names like `DP-1` or 1-based indices like `"1"`), used when `monitor_mode="list"`.
+- `monitors`: monitor selector list (connector names like `DP-1` or 1-based indices like `"1"` or or `"index:1"`), used when `monitor_mode="list"`. (`monitors = ["DP-1", "HDMI-A-1"]`)
 
 `[visualizer]` keys:
 - `backend`: input backend: `cava|pipewire|auto|dummy`.
@@ -230,3 +194,25 @@ Root keys:
 `colors.toml` supported keys:
 - `color_rgba`: overrides `[visualizer].color_rgba` when present.
 - `color2_rgba`: overrides `[visualizer].color2_rgba` when present.
+
+`[daemon]` keys:
+- `enabled`: run daemon logic (`true|false`).
+- `poll_interval_ms`: daemon poll period in milliseconds.
+- `activity_threshold`: peak level threshold `0.0..1.0` for "audio active".
+- `activate_delay_ms`: active signal must stay above threshold for this long before launch.
+- `deactivate_delay_ms`: active signal must stay below threshold for this long before stop.
+- `stop_on_silence`: if `true`, daemon stops overlay after silence delay.
+- `overlay_command`: command used to launch overlay (`kwybars-overlay` by default).
+- `overlay_args`: optional command arguments list.
+
+For local development without installing binaries:
+
+```toml
+[daemon]
+overlay_command = "cargo"
+overlay_args = ["run", "-p", "kwybars-overlay"]
+```
+
+
+Not implemented yet:
+-   Direct **PipeWire client** (without `pw-cat`)

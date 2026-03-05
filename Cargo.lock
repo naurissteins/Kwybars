@@ -455,6 +455,14 @@ name = "kwybars-common"
 version = "0.1.0"
 
 [[package]]
+name = "kwybars-daemon"
+version = "0.1.0"
+dependencies = [
+ "kwybars-common",
+ "kwybars-engine",
+]
+
+[[package]]
 name = "kwybars-engine"
 version = "0.1.0"
 dependencies = [

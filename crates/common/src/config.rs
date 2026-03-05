@@ -287,6 +287,34 @@ impl Default for VisualizerConfig {
 pub struct AppConfig {
     pub overlay: OverlayConfig,
     pub visualizer: VisualizerConfig,
+    pub daemon: DaemonConfig,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DaemonConfig {
+    pub enabled: bool,
+    pub poll_interval_ms: u64,
+    pub activity_threshold: f32,
+    pub activate_delay_ms: u64,
+    pub deactivate_delay_ms: u64,
+    pub stop_on_silence: bool,
+    pub overlay_command: String,
+    pub overlay_args: Vec<String>,
+}
+
+impl Default for DaemonConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            poll_interval_ms: 90,
+            activity_threshold: 0.035,
+            activate_delay_ms: 180,
+            deactivate_delay_ms: 2200,
+            stop_on_silence: true,
+            overlay_command: "kwybars-overlay".to_owned(),
+            overlay_args: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -401,6 +429,7 @@ fn parse_config(raw: &str) -> Result<AppConfig, ConfigLoadError> {
         match section {
             Some("overlay") => parse_overlay_key(&mut config.overlay, key, &value)?,
             Some("visualizer") => parse_visualizer_key(&mut config.visualizer, key, &value)?,
+            Some("daemon") => parse_daemon_key(&mut config.daemon, key, &value)?,
             Some(other) => {
                 return Err(ConfigLoadError::Parse(format!("unknown section [{other}]")));
             }
@@ -517,6 +546,34 @@ fn parse_visualizer_key(
     Ok(())
 }
 
+fn parse_daemon_key(
+    daemon: &mut DaemonConfig,
+    key: &str,
+    value: &str,
+) -> Result<(), ConfigLoadError> {
+    match key {
+        "enabled" => daemon.enabled = parse_bool(key, value)?,
+        "poll_interval_ms" => daemon.poll_interval_ms = parse_u64(key, value)?.max(16),
+        "activity_threshold" => daemon.activity_threshold = parse_f32(key, value)?.clamp(0.0, 1.0),
+        "activate_delay_ms" => daemon.activate_delay_ms = parse_u64(key, value)?,
+        "deactivate_delay_ms" => daemon.deactivate_delay_ms = parse_u64(key, value)?,
+        "stop_on_silence" => daemon.stop_on_silence = parse_bool(key, value)?,
+        "overlay_command" => {
+            let command = parse_optional_string(value).unwrap_or_default();
+            daemon.overlay_command = if command.is_empty() {
+                DaemonConfig::default().overlay_command
+            } else {
+                command
+            };
+        }
+        "overlay_args" => daemon.overlay_args = parse_string_list(value),
+        _ => {
+            return Err(ConfigLoadError::Parse(format!("unknown daemon key: {key}")));
+        }
+    }
+    Ok(())
+}
+
 fn parse_u32(key: &str, value: &str) -> Result<u32, ConfigLoadError> {
     value
         .parse::<u32>()
@@ -527,6 +584,12 @@ fn parse_usize(key: &str, value: &str) -> Result<usize, ConfigLoadError> {
     value
         .parse::<usize>()
         .map_err(|_| ConfigLoadError::Parse(format!("invalid usize for {key}: {value}")))
+}
+
+fn parse_u64(key: &str, value: &str) -> Result<u64, ConfigLoadError> {
+    value
+        .parse::<u64>()
+        .map_err(|_| ConfigLoadError::Parse(format!("invalid u64 for {key}: {value}")))
 }
 
 fn parse_f32(key: &str, value: &str) -> Result<f32, ConfigLoadError> {
@@ -622,9 +685,9 @@ fn normalize_value(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppConfig, HorizontalAlignment, OverlayLayer, OverlayMonitorMode, OverlayPosition,
-        VerticalAlignment, VisualizerBackend, VisualizerColorMode, VisualizerColorOverrides,
-        apply_color_overrides, parse_color_overrides, parse_config,
+        AppConfig, DaemonConfig, HorizontalAlignment, OverlayLayer, OverlayMonitorMode,
+        OverlayPosition, VerticalAlignment, VisualizerBackend, VisualizerColorMode,
+        VisualizerColorOverrides, apply_color_overrides, parse_color_overrides, parse_config,
     };
 
     #[test]
@@ -663,6 +726,16 @@ mod tests {
         pipewire_gain = 1.5
         pipewire_curve = 0.8
         pipewire_neighbor_mix = 0.3
+
+        [daemon]
+        enabled = true
+        poll_interval_ms = 50
+        activity_threshold = 0.045
+        activate_delay_ms = 120
+        deactivate_delay_ms = 1800
+        stop_on_silence = false
+        overlay_command = "cargo"
+        overlay_args = ["run", "-p", "kwybars-overlay"]
         "#;
 
         let parsed = match parse_config(raw) {
@@ -708,6 +781,23 @@ mod tests {
         assert_eq!(parsed.visualizer.pipewire_gain, 1.5);
         assert_eq!(parsed.visualizer.pipewire_curve, 0.8);
         assert_eq!(parsed.visualizer.pipewire_neighbor_mix, 0.3);
+        assert_eq!(
+            parsed.daemon,
+            DaemonConfig {
+                enabled: true,
+                poll_interval_ms: 50,
+                activity_threshold: 0.045,
+                activate_delay_ms: 120,
+                deactivate_delay_ms: 1800,
+                stop_on_silence: false,
+                overlay_command: "cargo".to_owned(),
+                overlay_args: vec![
+                    "run".to_owned(),
+                    "-p".to_owned(),
+                    "kwybars-overlay".to_owned()
+                ],
+            }
+        );
     }
 
     #[test]
