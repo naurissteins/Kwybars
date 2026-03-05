@@ -99,6 +99,7 @@ monitor_mode = "primary" # primary | all | list
 backend = "cava"
 bars = 48
 bar_width = 6
+bar_corner_radius = 3.0 # 0 = square bars
 gap = 3
 framerate = 60
 color_mode = "solid" # solid | gradient
@@ -131,6 +132,15 @@ color_mode = "gradient"
 color_rgba = "rgba(31, 224, 173, 0.95)"
 color2_rgba = "rgba(53, 144, 255, 0.95)"
 ```
+
+### Rounded bars
+
+```toml
+[visualizer]
+bar_corner_radius = 4.0
+```
+
+`bar_corner_radius` is in pixels and hot-reloads.
 
 ### Keep visualizer above windows
 

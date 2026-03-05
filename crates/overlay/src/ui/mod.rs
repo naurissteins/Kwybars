@@ -86,7 +86,13 @@ fn build_drawing_area(
     let is_left = matches!(position, OverlayPosition::Left);
     let is_top = matches!(position, OverlayPosition::Top);
     let bar_thickness = f64::from(config.visualizer.bar_width.max(1));
+    let corner_radius = f64::from(config.visualizer.bar_corner_radius.max(0.0));
     let gap = f64::from(config.visualizer.gap);
+    let bar_style = draw::BarStyle {
+        thickness: bar_thickness,
+        gap,
+        corner_radius,
+    };
     let bar_count = config.visualizer.bars.max(1);
     let fps = config.visualizer.framerate.max(1);
     let interval_ms = (1000_u64 / u64::from(fps)).max(1);
@@ -133,8 +139,8 @@ fn build_drawing_area(
                         &values,
                         f64::from(width),
                         f64::from(height),
-                        bar_thickness,
-                        gap,
+                        bar_style.thickness,
+                        bar_style.gap,
                         is_top,
                         |index, x, y, bar_width, bar_height| {
                             let color_idx =
@@ -146,7 +152,14 @@ fn build_drawing_area(
                                 f64::from(color.b),
                                 f64::from(color.a),
                             );
-                            ctx.rectangle(x, y, bar_width, bar_height);
+                            draw::append_bar_path(
+                                ctx,
+                                x,
+                                y,
+                                bar_width,
+                                bar_height,
+                                bar_style.corner_radius,
+                            );
                             if ctx.fill().is_err() {
                                 eprintln!("kwybars: cairo fill failed");
                             }
@@ -157,8 +170,8 @@ fn build_drawing_area(
                         &values,
                         f64::from(width),
                         f64::from(height),
-                        bar_thickness,
-                        gap,
+                        bar_style.thickness,
+                        bar_style.gap,
                         is_left,
                         |index, x, y, bar_width, bar_height| {
                             let color_idx =
@@ -170,7 +183,14 @@ fn build_drawing_area(
                                 f64::from(color.b),
                                 f64::from(color.a),
                             );
-                            ctx.rectangle(x, y, bar_width, bar_height);
+                            draw::append_bar_path(
+                                ctx,
+                                x,
+                                y,
+                                bar_width,
+                                bar_height,
+                                bar_style.corner_radius,
+                            );
                             if ctx.fill().is_err() {
                                 eprintln!("kwybars: cairo fill failed");
                             }
@@ -235,8 +255,7 @@ fn build_drawing_area(
                     &values,
                     f64::from(width),
                     f64::from(height),
-                    bar_thickness,
-                    gap,
+                    bar_style,
                     is_top,
                 );
             } else {
@@ -245,8 +264,7 @@ fn build_drawing_area(
                     &values,
                     f64::from(width),
                     f64::from(height),
-                    bar_thickness,
-                    gap,
+                    bar_style,
                     is_left,
                 );
             }

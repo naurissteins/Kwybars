@@ -245,6 +245,7 @@ pub struct VisualizerConfig {
     pub backend: VisualizerBackend,
     pub bars: usize,
     pub bar_width: u32,
+    pub bar_corner_radius: f32,
     pub gap: u32,
     pub framerate: u32,
     pub color_mode: VisualizerColorMode,
@@ -265,6 +266,7 @@ impl Default for VisualizerConfig {
             backend: VisualizerBackend::Cava,
             bars: 48,
             bar_width: 6,
+            bar_corner_radius: 0.0,
             gap: 3,
             framerate: 60,
             color_mode: VisualizerColorMode::Solid,
@@ -491,6 +493,9 @@ fn parse_visualizer_key(
         "backend" => visualizer.backend = VisualizerBackend::parse(value)?,
         "bars" => visualizer.bars = parse_usize(key, value)?,
         "bar_width" => visualizer.bar_width = parse_u32(key, value)?,
+        "bar_corner_radius" => {
+            visualizer.bar_corner_radius = parse_f32(key, value)?.max(0.0);
+        }
         "gap" => visualizer.gap = parse_u32(key, value)?,
         "framerate" => visualizer.framerate = parse_u32(key, value)?,
         "color_mode" => visualizer.color_mode = VisualizerColorMode::parse(value)?,
@@ -645,6 +650,7 @@ mod tests {
         backend = "dummy"
         bars = 64
         bar_width = 5
+        bar_corner_radius = 3.5
         gap = 2
         framerate = 75
         color_mode = "gradient"
@@ -683,6 +689,7 @@ mod tests {
         assert_eq!(parsed.visualizer.backend, VisualizerBackend::Dummy);
         assert_eq!(parsed.visualizer.bars, 64);
         assert_eq!(parsed.visualizer.bar_width, 5);
+        assert!((parsed.visualizer.bar_corner_radius - 3.5).abs() < 1e-5);
         assert_eq!(parsed.visualizer.gap, 2);
         assert_eq!(parsed.visualizer.framerate, 75);
         assert_eq!(parsed.visualizer.color_mode, VisualizerColorMode::Gradient);

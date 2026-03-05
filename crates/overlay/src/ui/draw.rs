@@ -1,3 +1,12 @@
+use std::f64::consts::{FRAC_PI_2, PI};
+
+#[derive(Clone, Copy)]
+pub struct BarStyle {
+    pub thickness: f64,
+    pub gap: f64,
+    pub corner_radius: f64,
+}
+
 pub fn for_each_horizontal_bar(
     values: &[f64],
     width: f64,
@@ -63,19 +72,18 @@ pub fn draw_horizontal_bars(
     values: &[f64],
     width: f64,
     height: f64,
-    bar_thickness: f64,
-    gap: f64,
+    style: BarStyle,
     from_top: bool,
 ) {
     for_each_horizontal_bar(
         values,
         width,
         height,
-        bar_thickness,
-        gap,
+        style.thickness,
+        style.gap,
         from_top,
         |_, x, y, bar_width, bar_height| {
-            ctx.rectangle(x, y, bar_width, bar_height);
+            append_bar_path(ctx, x, y, bar_width, bar_height, style.corner_radius);
         },
     );
 }
@@ -85,21 +93,53 @@ pub fn draw_vertical_bars(
     values: &[f64],
     width: f64,
     height: f64,
-    bar_thickness: f64,
-    gap: f64,
+    style: BarStyle,
     from_left: bool,
 ) {
     for_each_vertical_bar(
         values,
         width,
         height,
-        bar_thickness,
-        gap,
+        style.thickness,
+        style.gap,
         from_left,
         |_, x, y, bar_width, bar_height| {
-            ctx.rectangle(x, y, bar_width, bar_height);
+            append_bar_path(ctx, x, y, bar_width, bar_height, style.corner_radius);
         },
     );
+}
+
+pub fn append_bar_path(
+    ctx: &gtk::cairo::Context,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    corner_radius: f64,
+) {
+    let radius = corner_radius.max(0.0).min(width * 0.5).min(height * 0.5);
+    if radius <= 0.0 {
+        ctx.rectangle(x, y, width, height);
+        return;
+    }
+
+    ctx.new_sub_path();
+    ctx.move_to(x + radius, y);
+    ctx.line_to(x + width - radius, y);
+    ctx.arc(x + width - radius, y + radius, radius, -FRAC_PI_2, 0.0);
+    ctx.line_to(x + width, y + height - radius);
+    ctx.arc(
+        x + width - radius,
+        y + height - radius,
+        radius,
+        0.0,
+        FRAC_PI_2,
+    );
+    ctx.line_to(x + radius, y + height);
+    ctx.arc(x + radius, y + height - radius, radius, FRAC_PI_2, PI);
+    ctx.line_to(x, y + radius);
+    ctx.arc(x + radius, y + radius, radius, PI, PI + FRAC_PI_2);
+    ctx.close_path();
 }
 
 pub fn bar_color_index(bar_index: usize, bar_count: usize, color_count: usize) -> usize {
