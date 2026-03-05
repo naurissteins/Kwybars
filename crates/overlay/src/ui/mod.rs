@@ -11,7 +11,7 @@ use gtk::prelude::*;
 use kwybars_common::config::{AppConfig, OverlayPosition, VisualizerColorMode};
 use kwybars_engine::live::LiveFrameStream;
 
-pub fn build_overlay_window(app: &gtk::Application, config: AppConfig) {
+pub fn build_overlay_window(app: &gtk::Application, config: AppConfig) -> gtk::ApplicationWindow {
     style::install_css();
 
     let window = gtk::ApplicationWindow::builder()
@@ -31,6 +31,8 @@ pub fn build_overlay_window(app: &gtk::Application, config: AppConfig) {
     layer::configure_layer_shell(&window, &config.overlay);
 
     window.present();
+
+    window
 }
 
 fn build_drawing_area(config: &AppConfig) -> gtk::DrawingArea {
@@ -159,8 +161,12 @@ fn build_drawing_area(config: &AppConfig) -> gtk::DrawingArea {
     {
         let stream_for_tick = Rc::clone(&stream);
         let values_for_tick = Rc::clone(&bar_values);
-        let drawing_area_for_tick = drawing_area.clone();
+        let drawing_area_weak = drawing_area.downgrade();
         glib::timeout_add_local(Duration::from_millis(interval_ms), move || {
+            let Some(drawing_area_for_tick) = drawing_area_weak.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+
             let frame = stream_for_tick.latest_frame();
             let mut target = values_for_tick.borrow_mut();
             if target.len() != frame.bars.len() {

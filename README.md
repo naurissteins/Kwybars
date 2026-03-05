@@ -15,6 +15,7 @@ Current status: GTK4 + layer-shell + live audio backend scaffold.
 - Configurable overlay layer mode: `background`, `bottom`, `top`.
 - Configurable overlay size and alignment.
 - Configurable bar color via solid or gradient RGBA styles.
+- Hot reload of config file changes while app is running.
 - Live frame backend with selectable input:
   - `cava`: primary/default backend
   - `pipewire`: fallback or explicit backend
@@ -58,6 +59,9 @@ Config path resolution order:
 2. `$XDG_CONFIG_HOME/kwybars/config.toml`
 3. `~/.config/kwybars/config.toml`
 4. `./kwybars.toml`
+
+Config is hot-reloaded automatically while the app is running. You do not need
+to restart after editing `config.toml`.
 
 ### Full-width bottom visualizer behind windows (default style)
 
