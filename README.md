@@ -6,6 +6,11 @@ Think of it like `cava`... but instead of living in the terminal, it becomes a t
 
 You can pin it to the top, bottom, left, or right of your screen and watch your music bounce in real time.
 
+<!-- Top image -->
+<p align="center">
+  <img width="100%" src="https://i.imgur.com/pgVJdgU.png" alt="Top Image">
+</p>
+
 ## 🔥 Features
 
 -   Place visualizer on any screen edge `top | bottom | left | right`
