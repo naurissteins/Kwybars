@@ -22,7 +22,7 @@ You can pin it to the top, bottom, left, or right of your screen and watch your 
 Install dependencies:
 
 ``` bash
-sudo pacman -S --needed rust gtk4 gtk4-layer-shell pipewire cava
+sudo pacman -S --needed rust gtk4 gtk4-layer-shell pipewire cava libnotify
 ```
 
 ## Build and run
@@ -140,6 +140,8 @@ activity_threshold = 0.035
 activate_delay_ms = 180
 deactivate_delay_ms = 2200
 stop_on_silence = true
+notify_on_error = true
+notify_cooldown_seconds = 45
 overlay_command = "kwybars-overlay"
 overlay_args = []
 ```
@@ -198,8 +200,13 @@ Root keys:
 - `activate_delay_ms`: active signal must stay above threshold for this long before launch.
 - `deactivate_delay_ms`: active signal must stay below threshold for this long before stop.
 - `stop_on_silence`: if `true`, daemon stops overlay after silence delay.
+- `notify_on_error`: enable desktop notifications (`notify-send`) for important runtime errors.
+- `notify_cooldown_seconds`: minimum seconds between repeated notifications for the same error.
 - `overlay_command`: command used to launch overlay (`kwybars-overlay` by default).
 - `overlay_args`: optional command arguments list.
+
+When overlay is started by `kwybars-daemon`, notifications from the overlay process are suppressed
+to avoid duplicate alerts; daemon remains the single notifier.
 
 `colors.toml` supported keys:
 - `color_rgba`: overrides `[visualizer].color_rgba` when present.

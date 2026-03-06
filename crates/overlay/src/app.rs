@@ -7,6 +7,7 @@ use std::time::{Duration, UNIX_EPOCH};
 use gtk::glib;
 use gtk::prelude::*;
 use kwybars_common::config::{self, AppConfig};
+use kwybars_common::notify::notify_error_with_cooldown;
 use tracing::{error, info, warn};
 
 use crate::theme::{self, ThemePalette};
@@ -158,6 +159,25 @@ pub fn run() -> Result<(), AppError> {
                 }
                 Err(err) => {
                     warn!("kwybars: config reload failed (keeping current settings): {err}");
+                    let (notify_enabled, notify_cooldown) = state_for_reload
+                        .borrow()
+                        .as_ref()
+                        .map(|running| {
+                            (
+                                running.runtime.app_config.daemon.notify_on_error,
+                                Duration::from_secs(
+                                    running.runtime.app_config.daemon.notify_cooldown_seconds,
+                                ),
+                            )
+                        })
+                        .unwrap_or((true, Duration::from_secs(45)));
+                    notify_error_with_cooldown(
+                        "overlay.config_reload_failed",
+                        "Kwybars Config Error",
+                        &format!("Config reload failed: {err}"),
+                        notify_enabled,
+                        notify_cooldown,
+                    );
                 }
             }
 
@@ -197,6 +217,13 @@ fn load_runtime_config(
         Ok(overrides) => config::apply_color_overrides(&mut config, overrides),
         Err(err) => {
             warn!("kwybars: colors override load failed (using config.toml colors): {err}");
+            notify_error_with_cooldown(
+                "overlay.colors_load_failed",
+                "Kwybars Colors Error",
+                &format!("Could not load colors override: {err}"),
+                config.daemon.notify_on_error,
+                Duration::from_secs(config.daemon.notify_cooldown_seconds),
+            );
         }
     }
 
@@ -225,6 +252,13 @@ fn load_theme_for_config(
         Ok(palette) => (Some(palette), Some(theme_path)),
         Err(err) => {
             error!("kwybars: theme load failed (using configured rgba colors): {err}");
+            notify_error_with_cooldown(
+                "overlay.theme_load_failed",
+                "Kwybars Theme Error",
+                &format!("Theme load failed: {err}"),
+                config.daemon.notify_on_error,
+                Duration::from_secs(config.daemon.notify_cooldown_seconds),
+            );
             (None, Some(theme_path))
         }
     }

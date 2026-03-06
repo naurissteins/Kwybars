@@ -83,6 +83,7 @@ fn build_command(daemon: &DaemonConfig) -> Command {
     if !daemon.overlay_args.is_empty() {
         command.args(&daemon.overlay_args);
     }
+    command.env("KWYBARS_DISABLE_NOTIFICATIONS", "1");
     command.stdin(Stdio::null());
     command
 }

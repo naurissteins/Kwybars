@@ -298,6 +298,8 @@ pub struct DaemonConfig {
     pub activate_delay_ms: u64,
     pub deactivate_delay_ms: u64,
     pub stop_on_silence: bool,
+    pub notify_on_error: bool,
+    pub notify_cooldown_seconds: u64,
     pub overlay_command: String,
     pub overlay_args: Vec<String>,
 }
@@ -311,6 +313,8 @@ impl Default for DaemonConfig {
             activate_delay_ms: 180,
             deactivate_delay_ms: 2200,
             stop_on_silence: true,
+            notify_on_error: true,
+            notify_cooldown_seconds: 45,
             overlay_command: "kwybars-overlay".to_owned(),
             overlay_args: Vec::new(),
         }
@@ -573,6 +577,8 @@ fn parse_daemon_key(
         "activate_delay_ms" => daemon.activate_delay_ms = parse_u64(key, value)?,
         "deactivate_delay_ms" => daemon.deactivate_delay_ms = parse_u64(key, value)?,
         "stop_on_silence" => daemon.stop_on_silence = parse_bool(key, value)?,
+        "notify_on_error" => daemon.notify_on_error = parse_bool(key, value)?,
+        "notify_cooldown_seconds" => daemon.notify_cooldown_seconds = parse_u64(key, value)?,
         "overlay_command" => {
             let command = parse_optional_string(value).unwrap_or_default();
             daemon.overlay_command = if command.is_empty() {
@@ -758,6 +764,8 @@ mod tests {
         activate_delay_ms = 120
         deactivate_delay_ms = 1800
         stop_on_silence = false
+        notify_on_error = true
+        notify_cooldown_seconds = 30
         overlay_command = "cargo"
         overlay_args = ["run", "-p", "kwybars-overlay"]
         "#;
@@ -814,6 +822,8 @@ mod tests {
                 activate_delay_ms: 120,
                 deactivate_delay_ms: 1800,
                 stop_on_silence: false,
+                notify_on_error: true,
+                notify_cooldown_seconds: 30,
                 overlay_command: "cargo".to_owned(),
                 overlay_args: vec![
                     "run".to_owned(),

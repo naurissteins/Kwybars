@@ -9,6 +9,7 @@ use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use activity::{ActivityState, ActivityTracker};
 use kwybars_common::config::{self, DaemonConfig, VisualizerConfig};
+use kwybars_common::notify::notify_error_with_cooldown;
 use kwybars_engine::live::LiveFrameStream;
 use process::OverlayProcess;
 use tracing::{error, info, warn};
@@ -101,6 +102,13 @@ pub fn run() -> Result<(), DaemonError> {
 
         if let Some(exit_status) = overlay.poll_exit().map_err(DaemonError::Runtime)? {
             warn!("kwybars-daemon: overlay exited with status {exit_status}");
+            notify_error_with_cooldown(
+                "daemon.overlay_exited",
+                "Kwybars Overlay Exited",
+                &format!("Overlay process exited: {exit_status}"),
+                runtime.daemon.notify_on_error,
+                notify_cooldown(&runtime.daemon),
+            );
         }
 
         let next_config_stamp = ConfigStamp::read(&config_path);
@@ -126,6 +134,13 @@ pub fn run() -> Result<(), DaemonError> {
                 }
                 Err(err) => {
                     warn!("kwybars-daemon: config reload failed (keeping current settings): {err}");
+                    notify_error_with_cooldown(
+                        "daemon.config_reload_failed",
+                        "Kwybars Config Error",
+                        &format!("Config reload failed: {err}"),
+                        runtime.daemon.notify_on_error,
+                        notify_cooldown(&runtime.daemon),
+                    );
                 }
             }
         }
@@ -150,6 +165,13 @@ pub fn run() -> Result<(), DaemonError> {
             ActivityState::Active => {
                 if let Err(err) = overlay.ensure_running(&runtime.daemon, now) {
                     error!("kwybars-daemon: could not launch overlay: {err}");
+                    notify_error_with_cooldown(
+                        "daemon.overlay_launch_failed",
+                        "Kwybars Overlay Start Failed",
+                        &format!("Could not launch overlay: {err}"),
+                        runtime.daemon.notify_on_error,
+                        notify_cooldown(&runtime.daemon),
+                    );
                 }
             }
             ActivityState::Inactive => {
@@ -167,4 +189,8 @@ fn load_runtime_config(config_path: &Path) -> Result<RuntimeConfig, config::Conf
         visualizer: app_config.visualizer,
         daemon: app_config.daemon,
     })
+}
+
+fn notify_cooldown(config: &DaemonConfig) -> Duration {
+    Duration::from_secs(config.notify_cooldown_seconds)
 }
