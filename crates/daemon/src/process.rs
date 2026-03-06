@@ -1,5 +1,6 @@
-use std::io::{self, ErrorKind};
+use std::io::{self, BufRead, BufReader, ErrorKind, Read};
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use kwybars_common::config::DaemonConfig;
@@ -33,7 +34,10 @@ impl OverlayProcess {
 
         self.last_spawn_attempt = Some(now);
         let mut command = build_command(daemon);
-        let child = command.spawn()?;
+        let mut child = command.spawn()?;
+        if let Some(stderr) = child.stderr.take() {
+            spawn_overlay_stderr_forwarder(stderr);
+        }
         self.child = Some(child);
         info!(
             "kwybars-daemon: started overlay process ({})",
@@ -85,5 +89,26 @@ fn build_command(daemon: &DaemonConfig) -> Command {
     }
     command.env("KWYBARS_DISABLE_NOTIFICATIONS", "1");
     command.stdin(Stdio::null());
+    command.stderr(Stdio::piped());
     command
+}
+
+fn spawn_overlay_stderr_forwarder(stderr: impl Read + Send + 'static) {
+    thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        for line_result in reader.lines() {
+            let Ok(line) = line_result else {
+                break;
+            };
+            if should_suppress_gtk_warning(&line) {
+                continue;
+            }
+            eprintln!("{line}");
+        }
+    });
+}
+
+fn should_suppress_gtk_warning(line: &str) -> bool {
+    line.contains("Unknown key gtk-menu-images in ")
+        || line.contains("Unknown key gtk-button-images in ")
 }

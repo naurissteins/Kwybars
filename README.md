@@ -205,9 +205,6 @@ Root keys:
 - `overlay_command`: command used to launch overlay (`kwybars-overlay` by default).
 - `overlay_args`: optional command arguments list.
 
-When overlay is started by `kwybars-daemon`, notifications from the overlay process are suppressed
-to avoid duplicate alerts; daemon remains the single notifier.
-
 `colors.toml` supported keys:
 - `color_rgba`: overrides `[visualizer].color_rgba` when present.
 - `color2_rgba`: overrides `[visualizer].color2_rgba` when present.
@@ -233,5 +230,5 @@ overlay_args = ["run", "-p", "kwybars-overlay"]
   - `KWYBARS_LOG=debug cargo run -p kwybars-daemon`
 - Override log file location with `KWYBARS_LOG_FILE=/path/to/kwybars.log`
 
-Not implemented yet:
+## TODO: (not implemented yet)
 -   Direct **PipeWire client** (without `pw-cat`)
