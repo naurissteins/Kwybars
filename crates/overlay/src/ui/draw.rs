@@ -5,6 +5,23 @@ pub struct BarStyle {
     pub thickness: f64,
     pub gap: f64,
     pub corner_radius: f64,
+    pub segmented: bool,
+    pub segment_length: f64,
+    pub segment_gap: f64,
+}
+
+#[derive(Clone, Copy)]
+pub enum BarOrientation {
+    Horizontal,
+    Vertical,
+}
+
+#[derive(Clone, Copy)]
+pub struct BarRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 pub fn for_each_horizontal_bar(
@@ -83,7 +100,18 @@ pub fn draw_horizontal_bars(
         style.gap,
         from_top,
         |_, x, y, bar_width, bar_height| {
-            append_bar_path(ctx, x, y, bar_width, bar_height, style.corner_radius);
+            append_bar_path(
+                ctx,
+                BarRect {
+                    x,
+                    y,
+                    width: bar_width,
+                    height: bar_height,
+                },
+                style,
+                BarOrientation::Horizontal,
+                from_top,
+            );
         },
     );
 }
@@ -104,12 +132,85 @@ pub fn draw_vertical_bars(
         style.gap,
         from_left,
         |_, x, y, bar_width, bar_height| {
-            append_bar_path(ctx, x, y, bar_width, bar_height, style.corner_radius);
+            append_bar_path(
+                ctx,
+                BarRect {
+                    x,
+                    y,
+                    width: bar_width,
+                    height: bar_height,
+                },
+                style,
+                BarOrientation::Vertical,
+                from_left,
+            );
         },
     );
 }
 
 pub fn append_bar_path(
+    ctx: &gtk::cairo::Context,
+    rect: BarRect,
+    style: BarStyle,
+    orientation: BarOrientation,
+    forward: bool,
+) {
+    if style.segmented {
+        let segment_length = style.segment_length.max(1.0);
+        let segment_gap = style.segment_gap.max(0.0);
+
+        match orientation {
+            BarOrientation::Horizontal => {
+                for_each_segment_span(
+                    rect.height,
+                    segment_length,
+                    segment_gap,
+                    forward,
+                    |offset, len| {
+                        append_rounded_rect_path(
+                            ctx,
+                            rect.x,
+                            rect.y + offset,
+                            rect.width,
+                            len,
+                            style.corner_radius,
+                        );
+                    },
+                );
+            }
+            BarOrientation::Vertical => {
+                for_each_segment_span(
+                    rect.width,
+                    segment_length,
+                    segment_gap,
+                    forward,
+                    |offset, len| {
+                        append_rounded_rect_path(
+                            ctx,
+                            rect.x + offset,
+                            rect.y,
+                            len,
+                            rect.height,
+                            style.corner_radius,
+                        );
+                    },
+                );
+            }
+        }
+        return;
+    }
+
+    append_rounded_rect_path(
+        ctx,
+        rect.x,
+        rect.y,
+        rect.width,
+        rect.height,
+        style.corner_radius,
+    );
+}
+
+fn append_rounded_rect_path(
     ctx: &gtk::cairo::Context,
     x: f64,
     y: f64,
@@ -142,6 +243,50 @@ pub fn append_bar_path(
     ctx.close_path();
 }
 
+fn for_each_segment_span(
+    total_length: f64,
+    segment_length: f64,
+    segment_gap: f64,
+    from_start: bool,
+    mut segment: impl FnMut(f64, f64),
+) {
+    let total_length = total_length.max(0.0);
+    if total_length <= 0.0 {
+        return;
+    }
+
+    let segment_length = segment_length.max(1.0);
+    let segment_gap = segment_gap.max(0.0);
+    let step = segment_length + segment_gap;
+
+    if from_start {
+        let mut cursor = 0.0;
+        while cursor < total_length {
+            let length = (total_length - cursor).min(segment_length);
+            if length <= 0.0 {
+                break;
+            }
+            segment(cursor, length);
+            cursor += step;
+        }
+        return;
+    }
+
+    let mut cursor = total_length;
+    while cursor > 0.0 {
+        let start = (cursor - segment_length).max(0.0);
+        let length = cursor - start;
+        if length <= 0.0 {
+            break;
+        }
+        segment(start, length);
+        if start <= 0.0 {
+            break;
+        }
+        cursor = (start - segment_gap).max(0.0);
+    }
+}
+
 pub fn bar_color_index(bar_index: usize, bar_count: usize, color_count: usize) -> usize {
     if bar_count == 0 || color_count == 0 {
         return 0;
@@ -152,11 +297,25 @@ pub fn bar_color_index(bar_index: usize, bar_count: usize, color_count: usize) -
 
 #[cfg(test)]
 mod tests {
-    use super::bar_color_index;
+    use super::{bar_color_index, for_each_segment_span};
 
     #[test]
     fn spreads_colors_evenly() {
         let indices: Vec<usize> = (0..12).map(|index| bar_color_index(index, 12, 6)).collect();
         assert_eq!(indices, vec![0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5]);
+    }
+
+    #[test]
+    fn segments_from_start() {
+        let mut spans = Vec::new();
+        for_each_segment_span(10.0, 3.0, 1.0, true, |start, len| spans.push((start, len)));
+        assert_eq!(spans, vec![(0.0, 3.0), (4.0, 3.0), (8.0, 2.0)]);
+    }
+
+    #[test]
+    fn segments_from_end() {
+        let mut spans = Vec::new();
+        for_each_segment_span(10.0, 3.0, 1.0, false, |start, len| spans.push((start, len)));
+        assert_eq!(spans, vec![(7.0, 3.0), (3.0, 3.0), (0.0, 2.0)]);
     }
 }

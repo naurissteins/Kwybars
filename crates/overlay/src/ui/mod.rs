@@ -93,6 +93,9 @@ fn build_drawing_area(
         thickness: bar_thickness,
         gap,
         corner_radius,
+        segmented: config.visualizer.segmented_bars,
+        segment_length: f64::from(config.visualizer.segment_length.max(1)),
+        segment_gap: f64::from(config.visualizer.segment_gap),
     };
     let bar_count = config.visualizer.bars.max(1);
     let fps = config.visualizer.framerate.max(1);
@@ -155,11 +158,15 @@ fn build_drawing_area(
                             );
                             draw::append_bar_path(
                                 ctx,
-                                x,
-                                y,
-                                bar_width,
-                                bar_height,
-                                bar_style.corner_radius,
+                                draw::BarRect {
+                                    x,
+                                    y,
+                                    width: bar_width,
+                                    height: bar_height,
+                                },
+                                bar_style,
+                                draw::BarOrientation::Horizontal,
+                                is_top,
                             );
                             if ctx.fill().is_err() {
                                 error!("kwybars: cairo fill failed");
@@ -186,11 +193,15 @@ fn build_drawing_area(
                             );
                             draw::append_bar_path(
                                 ctx,
-                                x,
-                                y,
-                                bar_width,
-                                bar_height,
-                                bar_style.corner_radius,
+                                draw::BarRect {
+                                    x,
+                                    y,
+                                    width: bar_width,
+                                    height: bar_height,
+                                },
+                                bar_style,
+                                draw::BarOrientation::Vertical,
+                                is_left,
                             );
                             if ctx.fill().is_err() {
                                 error!("kwybars: cairo fill failed");

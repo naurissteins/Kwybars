@@ -12,6 +12,7 @@ You can pin it to the top, bottom, left, or right of your screen and watch your 
 -   Control window layer: `background`, `bottom`, `top`
 -   Custom overlay size + alignment
 -   Solid or gradient bar colors
+-   Optional segmented bar style (oldschool split blocks)
 -   Hot reload config changes (no restart needed!)
 -   Optional theme palettes (`assets/themes/*.toml`)
 -   Multiple audio backends: `cava` (default), `pipewire`, `dummy` (test animation), `auto` → `cava → pipewire → dummy`
@@ -125,6 +126,9 @@ anchor_margin = 20
 [visualizer]
 backend = "cava"
 bar_corner_radius = 20
+segmented_bars = true
+segment_length = 12
+segment_gap = 6
 bars = 50
 bar_width = 8
 gap = 20
@@ -180,6 +184,9 @@ Root keys:
 - `bars`: number of bars.
 - `bar_width`: base bar thickness in pixels.
 - `bar_corner_radius`: bar corner radius in pixels (`0` = square bars).
+- `segmented_bars`: split each bar into repeated segments (`true|false`).
+- `segment_length`: segment size in pixels along bar growth direction.
+- `segment_gap`: empty spacing in pixels between segments.
 - `gap`: gap between bars in pixels.
 - `framerate`: render update rate.
 - `color_mode`: `solid|gradient`.

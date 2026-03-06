@@ -246,6 +246,9 @@ pub struct VisualizerConfig {
     pub bars: usize,
     pub bar_width: u32,
     pub bar_corner_radius: f32,
+    pub segmented_bars: bool,
+    pub segment_length: u32,
+    pub segment_gap: u32,
     pub gap: u32,
     pub framerate: u32,
     pub color_mode: VisualizerColorMode,
@@ -267,6 +270,9 @@ impl Default for VisualizerConfig {
             bars: 48,
             bar_width: 6,
             bar_corner_radius: 0.0,
+            segmented_bars: false,
+            segment_length: 14,
+            segment_gap: 6,
             gap: 3,
             framerate: 60,
             color_mode: VisualizerColorMode::Solid,
@@ -544,6 +550,9 @@ fn parse_visualizer_key(
         "bar_corner_radius" => {
             visualizer.bar_corner_radius = parse_f32(key, value)?.max(0.0);
         }
+        "segmented_bars" => visualizer.segmented_bars = parse_bool(key, value)?,
+        "segment_length" => visualizer.segment_length = parse_u32(key, value)?.max(1),
+        "segment_gap" => visualizer.segment_gap = parse_u32(key, value)?,
         "gap" => visualizer.gap = parse_u32(key, value)?,
         "framerate" => visualizer.framerate = parse_u32(key, value)?,
         "color_mode" => visualizer.color_mode = VisualizerColorMode::parse(value)?,
@@ -744,6 +753,9 @@ mod tests {
         bars = 64
         bar_width = 5
         bar_corner_radius = 3.5
+        segmented_bars = true
+        segment_length = 9
+        segment_gap = 4
         gap = 2
         framerate = 75
         color_mode = "gradient"
@@ -795,6 +807,9 @@ mod tests {
         assert_eq!(parsed.visualizer.bars, 64);
         assert_eq!(parsed.visualizer.bar_width, 5);
         assert!((parsed.visualizer.bar_corner_radius - 3.5).abs() < 1e-5);
+        assert!(parsed.visualizer.segmented_bars);
+        assert_eq!(parsed.visualizer.segment_length, 9);
+        assert_eq!(parsed.visualizer.segment_gap, 4);
         assert_eq!(parsed.visualizer.gap, 2);
         assert_eq!(parsed.visualizer.framerate, 75);
         assert_eq!(parsed.visualizer.color_mode, VisualizerColorMode::Gradient);
