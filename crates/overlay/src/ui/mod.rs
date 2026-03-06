@@ -11,6 +11,7 @@ use gtk::glib;
 use gtk::prelude::*;
 use kwybars_common::config::{AppConfig, OverlayPosition, VisualizerColorMode};
 use kwybars_engine::live::LiveFrameStream;
+use tracing::{error, info};
 
 use crate::theme::ThemePalette;
 
@@ -22,7 +23,7 @@ pub fn build_overlay_windows(
     style::install_css();
 
     let stream = Rc::new(LiveFrameStream::spawn(config.visualizer.clone()));
-    eprintln!("kwybars: using {:?} frame source", stream.source_kind());
+    info!("kwybars: using {:?} frame source", stream.source_kind());
 
     let monitors = layer::selected_monitors(&config.overlay);
     if monitors.is_empty() {
@@ -161,7 +162,7 @@ fn build_drawing_area(
                                 bar_style.corner_radius,
                             );
                             if ctx.fill().is_err() {
-                                eprintln!("kwybars: cairo fill failed");
+                                error!("kwybars: cairo fill failed");
                             }
                         },
                     );
@@ -192,7 +193,7 @@ fn build_drawing_area(
                                 bar_style.corner_radius,
                             );
                             if ctx.fill().is_err() {
-                                eprintln!("kwybars: cairo fill failed");
+                                error!("kwybars: cairo fill failed");
                             }
                         },
                     );
@@ -270,7 +271,7 @@ fn build_drawing_area(
             }
 
             if ctx.fill().is_err() {
-                eprintln!("kwybars: cairo fill failed");
+                error!("kwybars: cairo fill failed");
             }
         });
     }

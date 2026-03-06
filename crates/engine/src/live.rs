@@ -9,6 +9,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use kwybars_common::config::{VisualizerBackend, VisualizerConfig};
 use kwybars_common::spectrum::SpectrumFrame;
+use tracing::{error, warn};
 
 use crate::pipeline::{DummySineSource, FrameSource};
 
@@ -69,7 +70,7 @@ impl LiveFrameStream {
                 } else if spawn_cava_thread(Arc::clone(&latest), bar_count, framerate).is_ok() {
                     SourceKind::Cava
                 } else {
-                    eprintln!("kwybars: falling back to dummy frame source");
+                    warn!("kwybars: falling back to dummy frame source");
                     spawn_dummy_thread(Arc::clone(&latest), bar_count, framerate);
                     SourceKind::Dummy
                 }
@@ -82,7 +83,7 @@ impl LiveFrameStream {
                 {
                     SourceKind::Pipewire
                 } else {
-                    eprintln!("kwybars: falling back to dummy frame source");
+                    warn!("kwybars: falling back to dummy frame source");
                     spawn_dummy_thread(Arc::clone(&latest), bar_count, framerate);
                     SourceKind::Dummy
                 }
@@ -95,7 +96,7 @@ impl LiveFrameStream {
                 {
                     SourceKind::Pipewire
                 } else {
-                    eprintln!("kwybars: falling back to dummy frame source");
+                    warn!("kwybars: falling back to dummy frame source");
                     spawn_dummy_thread(Arc::clone(&latest), bar_count, framerate);
                     SourceKind::Dummy
                 }
@@ -176,7 +177,7 @@ fn spawn_pipewire_thread(
         let stdout = match child.stdout.take() {
             Some(stdout) => stdout,
             None => {
-                eprintln!("kwybars: pw-cat did not provide stdout");
+                error!("kwybars: pw-cat did not provide stdout");
                 let _ = child.kill();
                 return;
             }
@@ -193,7 +194,7 @@ fn spawn_pipewire_thread(
                 Ok(0) => break,
                 Ok(value) => value,
                 Err(err) => {
-                    eprintln!("kwybars: error reading pw-cat output: {err}");
+                    error!("kwybars: error reading pw-cat output: {err}");
                     break;
                 }
             };
@@ -239,7 +240,7 @@ fn spawn_cava_thread(
         let mut child = match command.spawn() {
             Ok(child) => child,
             Err(err) => {
-                eprintln!("kwybars: failed to start cava: {err}");
+                error!("kwybars: failed to start cava: {err}");
                 let _ = fs::remove_file(&config_path);
                 return;
             }
@@ -248,7 +249,7 @@ fn spawn_cava_thread(
         let stdout = match child.stdout.take() {
             Some(stdout) => stdout,
             None => {
-                eprintln!("kwybars: cava did not provide stdout");
+                error!("kwybars: cava did not provide stdout");
                 let _ = fs::remove_file(&config_path);
                 let _ = child.kill();
                 return;
@@ -272,7 +273,7 @@ fn spawn_cava_thread(
                     }
                 }
                 Err(err) => {
-                    eprintln!("kwybars: error reading cava output: {err}");
+                    error!("kwybars: error reading cava output: {err}");
                     break;
                 }
             }

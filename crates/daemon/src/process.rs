@@ -3,6 +3,7 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
 use kwybars_common::config::DaemonConfig;
+use tracing::info;
 
 const SPAWN_RETRY_INTERVAL: Duration = Duration::from_millis(1800);
 
@@ -34,7 +35,7 @@ impl OverlayProcess {
         let mut command = build_command(daemon);
         let child = command.spawn()?;
         self.child = Some(child);
-        println!(
+        info!(
             "kwybars-daemon: started overlay process ({})",
             daemon.overlay_command
         );
@@ -66,7 +67,7 @@ impl OverlayProcess {
             }
         }
         let _ = child.wait();
-        println!("kwybars-daemon: stopped overlay process");
+        info!("kwybars-daemon: stopped overlay process");
         Ok(())
     }
 }
@@ -83,7 +84,5 @@ fn build_command(daemon: &DaemonConfig) -> Command {
         command.args(&daemon.overlay_args);
     }
     command.stdin(Stdio::null());
-    command.stdout(Stdio::null());
-    command.stderr(Stdio::null());
     command
 }

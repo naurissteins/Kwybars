@@ -9,6 +9,7 @@ gtk = { package = "gtk4", version = "0.10" }
 gtk4-layer-shell = "0.6"
 kwybars-common = { path = "../common" }
 kwybars-engine = { path = "../engine" }
+tracing = "0.1"
 
 [lints]
 workspace = true

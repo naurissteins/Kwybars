@@ -405,7 +405,8 @@ fn parse_config(raw: &str) -> Result<AppConfig, ConfigLoadError> {
     let mut config = AppConfig::default();
     let mut section: Option<&str> = None;
 
-    for line in raw.lines() {
+    for (line_idx, line) in raw.lines().enumerate() {
+        let line_no = line_idx + 1;
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
@@ -419,7 +420,7 @@ fn parse_config(raw: &str) -> Result<AppConfig, ConfigLoadError> {
 
         let Some((key, value)) = trimmed.split_once('=') else {
             return Err(ConfigLoadError::Parse(format!(
-                "invalid key/value line: {trimmed}"
+                "line {line_no}: invalid key/value line: {trimmed}"
             )));
         };
 
@@ -427,17 +428,24 @@ fn parse_config(raw: &str) -> Result<AppConfig, ConfigLoadError> {
         let value = normalize_value(value);
 
         match section {
-            Some("overlay") => parse_overlay_key(&mut config.overlay, key, &value)?,
-            Some("visualizer") => parse_visualizer_key(&mut config.visualizer, key, &value)?,
-            Some("daemon") => parse_daemon_key(&mut config.daemon, key, &value)?,
+            Some("overlay") => parse_overlay_key(&mut config.overlay, key, &value)
+                .map_err(|err| with_line_context(err, line_no))?,
+            Some("visualizer") => parse_visualizer_key(&mut config.visualizer, key, &value)
+                .map_err(|err| with_line_context(err, line_no))?,
+            Some("daemon") => parse_daemon_key(&mut config.daemon, key, &value)
+                .map_err(|err| with_line_context(err, line_no))?,
             Some(other) => {
-                return Err(ConfigLoadError::Parse(format!("unknown section [{other}]")));
+                return Err(ConfigLoadError::Parse(format!(
+                    "line {line_no}: unknown section [{other}]"
+                )));
             }
             None => {
-                if !parse_root_key(&mut config, key, &value)? {
-                    return Err(ConfigLoadError::Parse(
-                        "key/value before a section header".to_owned(),
-                    ));
+                if !parse_root_key(&mut config, key, &value)
+                    .map_err(|err| with_line_context(err, line_no))?
+                {
+                    return Err(ConfigLoadError::Parse(format!(
+                        "line {line_no}: key/value before a section header"
+                    )));
                 }
             }
         }
@@ -450,7 +458,8 @@ fn parse_color_overrides(raw: &str) -> Result<VisualizerColorOverrides, ConfigLo
     let mut overrides = VisualizerColorOverrides::default();
     let mut section: Option<&str> = None;
 
-    for line in raw.lines() {
+    for (line_idx, line) in raw.lines().enumerate() {
+        let line_no = line_idx + 1;
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
@@ -475,8 +484,14 @@ fn parse_color_overrides(raw: &str) -> Result<VisualizerColorOverrides, ConfigLo
         let value = normalize_value(value);
 
         match key {
-            "color_rgba" => overrides.color_rgba = Some(RgbaColor::parse(&value)?),
-            "color2_rgba" => overrides.color2_rgba = Some(RgbaColor::parse(&value)?),
+            "color_rgba" => {
+                overrides.color_rgba =
+                    Some(RgbaColor::parse(&value).map_err(|err| with_line_context(err, line_no))?)
+            }
+            "color2_rgba" => {
+                overrides.color2_rgba =
+                    Some(RgbaColor::parse(&value).map_err(|err| with_line_context(err, line_no))?)
+            }
             _ => {}
         }
     }
@@ -619,6 +634,15 @@ fn parse_root_key(config: &mut AppConfig, key: &str, value: &str) -> Result<bool
             Ok(true)
         }
         _ => Ok(false),
+    }
+}
+
+fn with_line_context(error: ConfigLoadError, line_no: usize) -> ConfigLoadError {
+    match error {
+        ConfigLoadError::Parse(message) => {
+            ConfigLoadError::Parse(format!("line {line_no}: {message}"))
+        }
+        other => other,
     }
 }
 

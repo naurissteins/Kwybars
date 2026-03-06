@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 kwybars-common = { path = "../common" }
+tracing = "0.1"
 
 [lints]
 workspace = true

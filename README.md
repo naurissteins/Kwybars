@@ -205,6 +205,8 @@ Root keys:
 - `color_rgba`: overrides `[visualizer].color_rgba` when present.
 - `color2_rgba`: overrides `[visualizer].color2_rgba` when present.
 
+Config parse errors include line numbers (for example: `line 42: unknown overlay key: ...`).
+
 For local development without installing binaries:
 
 ```toml
@@ -213,6 +215,16 @@ overlay_command = "cargo"
 overlay_args = ["run", "-p", "kwybars-overlay"]
 ```
 
+## Logging
+
+- Both `kwybars-overlay` and `kwybars-daemon` write logs to stderr and to a file.
+- Default log files:
+  - `~/.local/state/kwybars/overlay.log`
+  - `~/.local/state/kwybars/daemon.log`
+  - (`$XDG_STATE_HOME/kwybars/*.log` if `XDG_STATE_HOME` is set)
+- You can set log level with `KWYBARS_LOG` (or `RUST_LOG`), for example:
+  - `KWYBARS_LOG=debug cargo run -p kwybars-daemon`
+- Override log file location with `KWYBARS_LOG_FILE=/path/to/kwybars.log`
 
 Not implemented yet:
 -   Direct **PipeWire client** (without `pw-cat`)

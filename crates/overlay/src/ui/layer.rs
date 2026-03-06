@@ -5,6 +5,7 @@ use kwybars_common::config::{
     HorizontalAlignment, OverlayConfig, OverlayLayer, OverlayMonitorMode, OverlayPosition,
     VerticalAlignment,
 };
+use tracing::warn;
 
 pub fn selected_monitors(overlay: &OverlayConfig) -> Vec<gdk::Monitor> {
     let Some(display) = gdk::Display::default() else {
@@ -146,7 +147,7 @@ pub fn configure_layer_shell(
     monitor: Option<&gdk::Monitor>,
 ) {
     if !gtk4_layer_shell::is_supported() {
-        eprintln!("kwybars: layer-shell is not supported by this compositor/session");
+        warn!("kwybars: layer-shell is not supported by this compositor/session");
         return;
     }
 

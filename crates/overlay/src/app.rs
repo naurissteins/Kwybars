@@ -7,6 +7,7 @@ use std::time::{Duration, UNIX_EPOCH};
 use gtk::glib;
 use gtk::prelude::*;
 use kwybars_common::config::{self, AppConfig};
+use tracing::{error, info, warn};
 
 use crate::theme::{self, ThemePalette};
 
@@ -102,11 +103,11 @@ pub fn run() -> Result<(), AppError> {
     let config_path = config::default_config_path();
     let colors_path = config::default_colors_path(&config_path);
     let runtime = load_runtime_config(&config_path, &colors_path).map_err(AppError::Config)?;
-    println!("kwybars-overlay starting");
-    println!("config path: {}", config_path.display());
-    println!("colors path: {}", colors_path.display());
+    info!("kwybars-overlay starting");
+    info!("config path: {}", config_path.display());
+    info!("colors path: {}", colors_path.display());
     if let Some(theme_path) = runtime.theme_path.as_ref() {
-        println!("theme path: {}", theme_path.display());
+        info!("theme path: {}", theme_path.display());
     }
 
     let app = gtk::Application::builder().application_id(APP_ID).build();
@@ -151,12 +152,12 @@ pub fn run() -> Result<(), AppError> {
                         .map(|running| running.runtime != next_runtime)
                         .unwrap_or(true);
                     if should_apply {
-                        eprintln!("kwybars: config/colors/theme changed, reloading overlay");
+                        info!("kwybars: config/colors/theme changed, reloading overlay");
                         apply_config(&app, &state_for_reload, next_runtime);
                     }
                 }
                 Err(err) => {
-                    eprintln!("kwybars: config reload failed (keeping current settings): {err}");
+                    warn!("kwybars: config reload failed (keeping current settings): {err}");
                 }
             }
 
@@ -195,7 +196,7 @@ fn load_runtime_config(
     match config::load_color_overrides(colors_path) {
         Ok(overrides) => config::apply_color_overrides(&mut config, overrides),
         Err(err) => {
-            eprintln!("kwybars: colors override load failed (using config.toml colors): {err}");
+            warn!("kwybars: colors override load failed (using config.toml colors): {err}");
         }
     }
 
@@ -223,7 +224,7 @@ fn load_theme_for_config(
     match theme::load_theme_palette(&theme_path, trimmed_name, config.visualizer.theme_opacity) {
         Ok(palette) => (Some(palette), Some(theme_path)),
         Err(err) => {
-            eprintln!("kwybars: theme load failed (using configured rgba colors): {err}");
+            error!("kwybars: theme load failed (using configured rgba colors): {err}");
             (None, Some(theme_path))
         }
     }

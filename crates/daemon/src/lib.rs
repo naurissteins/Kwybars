@@ -11,6 +11,7 @@ use activity::{ActivityState, ActivityTracker};
 use kwybars_common::config::{self, DaemonConfig, VisualizerConfig};
 use kwybars_engine::live::LiveFrameStream;
 use process::OverlayProcess;
+use tracing::{error, info, warn};
 
 #[derive(Debug)]
 pub enum DaemonError {
@@ -78,16 +79,16 @@ pub fn run() -> Result<(), DaemonError> {
     let config_path = config::default_config_path();
     let mut runtime = load_runtime_config(&config_path).map_err(DaemonError::Config)?;
     if !runtime.daemon.enabled {
-        println!("kwybars-daemon: disabled in config ([daemon].enabled=false), exiting");
+        info!("kwybars-daemon: disabled in config ([daemon].enabled=false), exiting");
         return Ok(());
     }
 
-    println!("kwybars-daemon starting");
-    println!("config path: {}", config_path.display());
+    info!("kwybars-daemon starting");
+    info!("config path: {}", config_path.display());
 
     let mut config_stamp = ConfigStamp::read(&config_path);
     let mut stream = LiveFrameStream::spawn(runtime.visualizer.clone());
-    println!("audio source: {:?}", stream.source_kind());
+    info!("audio source: {:?}", stream.source_kind());
 
     let mut activity = ActivityTracker::new();
     let mut overlay = OverlayProcess::new();
@@ -99,7 +100,7 @@ pub fn run() -> Result<(), DaemonError> {
         let now = Instant::now();
 
         if let Some(exit_status) = overlay.poll_exit().map_err(DaemonError::Runtime)? {
-            eprintln!("kwybars-daemon: overlay exited with status {exit_status}");
+            warn!("kwybars-daemon: overlay exited with status {exit_status}");
         }
 
         let next_config_stamp = ConfigStamp::read(&config_path);
@@ -108,14 +109,14 @@ pub fn run() -> Result<(), DaemonError> {
             match load_runtime_config(&config_path) {
                 Ok(next_runtime) => {
                     if runtime != next_runtime {
-                        eprintln!("kwybars-daemon: config changed, reloading daemon settings");
+                        info!("kwybars-daemon: config changed, reloading daemon settings");
                         if runtime.visualizer != next_runtime.visualizer {
                             stream = LiveFrameStream::spawn(next_runtime.visualizer.clone());
-                            println!("audio source: {:?}", stream.source_kind());
+                            info!("audio source: {:?}", stream.source_kind());
                         }
                         if !next_runtime.daemon.enabled {
                             overlay.stop().map_err(DaemonError::Runtime)?;
-                            println!(
+                            info!(
                                 "kwybars-daemon: disabled in config ([daemon].enabled=false), exiting"
                             );
                             return Ok(());
@@ -124,9 +125,7 @@ pub fn run() -> Result<(), DaemonError> {
                     }
                 }
                 Err(err) => {
-                    eprintln!(
-                        "kwybars-daemon: config reload failed (keeping current settings): {err}"
-                    );
+                    warn!("kwybars-daemon: config reload failed (keeping current settings): {err}");
                 }
             }
         }
@@ -142,15 +141,15 @@ pub fn run() -> Result<(), DaemonError> {
 
         if state_changed {
             match activity.state() {
-                ActivityState::Active => println!("kwybars-daemon: audio active"),
-                ActivityState::Inactive => println!("kwybars-daemon: audio inactive"),
+                ActivityState::Active => info!("kwybars-daemon: audio active"),
+                ActivityState::Inactive => info!("kwybars-daemon: audio inactive"),
             }
         }
 
         match activity.state() {
             ActivityState::Active => {
                 if let Err(err) = overlay.ensure_running(&runtime.daemon, now) {
-                    eprintln!("kwybars-daemon: could not launch overlay: {err}");
+                    error!("kwybars-daemon: could not launch overlay: {err}");
                 }
             }
             ActivityState::Inactive => {
