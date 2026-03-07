@@ -269,6 +269,8 @@ pub struct VisualizerConfig {
     pub segment_length: u32,
     pub segment_gap: u32,
     pub radial_inner_radius: u32,
+    pub radial_start_angle: f32,
+    pub radial_arc_degrees: f32,
     pub gap: u32,
     pub framerate: u32,
     pub color_mode: VisualizerColorMode,
@@ -295,6 +297,8 @@ impl Default for VisualizerConfig {
             segment_length: 14,
             segment_gap: 6,
             radial_inner_radius: 180,
+            radial_start_angle: -90.0,
+            radial_arc_degrees: 360.0,
             gap: 20,
             framerate: 60,
             color_mode: VisualizerColorMode::Gradient,
@@ -587,6 +591,8 @@ fn parse_visualizer_key(
         "segment_length" => visualizer.segment_length = parse_u32(key, value)?.max(1),
         "segment_gap" => visualizer.segment_gap = parse_u32(key, value)?,
         "radial_inner_radius" => visualizer.radial_inner_radius = parse_u32(key, value)?.max(1),
+        "radial_start_angle" => visualizer.radial_start_angle = parse_f32(key, value)?,
+        "radial_arc_degrees" => visualizer.radial_arc_degrees = parse_f32(key, value)?,
         "gap" => visualizer.gap = parse_u32(key, value)?,
         "framerate" => visualizer.framerate = parse_u32(key, value)?,
         "color_mode" => visualizer.color_mode = VisualizerColorMode::parse(value)?,
@@ -793,6 +799,8 @@ mod tests {
         segment_length = 9
         segment_gap = 4
         radial_inner_radius = 160
+        radial_start_angle = -180
+        radial_arc_degrees = 180
         gap = 2
         framerate = 75
         color_mode = "gradient"
@@ -849,6 +857,8 @@ mod tests {
         assert_eq!(parsed.visualizer.segment_length, 9);
         assert_eq!(parsed.visualizer.segment_gap, 4);
         assert_eq!(parsed.visualizer.radial_inner_radius, 160);
+        assert!((parsed.visualizer.radial_start_angle - (-180.0)).abs() < 1e-5);
+        assert!((parsed.visualizer.radial_arc_degrees - 180.0).abs() < 1e-5);
         assert_eq!(parsed.visualizer.gap, 2);
         assert_eq!(parsed.visualizer.framerate, 75);
         assert_eq!(parsed.visualizer.color_mode, VisualizerColorMode::Gradient);
@@ -915,6 +925,9 @@ mod tests {
         assert!((config.visualizer.bar_corner_radius - 20.0).abs() < 1e-5);
         assert_eq!(config.visualizer.bars, 50);
         assert_eq!(config.visualizer.bar_width, 8);
+        assert_eq!(config.visualizer.radial_inner_radius, 180);
+        assert!((config.visualizer.radial_start_angle - (-90.0)).abs() < 1e-5);
+        assert!((config.visualizer.radial_arc_degrees - 360.0).abs() < 1e-5);
         assert_eq!(config.visualizer.gap, 20);
         assert_eq!(config.visualizer.framerate, 60);
         assert_eq!(config.visualizer.color_mode, VisualizerColorMode::Gradient);

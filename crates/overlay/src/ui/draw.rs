@@ -1,4 +1,4 @@
-use std::f64::consts::{FRAC_PI_2, PI};
+use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
 #[derive(Clone, Copy)]
 pub struct BarStyle {
@@ -30,6 +30,22 @@ pub struct RadialBarSpec {
     pub inner_radius: f64,
     pub length: f64,
     pub thickness: f64,
+}
+
+#[derive(Clone, Copy)]
+pub struct RadialLayout {
+    pub width: f64,
+    pub height: f64,
+    pub inner_radius: f64,
+    pub start_angle: f64,
+    pub arc_radians: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct RadialDistribution {
+    first_angle: f64,
+    angle_step: f64,
+    tangential_thickness: f64,
 }
 
 pub fn for_each_horizontal_bar(
@@ -158,50 +174,109 @@ pub fn draw_vertical_bars(
 
 pub fn for_each_radial_bar(
     values: &[f64],
-    width: f64,
-    height: f64,
-    inner_radius: f64,
+    layout: RadialLayout,
     style: BarStyle,
     mut paint: impl FnMut(usize, RadialBarSpec),
 ) {
-    if values.is_empty() || width <= 0.0 || height <= 0.0 {
+    if values.is_empty() || layout.width <= 0.0 || layout.height <= 0.0 {
         return;
     }
 
-    let min_half_extent = (width * 0.5).min(height * 0.5);
+    let min_half_extent = (layout.width * 0.5).min(layout.height * 0.5);
     let padding = style.thickness.max(2.0) + style.gap.max(0.0);
     let max_outer_radius = (min_half_extent - padding).max(10.0);
-    let inner_radius = inner_radius
+    let inner_radius = layout
+        .inner_radius
         .max(10.0)
         .min((max_outer_radius - 10.0).max(10.0));
     let max_length = (max_outer_radius - inner_radius).max(6.0);
 
-    let count = values.len() as f64;
-    let circumference = 2.0 * PI * inner_radius.max(1.0);
-    let total_nominal = count * (style.thickness + style.gap.max(0.0));
-    let scale = if total_nominal > circumference {
-        circumference / total_nominal
-    } else {
-        1.0
+    let Some(distribution) = radial_distribution(
+        values.len(),
+        inner_radius,
+        style.thickness,
+        style.gap,
+        layout.start_angle,
+        layout.arc_radians,
+    ) else {
+        return;
     };
 
-    let tangential_thickness = (style.thickness * scale).max(1.0);
-    let gap = style.gap.max(0.0) * scale;
-    let angle_step = (tangential_thickness + gap) / inner_radius.max(1.0);
-    let start_angle = -FRAC_PI_2;
     for (index, value) in values.iter().enumerate() {
         let length = (value.clamp(0.0, 1.0) * max_length).max(2.0);
-        let angle = start_angle + (index as f64 * angle_step);
+        let angle = distribution.first_angle + (index as f64 * distribution.angle_step);
         paint(
             index,
             RadialBarSpec {
                 angle,
                 inner_radius,
                 length,
-                thickness: tangential_thickness,
+                thickness: distribution.tangential_thickness,
             },
         );
     }
+}
+
+fn radial_distribution(
+    count: usize,
+    inner_radius: f64,
+    thickness: f64,
+    gap: f64,
+    start_angle: f64,
+    arc_radians: f64,
+) -> Option<RadialDistribution> {
+    if count == 0 {
+        return None;
+    }
+
+    let inner_radius = inner_radius.max(1.0);
+    let clamped_arc = arc_radians.clamp(-TAU, TAU);
+    let direction = if clamped_arc < 0.0 { -1.0 } else { 1.0 };
+    let arc_magnitude = clamped_arc.abs().max(0.001);
+    let full_circle = (arc_magnitude - TAU).abs() < 0.001;
+
+    let gap_count = if count <= 1 {
+        0
+    } else if full_circle {
+        count
+    } else {
+        count.saturating_sub(1)
+    } as f64;
+    let total_nominal = (count as f64 * thickness.max(1.0)) + (gap_count * gap.max(0.0));
+    let available_arc_length = arc_magnitude * inner_radius;
+    let scale = if total_nominal > available_arc_length {
+        available_arc_length / total_nominal
+    } else {
+        1.0
+    };
+
+    let tangential_thickness = (thickness * scale).max(1.0);
+    let base_gap = gap.max(0.0) * scale;
+    let occupied_length = (count as f64 * tangential_thickness) + (gap_count * base_gap);
+    let extra_gap = if gap_count > 0.0 {
+        (available_arc_length - occupied_length).max(0.0) / gap_count
+    } else {
+        0.0
+    };
+    let effective_gap = base_gap + extra_gap;
+    let angle_step = if count <= 1 {
+        0.0
+    } else {
+        direction * (tangential_thickness + effective_gap) / inner_radius
+    };
+    let first_angle = if full_circle {
+        start_angle
+    } else if count == 1 {
+        start_angle + (clamped_arc * 0.5)
+    } else {
+        start_angle + (direction * tangential_thickness * 0.5 / inner_radius)
+    };
+
+    Some(RadialDistribution {
+        first_angle,
+        angle_step,
+        tangential_thickness,
+    })
 }
 
 pub fn append_radial_bar_path(
@@ -378,7 +453,9 @@ pub fn bar_color_index(bar_index: usize, bar_count: usize, color_count: usize) -
 
 #[cfg(test)]
 mod tests {
-    use super::{bar_color_index, for_each_segment_span};
+    use std::f64::consts::{FRAC_PI_2, PI, TAU};
+
+    use super::{bar_color_index, for_each_segment_span, radial_distribution};
 
     #[test]
     fn spreads_colors_evenly() {
@@ -398,5 +475,39 @@ mod tests {
         let mut spans = Vec::new();
         for_each_segment_span(10.0, 3.0, 1.0, false, |start, len| spans.push((start, len)));
         assert_eq!(spans, vec![(7.0, 3.0), (3.0, 3.0), (0.0, 2.0)]);
+    }
+
+    #[test]
+    fn radial_partial_arc_stays_inside_requested_span() {
+        let Some(distribution) = radial_distribution(5, 100.0, 8.0, 12.0, -PI, PI) else {
+            panic!("expected radial distribution");
+        };
+        let first_center = distribution.first_angle;
+        let last_center = distribution.first_angle + (4.0 * distribution.angle_step);
+        let half_bar_angle = distribution.tangential_thickness * 0.5 / 100.0;
+
+        assert!((first_center - (-PI + half_bar_angle)).abs() < 1e-6);
+        assert!((last_center - (0.0 - half_bar_angle)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn radial_single_bar_centers_inside_partial_arc() {
+        let Some(distribution) = radial_distribution(1, 120.0, 8.0, 12.0, -FRAC_PI_2, PI) else {
+            panic!("expected radial distribution");
+        };
+        assert!((distribution.first_angle - 0.0).abs() < 1e-6);
+        assert_eq!(distribution.angle_step, 0.0);
+    }
+
+    #[test]
+    fn radial_full_circle_clamps_oversized_arc() {
+        let Some(distribution) = radial_distribution(4, 100.0, 8.0, 12.0, -FRAC_PI_2, TAU * 2.0)
+        else {
+            panic!("expected radial distribution");
+        };
+        let expected_step = TAU / 4.0;
+
+        assert!((distribution.first_angle - (-FRAC_PI_2)).abs() < 1e-6);
+        assert!((distribution.angle_step - expected_step).abs() < 1e-6);
     }
 }

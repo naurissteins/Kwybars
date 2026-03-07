@@ -161,6 +161,8 @@ segmented_bars = false
 segment_length = 12
 segment_gap = 6
 radial_inner_radius = 180
+radial_start_angle = -90
+radial_arc_degrees = 360
 bars = 50
 bar_width = 8
 gap = 20
@@ -211,6 +213,8 @@ overlay_args = []
 - `segment_length`: segment size in pixels along bar growth direction.
 - `segment_gap`: empty spacing in pixels between segments.
 - `radial_inner_radius`: inner circle radius in pixels for `layout="radial"`.
+- `radial_start_angle`: arc start angle in degrees for `layout="radial"` (`-90` starts at the top).
+- `radial_arc_degrees`: arc span in degrees for `layout="radial"` (`360` = full ring, `180` = half circle).
 - `gap`: gap between bars in pixels.
 - `framerate`: render update rate (default: `60`).
 - `color_mode`: `solid|gradient` (default: `gradient`). Solid color mode uses `color_rgba`, gradient mode uses both `color_rgba` and `color2_rgba`.
@@ -218,6 +222,16 @@ overlay_args = []
 - `color2_rgba`: secondary color for gradient mode (default: `rgba(191, 198, 220, 0.7)`)
 - `theme`: optional theme name to load from `~/.config/kwybars/themes/<theme>.toml` or built-in themes. Available themes: `ayu-dark`, `catppuccin-mocha`, `dracula`, `everforest`, `gruvbox`, `nord`, `rose-pine` and `tokyo-night` (default: `none`).
 - `theme_opacity`: theme alpha multiplier `0.0..1.0` (default: `1.0`).
+
+Example half-circle radial layout:
+
+```toml
+[visualizer]
+layout = "radial"
+radial_inner_radius = 160
+radial_start_angle = -180
+radial_arc_degrees = 180
+```
 
 `[daemon]`
 - `enabled`: run daemon logic (`true|false`).

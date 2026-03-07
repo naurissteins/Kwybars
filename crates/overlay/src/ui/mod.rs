@@ -107,6 +107,8 @@ fn build_drawing_area(
     let bar_color = config.visualizer.color_rgba;
     let bar_color2 = config.visualizer.color2_rgba;
     let radial_inner_radius = f64::from(config.visualizer.radial_inner_radius.max(1));
+    let radial_start_angle = f64::from(config.visualizer.radial_start_angle).to_radians();
+    let radial_arc_radians = f64::from(config.visualizer.radial_arc_degrees).to_radians();
     let theme_colors = theme_palette
         .map(|theme| theme.colors)
         .filter(|colors| !colors.is_empty());
@@ -150,9 +152,13 @@ fn build_drawing_area(
 
                 draw::for_each_radial_bar(
                     &values,
-                    f64::from(width),
-                    f64::from(height),
-                    radial_inner_radius,
+                    draw::RadialLayout {
+                        width: f64::from(width),
+                        height: f64::from(height),
+                        inner_radius: radial_inner_radius,
+                        start_angle: radial_start_angle,
+                        arc_radians: radial_arc_radians,
+                    },
                     bar_style,
                     |index, spec| {
                         let color = if let Some(colors) = theme_colors.as_ref() {
