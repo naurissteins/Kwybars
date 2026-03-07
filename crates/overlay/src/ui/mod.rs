@@ -5,6 +5,7 @@ mod style;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
+use std::time::Instant;
 
 use gtk::gdk;
 use gtk::glib;
@@ -109,6 +110,8 @@ fn build_drawing_area(
     let radial_inner_radius = f64::from(config.visualizer.radial_inner_radius.max(1));
     let radial_start_angle = f64::from(config.visualizer.radial_start_angle).to_radians();
     let radial_arc_radians = f64::from(config.visualizer.radial_arc_degrees).to_radians();
+    let radial_rotation_radians_per_second =
+        f64::from(config.visualizer.radial_rotation_speed).to_radians();
     let theme_colors = theme_palette
         .map(|theme| theme.colors)
         .filter(|colors| !colors.is_empty());
@@ -137,6 +140,7 @@ fn build_drawing_area(
     }
 
     let bar_values = Rc::new(RefCell::new(vec![0.0_f64; bar_count]));
+    let rotation_started_at = Instant::now();
 
     {
         let values_for_draw = Rc::clone(&bar_values);
@@ -149,6 +153,9 @@ fn build_drawing_area(
             if is_radial {
                 let center_x = f64::from(width) * 0.5;
                 let center_y = f64::from(height) * 0.5;
+                let animated_start_angle = radial_start_angle
+                    + (rotation_started_at.elapsed().as_secs_f64()
+                        * radial_rotation_radians_per_second);
 
                 draw::for_each_radial_bar(
                     &values,
@@ -156,7 +163,7 @@ fn build_drawing_area(
                         width: f64::from(width),
                         height: f64::from(height),
                         inner_radius: radial_inner_radius,
-                        start_angle: radial_start_angle,
+                        start_angle: animated_start_angle,
                         arc_radians: radial_arc_radians,
                     },
                     bar_style,

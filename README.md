@@ -163,6 +163,7 @@ segment_gap = 6
 radial_inner_radius = 180
 radial_start_angle = -90
 radial_arc_degrees = 360
+radial_rotation_speed = 0
 bars = 50
 bar_width = 8
 gap = 20
@@ -215,6 +216,7 @@ overlay_args = []
 - `radial_inner_radius`: inner circle radius in pixels for `layout="radial"`.
 - `radial_start_angle`: arc start angle in degrees for `layout="radial"` (`-90` starts at the top).
 - `radial_arc_degrees`: arc span in degrees for `layout="radial"` (`360` = full ring, `180` = half circle).
+- `radial_rotation_speed`: rotation speed in degrees per second for `layout="radial"` (`0` = static, negative reverses direction).
 - `gap`: gap between bars in pixels.
 - `framerate`: render update rate (default: `60`).
 - `color_mode`: `solid|gradient` (default: `gradient`). Solid color mode uses `color_rgba`, gradient mode uses both `color_rgba` and `color2_rgba`.
@@ -231,6 +233,7 @@ layout = "radial"
 radial_inner_radius = 160
 radial_start_angle = -180
 radial_arc_degrees = 180
+radial_rotation_speed = 18
 ```
 
 `[daemon]`
