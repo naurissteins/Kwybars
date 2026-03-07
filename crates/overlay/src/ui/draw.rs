@@ -24,6 +24,14 @@ pub struct BarRect {
     pub height: f64,
 }
 
+#[derive(Clone, Copy)]
+pub struct RadialBarSpec {
+    pub angle: f64,
+    pub inner_radius: f64,
+    pub length: f64,
+    pub thickness: f64,
+}
+
 pub fn for_each_horizontal_bar(
     values: &[f64],
     width: f64,
@@ -146,6 +154,79 @@ pub fn draw_vertical_bars(
             );
         },
     );
+}
+
+pub fn for_each_radial_bar(
+    values: &[f64],
+    width: f64,
+    height: f64,
+    inner_radius: f64,
+    style: BarStyle,
+    mut paint: impl FnMut(usize, RadialBarSpec),
+) {
+    if values.is_empty() || width <= 0.0 || height <= 0.0 {
+        return;
+    }
+
+    let min_half_extent = (width * 0.5).min(height * 0.5);
+    let padding = style.thickness.max(2.0) + style.gap.max(0.0);
+    let max_outer_radius = (min_half_extent - padding).max(10.0);
+    let inner_radius = inner_radius
+        .max(10.0)
+        .min((max_outer_radius - 10.0).max(10.0));
+    let max_length = (max_outer_radius - inner_radius).max(6.0);
+
+    let count = values.len() as f64;
+    let circumference = 2.0 * PI * inner_radius.max(1.0);
+    let total_nominal = count * (style.thickness + style.gap.max(0.0));
+    let scale = if total_nominal > circumference {
+        circumference / total_nominal
+    } else {
+        1.0
+    };
+
+    let tangential_thickness = (style.thickness * scale).max(1.0);
+    let gap = style.gap.max(0.0) * scale;
+    let angle_step = (tangential_thickness + gap) / inner_radius.max(1.0);
+    let start_angle = -FRAC_PI_2;
+    for (index, value) in values.iter().enumerate() {
+        let length = (value.clamp(0.0, 1.0) * max_length).max(2.0);
+        let angle = start_angle + (index as f64 * angle_step);
+        paint(
+            index,
+            RadialBarSpec {
+                angle,
+                inner_radius,
+                length,
+                thickness: tangential_thickness,
+            },
+        );
+    }
+}
+
+pub fn append_radial_bar_path(
+    ctx: &gtk::cairo::Context,
+    center_x: f64,
+    center_y: f64,
+    spec: RadialBarSpec,
+    style: BarStyle,
+) {
+    ctx.save().ok();
+    ctx.translate(center_x, center_y);
+    ctx.rotate(spec.angle);
+    append_bar_path(
+        ctx,
+        BarRect {
+            x: spec.inner_radius,
+            y: -spec.thickness * 0.5,
+            width: spec.length,
+            height: spec.thickness,
+        },
+        style,
+        BarOrientation::Vertical,
+        true,
+    );
+    ctx.restore().ok();
 }
 
 pub fn append_bar_path(

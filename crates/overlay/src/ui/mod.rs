@@ -9,7 +9,9 @@ use std::time::Duration;
 use gtk::gdk;
 use gtk::glib;
 use gtk::prelude::*;
-use kwybars_common::config::{AppConfig, OverlayPosition, VisualizerColorMode};
+use kwybars_common::config::{
+    AppConfig, OverlayPosition, RgbaColor, VisualizerColorMode, VisualizerLayout,
+};
 use kwybars_engine::live::LiveFrameStream;
 use tracing::{error, info};
 
@@ -70,8 +72,8 @@ fn build_overlay_window(
     let drawing_area = build_drawing_area(config, stream, theme_palette);
     window.set_child(Some(&drawing_area));
 
-    layer::apply_default_size(&window, &config.overlay, monitor.as_ref());
-    layer::configure_layer_shell(&window, &config.overlay, monitor.as_ref());
+    layer::apply_default_size(&window, config, monitor.as_ref());
+    layer::configure_layer_shell(&window, config, monitor.as_ref());
 
     window.present();
     window
@@ -86,6 +88,7 @@ fn build_drawing_area(
     let is_horizontal = matches!(position, OverlayPosition::Bottom | OverlayPosition::Top);
     let is_left = matches!(position, OverlayPosition::Left);
     let is_top = matches!(position, OverlayPosition::Top);
+    let is_radial = config.visualizer.layout == VisualizerLayout::Radial;
     let bar_thickness = f64::from(config.visualizer.bar_width.max(1));
     let corner_radius = f64::from(config.visualizer.bar_corner_radius.max(0.0));
     let gap = f64::from(config.visualizer.gap);
@@ -103,6 +106,7 @@ fn build_drawing_area(
     let bar_color_mode = config.visualizer.color_mode;
     let bar_color = config.visualizer.color_rgba;
     let bar_color2 = config.visualizer.color2_rgba;
+    let radial_inner_radius = f64::from(config.visualizer.radial_inner_radius.max(1));
     let theme_colors = theme_palette
         .map(|theme| theme.colors)
         .filter(|colors| !colors.is_empty());
@@ -111,7 +115,10 @@ fn build_drawing_area(
     drawing_area.set_widget_name("kwybars-bars");
     drawing_area.set_can_target(false);
 
-    if is_horizontal {
+    if is_radial {
+        drawing_area.set_hexpand(true);
+        drawing_area.set_vexpand(true);
+    } else if is_horizontal {
         drawing_area.set_content_height(to_i32(config.overlay.height));
         if !config.overlay.full_length {
             drawing_area.set_content_width(to_i32(config.overlay.width));
@@ -134,6 +141,46 @@ fn build_drawing_area(
         drawing_area.set_draw_func(move |_, ctx, width, height| {
             let values = values_for_draw.borrow();
             if values.is_empty() || width <= 0 || height <= 0 {
+                return;
+            }
+
+            if is_radial {
+                let center_x = f64::from(width) * 0.5;
+                let center_y = f64::from(height) * 0.5;
+
+                draw::for_each_radial_bar(
+                    &values,
+                    f64::from(width),
+                    f64::from(height),
+                    radial_inner_radius,
+                    bar_style,
+                    |index, spec| {
+                        let color = if let Some(colors) = theme_colors.as_ref() {
+                            let color_idx =
+                                draw::bar_color_index(index, values.len(), colors.len());
+                            colors[color_idx]
+                        } else {
+                            color_for_index(
+                                bar_color_mode,
+                                bar_color,
+                                bar_color2,
+                                index,
+                                values.len(),
+                            )
+                        };
+
+                        ctx.set_source_rgba(
+                            f64::from(color.r),
+                            f64::from(color.g),
+                            f64::from(color.b),
+                            f64::from(color.a),
+                        );
+                        draw::append_radial_bar_path(ctx, center_x, center_y, spec, bar_style);
+                        if ctx.fill().is_err() {
+                            error!("kwybars: cairo fill failed");
+                        }
+                    },
+                );
                 return;
             }
 
@@ -316,4 +363,28 @@ fn build_drawing_area(
 
 fn to_i32(value: u32) -> i32 {
     value.max(1).min(i32::MAX as u32) as i32
+}
+
+fn color_for_index(
+    mode: VisualizerColorMode,
+    start: RgbaColor,
+    end: RgbaColor,
+    index: usize,
+    count: usize,
+) -> RgbaColor {
+    if mode == VisualizerColorMode::Solid || count <= 1 {
+        return start;
+    }
+
+    let t = index as f32 / (count.saturating_sub(1)) as f32;
+    RgbaColor {
+        r: lerp(start.r, end.r, t),
+        g: lerp(start.g, end.g, t),
+        b: lerp(start.b, end.b, t),
+        a: lerp(start.a, end.a, t),
+    }
+}
+
+fn lerp(start: f32, end: f32, t: f32) -> f32 {
+    start + ((end - start) * t.clamp(0.0, 1.0))
 }

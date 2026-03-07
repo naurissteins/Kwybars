@@ -2,8 +2,8 @@ use gtk::gdk;
 use gtk::prelude::*;
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use kwybars_common::config::{
-    HorizontalAlignment, OverlayConfig, OverlayLayer, OverlayMonitorMode, OverlayPosition,
-    VerticalAlignment,
+    AppConfig, HorizontalAlignment, OverlayConfig, OverlayLayer, OverlayMonitorMode,
+    OverlayPosition, VerticalAlignment, VisualizerLayout,
 };
 use tracing::warn;
 
@@ -90,9 +90,16 @@ fn parse_monitor_index(raw: &str, max: usize) -> Option<usize> {
 
 pub fn apply_default_size(
     window: &gtk::ApplicationWindow,
-    overlay: &OverlayConfig,
+    config: &AppConfig,
     monitor: Option<&gdk::Monitor>,
 ) {
+    let overlay = &config.overlay;
+    if config.visualizer.layout == VisualizerLayout::Radial {
+        let (width, height) = radial_window_size(overlay, monitor);
+        window.set_default_size(width, height);
+        return;
+    }
+
     let width = overlay.width.max(1).min(i32::MAX as u32) as i32;
     let height = overlay.height.max(1).min(i32::MAX as u32) as i32;
     let full_extent = monitor_extent(&overlay.position, monitor);
@@ -143,9 +150,10 @@ fn monitor_extent(position: &OverlayPosition, monitor: Option<&gdk::Monitor>) ->
 
 pub fn configure_layer_shell(
     window: &gtk::ApplicationWindow,
-    overlay: &OverlayConfig,
+    config: &AppConfig,
     monitor: Option<&gdk::Monitor>,
 ) {
+    let overlay = &config.overlay;
     if !gtk4_layer_shell::is_supported() {
         warn!("kwybars: layer-shell is not supported by this compositor/session");
         return;
@@ -165,6 +173,18 @@ pub fn configure_layer_shell(
     for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
         window.set_anchor(edge, false);
         window.set_margin(edge, 0);
+    }
+
+    if config.visualizer.layout == VisualizerLayout::Radial {
+        window.set_anchor(Edge::Top, true);
+        window.set_anchor(Edge::Bottom, true);
+        window.set_anchor(Edge::Left, true);
+        window.set_anchor(Edge::Right, true);
+        window.set_margin(Edge::Top, to_margin_i32(overlay.margin_top));
+        window.set_margin(Edge::Bottom, to_margin_i32(overlay.margin_bottom));
+        window.set_margin(Edge::Left, to_margin_i32(overlay.margin_left));
+        window.set_margin(Edge::Right, to_margin_i32(overlay.margin_right));
+        return;
     }
 
     let primary_margin = to_margin_i32(overlay.anchor_margin);
@@ -244,6 +264,37 @@ fn apply_vertical_span_anchors(window: &gtk::ApplicationWindow, overlay: &Overla
 
 fn to_margin_i32(value: u32) -> i32 {
     value.min(i32::MAX as u32) as i32
+}
+
+fn radial_window_size(overlay: &OverlayConfig, monitor: Option<&gdk::Monitor>) -> (i32, i32) {
+    let fallback_width = overlay.width.max(1).min(i32::MAX as u32) as i32;
+    let fallback_height = overlay.height.max(1).min(i32::MAX as u32) as i32;
+    let Some(geometry) = monitor_geometry(monitor) else {
+        return (fallback_width, fallback_height);
+    };
+
+    let width = shrunk_extent(
+        geometry.width().max(1),
+        to_margin_i32(overlay.margin_left),
+        to_margin_i32(overlay.margin_right),
+    );
+    let height = shrunk_extent(
+        geometry.height().max(1),
+        to_margin_i32(overlay.margin_top),
+        to_margin_i32(overlay.margin_bottom),
+    );
+
+    (width, height)
+}
+
+fn monitor_geometry(monitor: Option<&gdk::Monitor>) -> Option<gdk::Rectangle> {
+    let monitor = monitor.cloned().or_else(|| {
+        let display = gdk::Display::default()?;
+        let monitors = display.monitors();
+        monitors.item(0)?.downcast::<gdk::Monitor>().ok()
+    })?;
+
+    Some(monitor.geometry())
 }
 
 fn shrunk_extent(extent: i32, before: i32, after: i32) -> i32 {
