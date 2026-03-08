@@ -94,8 +94,8 @@ pub fn apply_default_size(
     monitor: Option<&gdk::Monitor>,
 ) {
     let overlay = &config.overlay;
-    if config.visualizer.layout == VisualizerLayout::Radial {
-        let (width, height) = radial_window_size(overlay, monitor);
+    if uses_centered_layout(config.visualizer.layout) {
+        let (width, height) = centered_window_size(overlay, monitor);
         window.set_default_size(width, height);
         return;
     }
@@ -175,7 +175,7 @@ pub fn configure_layer_shell(
         window.set_margin(edge, 0);
     }
 
-    if config.visualizer.layout == VisualizerLayout::Radial {
+    if uses_centered_layout(config.visualizer.layout) {
         window.set_anchor(Edge::Top, true);
         window.set_anchor(Edge::Bottom, true);
         window.set_anchor(Edge::Left, true);
@@ -266,7 +266,7 @@ fn to_margin_i32(value: u32) -> i32 {
     value.min(i32::MAX as u32) as i32
 }
 
-fn radial_window_size(overlay: &OverlayConfig, monitor: Option<&gdk::Monitor>) -> (i32, i32) {
+fn centered_window_size(overlay: &OverlayConfig, monitor: Option<&gdk::Monitor>) -> (i32, i32) {
     let fallback_width = overlay.width.max(1).min(i32::MAX as u32) as i32;
     let fallback_height = overlay.height.max(1).min(i32::MAX as u32) as i32;
     let Some(geometry) = monitor_geometry(monitor) else {
@@ -285,6 +285,10 @@ fn radial_window_size(overlay: &OverlayConfig, monitor: Option<&gdk::Monitor>) -
     );
 
     (width, height)
+}
+
+fn uses_centered_layout(layout: VisualizerLayout) -> bool {
+    matches!(layout, VisualizerLayout::Radial | VisualizerLayout::Polygon)
 }
 
 fn monitor_geometry(monitor: Option<&gdk::Monitor>) -> Option<gdk::Rectangle> {

@@ -41,11 +41,35 @@ pub struct RadialLayout {
     pub arc_radians: f64,
 }
 
+#[derive(Clone, Copy)]
+pub struct PolygonLayout {
+    pub width: f64,
+    pub height: f64,
+    pub radius: f64,
+    pub rotation_radians: f64,
+    pub sides: usize,
+}
+
+#[derive(Clone, Copy)]
+pub struct DirectedBarSpec {
+    pub x: f64,
+    pub y: f64,
+    pub angle: f64,
+    pub length: f64,
+    pub thickness: f64,
+}
+
 #[derive(Clone, Copy, Debug)]
 struct RadialDistribution {
     first_angle: f64,
     angle_step: f64,
     tangential_thickness: f64,
+}
+
+#[derive(Clone, Copy)]
+struct Point {
+    x: f64,
+    y: f64,
 }
 
 pub fn for_each_horizontal_bar(
@@ -217,6 +241,66 @@ pub fn for_each_radial_bar(
     }
 }
 
+pub fn for_each_polygon_bar(
+    values: &[f64],
+    layout: PolygonLayout,
+    style: BarStyle,
+    mut paint: impl FnMut(usize, DirectedBarSpec),
+) {
+    if values.is_empty() || layout.width <= 0.0 || layout.height <= 0.0 || layout.sides < 3 {
+        return;
+    }
+
+    let max_outer_radius = centered_layout_outer_radius(layout.width, layout.height, style);
+    let radius = layout
+        .radius
+        .max(10.0)
+        .min((max_outer_radius - 10.0).max(10.0));
+    let apothem = radius * (PI / layout.sides as f64).cos();
+    let max_length = (max_outer_radius - apothem).max(6.0);
+    let vertices = regular_polygon_vertices(layout.sides, radius, layout.rotation_radians);
+    let edge_length = polygon_edge_length(&vertices);
+    if edge_length <= 0.0 {
+        return;
+    }
+
+    let perimeter = edge_length * layout.sides as f64;
+    let gap_count = if values.len() <= 1 { 0 } else { values.len() } as f64;
+    let total_nominal =
+        (values.len() as f64 * style.thickness.max(1.0)) + (gap_count * style.gap.max(0.0));
+    let scale = if total_nominal > perimeter {
+        perimeter / total_nominal
+    } else {
+        1.0
+    };
+
+    let tangential_thickness = (style.thickness * scale).max(1.0);
+    let base_gap = style.gap.max(0.0) * scale;
+    let occupied_length = (values.len() as f64 * tangential_thickness) + (gap_count * base_gap);
+    let extra_gap = if gap_count > 0.0 {
+        (perimeter - occupied_length).max(0.0) / gap_count
+    } else {
+        0.0
+    };
+    let step_distance = tangential_thickness + base_gap + extra_gap;
+
+    for (index, value) in values.iter().enumerate() {
+        let center_distance = (tangential_thickness * 0.5) + (index as f64 * step_distance);
+        let (point, normal) = polygon_point_and_normal(&vertices, center_distance % perimeter);
+        let length = (value.clamp(0.0, 1.0) * max_length).max(2.0);
+        paint(
+            index,
+            DirectedBarSpec {
+                x: point.x,
+                y: point.y,
+                angle: normal.y.atan2(normal.x),
+                length,
+                thickness: tangential_thickness,
+            },
+        );
+    }
+}
+
 fn radial_distribution(
     count: usize,
     inner_radius: f64,
@@ -293,6 +377,31 @@ pub fn append_radial_bar_path(
         ctx,
         BarRect {
             x: spec.inner_radius,
+            y: -spec.thickness * 0.5,
+            width: spec.length,
+            height: spec.thickness,
+        },
+        style,
+        BarOrientation::Vertical,
+        true,
+    );
+    ctx.restore().ok();
+}
+
+pub fn append_directed_bar_path(
+    ctx: &gtk::cairo::Context,
+    center_x: f64,
+    center_y: f64,
+    spec: DirectedBarSpec,
+    style: BarStyle,
+) {
+    ctx.save().ok();
+    ctx.translate(center_x + spec.x, center_y + spec.y);
+    ctx.rotate(spec.angle);
+    append_bar_path(
+        ctx,
+        BarRect {
+            x: 0.0,
             y: -spec.thickness * 0.5,
             width: spec.length,
             height: spec.thickness,
@@ -443,6 +552,68 @@ fn for_each_segment_span(
     }
 }
 
+fn centered_layout_outer_radius(width: f64, height: f64, style: BarStyle) -> f64 {
+    let min_half_extent = (width * 0.5).min(height * 0.5);
+    let padding = style.thickness.max(2.0) + style.gap.max(0.0);
+    (min_half_extent - padding).max(10.0)
+}
+
+fn regular_polygon_vertices(sides: usize, radius: f64, rotation_radians: f64) -> Vec<Point> {
+    (0..sides)
+        .map(|index| {
+            let angle = rotation_radians + (index as f64 * TAU / sides as f64);
+            Point {
+                x: radius * angle.cos(),
+                y: radius * angle.sin(),
+            }
+        })
+        .collect()
+}
+
+fn polygon_edge_length(vertices: &[Point]) -> f64 {
+    if vertices.len() < 2 {
+        return 0.0;
+    }
+
+    let first = vertices[0];
+    let second = vertices[1];
+    point_distance(first, second)
+}
+
+fn polygon_point_and_normal(vertices: &[Point], distance: f64) -> (Point, Point) {
+    let edge_length = polygon_edge_length(vertices).max(1.0);
+    let edge_index = ((distance / edge_length).floor() as usize) % vertices.len();
+    let edge_start = vertices[edge_index];
+    let edge_end = vertices[(edge_index + 1) % vertices.len()];
+    let along = (distance % edge_length) / edge_length;
+    let point = Point {
+        x: edge_start.x + ((edge_end.x - edge_start.x) * along),
+        y: edge_start.y + ((edge_end.y - edge_start.y) * along),
+    };
+    let midpoint = Point {
+        x: (edge_start.x + edge_end.x) * 0.5,
+        y: (edge_start.y + edge_end.y) * 0.5,
+    };
+    let normal = normalize_point(midpoint);
+    (point, normal)
+}
+
+fn normalize_point(point: Point) -> Point {
+    let length = (point.x.powi(2) + point.y.powi(2)).sqrt();
+    if length <= f64::EPSILON {
+        return Point { x: 1.0, y: 0.0 };
+    }
+
+    Point {
+        x: point.x / length,
+        y: point.y / length,
+    }
+}
+
+fn point_distance(a: Point, b: Point) -> f64 {
+    ((a.x - b.x).powi(2) + (a.y - b.y).powi(2)).sqrt()
+}
+
 pub fn bar_color_index(bar_index: usize, bar_count: usize, color_count: usize) -> usize {
     if bar_count == 0 || color_count == 0 {
         return 0;
@@ -455,7 +626,10 @@ pub fn bar_color_index(bar_index: usize, bar_count: usize, color_count: usize) -
 mod tests {
     use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
-    use super::{bar_color_index, for_each_segment_span, radial_distribution};
+    use super::{
+        BarStyle, PolygonLayout, bar_color_index, for_each_polygon_bar, for_each_segment_span,
+        radial_distribution,
+    };
 
     #[test]
     fn spreads_colors_evenly() {
@@ -509,5 +683,33 @@ mod tests {
 
         assert!((distribution.first_angle - (-FRAC_PI_2)).abs() < 1e-6);
         assert!((distribution.angle_step - expected_step).abs() < 1e-6);
+    }
+
+    #[test]
+    fn polygon_layout_distributes_bars_across_multiple_edges() {
+        let mut angles = Vec::new();
+        for_each_polygon_bar(
+            &[1.0, 1.0, 1.0],
+            PolygonLayout {
+                width: 800.0,
+                height: 800.0,
+                radius: 180.0,
+                rotation_radians: -FRAC_PI_2,
+                sides: 3,
+            },
+            BarStyle {
+                thickness: 8.0,
+                gap: 0.0,
+                corner_radius: 0.0,
+                segmented: false,
+                segment_length: 12.0,
+                segment_gap: 6.0,
+            },
+            |_, spec| angles.push((spec.angle.to_degrees() * 10.0).round() as i32),
+        );
+
+        angles.sort_unstable();
+        angles.dedup();
+        assert_eq!(angles.len(), 3);
     }
 }

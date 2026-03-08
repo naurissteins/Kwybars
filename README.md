@@ -16,6 +16,7 @@ https://github.com/user-attachments/assets/65c97990-bc8a-490a-bc07-9c68bc214678
 -   Solid or gradient bar colors
 -   Optional segmented bar style (oldschool split blocks)
 -   Optional radial layout centered on the monitor
+-   Optional polygon layout for triangle, square, hexagon, and similar shapes
 -   Hot reload config changes (no restart needed!)
 -   Optional custom theme palettes (`~/.config/kwybars/themes/*.toml`)
 -   Multiple audio backends: `cava` (default), `pipewire`, `dummy` (test animation), `auto`
@@ -164,8 +165,11 @@ radial_inner_radius = 180
 radial_start_angle = -90
 radial_arc_degrees = 360
 radial_rotation_speed = 0
-radial_center_offset_x = 0
-radial_center_offset_y = 0
+center_offset_x = 0
+center_offset_y = 0
+polygon_sides = 3
+polygon_radius = 220
+polygon_rotation = -90
 bars = 50
 bar_width = 8
 gap = 20
@@ -208,7 +212,7 @@ overlay_args = []
 - `monitors`: monitor selector list (connector names like `DP-1` or 1-based indices like `"1"`), used when `monitor_mode="list"`. (`monitors = ["DP-1", "HDMI-A-1"]`)
 
 `[visualizer]`
-- `layout`: layout mode: `line|radial`.
+- `layout`: layout mode: `line|radial|polygon`.
 - `bars`: number of bars.
 - `bar_width`: base bar thickness in pixels.
 - `bar_corner_radius`: bar corner radius in pixels (`0` = square bars).
@@ -219,8 +223,11 @@ overlay_args = []
 - `radial_start_angle`: arc start angle in degrees for `layout="radial"` (`-90` starts at the top).
 - `radial_arc_degrees`: arc span in degrees for `layout="radial"` (`360` = full ring, `180` = half circle).
 - `radial_rotation_speed`: rotation speed in degrees per second for `layout="radial"` (`0` = static, negative reverses direction).
-- `radial_center_offset_x`: horizontal center offset in pixels for `layout="radial"` (positive moves right).
-- `radial_center_offset_y`: vertical center offset in pixels for `layout="radial"` (positive moves down).
+- `center_offset_x`: horizontal center offset in pixels for centered layouts (`radial` and `polygon`), positive moves right.
+- `center_offset_y`: vertical center offset in pixels for centered layouts (`radial` and `polygon`), positive moves down.
+- `polygon_sides`: number of polygon sides for `layout="polygon"` (`3` = triangle, `4` = square, `6` = hexagon).
+- `polygon_radius`: outer polygon radius in pixels for `layout="polygon"`.
+- `polygon_rotation`: polygon rotation in degrees for `layout="polygon"` (`-90` points a triangle upward).
 - `gap`: gap between bars in pixels.
 - `framerate`: render update rate (default: `60`).
 - `color_mode`: `solid|gradient` (default: `gradient`). Solid color mode uses `color_rgba`, gradient mode uses both `color_rgba` and `color2_rgba`.
@@ -237,6 +244,20 @@ layout = "radial"
 radial_inner_radius = 160
 radial_start_angle = -180
 radial_arc_degrees = 180
+center_offset_x = 0
+center_offset_y = 0
+```
+
+Example triangle/polygon layout:
+
+```toml
+[visualizer]
+layout = "polygon"
+polygon_sides = 3
+polygon_radius = 220
+polygon_rotation = -90
+center_offset_x = 0
+center_offset_y = 0
 ```
 
 `[daemon]`
