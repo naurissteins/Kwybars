@@ -40,6 +40,11 @@ pub fn resolve_theme_path(config_path: &Path, theme_name: &str) -> PathBuf {
         return config_path_candidate;
     }
 
+    let system_path = PathBuf::from("/usr/share/kwybars/themes").join(&theme_file);
+    if system_path.exists() {
+        return system_path;
+    }
+
     let cwd_path = std::env::current_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
         .join("assets/themes")

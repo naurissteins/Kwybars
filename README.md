@@ -1,10 +1,12 @@
 # Kwybars
 
-Kwybars is a desktop audio visualizer for GNU/Linux (Wayland).
+Kwybars is a GTK4-based desktop audio visualizer for GNU/Linux (Wayland) that renders real-time audio bars on your screen.
 
 Think of it like `cava`... but instead of living in the terminal, it becomes a transparent overlay on your desktop.
 
-You can pin it to the top, bottom, left, or right of your screen and watch your music bounce in real time.
+You can place the visualizer on any screen edge — top, bottom, left, right or center and watch your music bounce in real time.
+
+Highly customizable with multiple layouts, segmented bars, gradients, themes, and extensive configuration options.
 
 ## 🔥 Features
 
@@ -31,6 +33,7 @@ Start the daemon after install:
 ``` bash
 kwybars-daemon
 ```
+
 Start the daemon on boot (Hyprland):
 ```sh
 # Recommended (if you use UWSM):
@@ -40,30 +43,26 @@ exec-once = uwsm app -- kwybars-daemon
 exec-once = kwybars-daemon
 ```
 
-If you prefer systemd `systemd --user` service:
-
+If you prefer `systemd` service:
 ```bash
-mkdir -p ~/.config/systemd/user
-cp assets/systemd/kwybars-daemon.service ~/.config/systemd/user/
-systemctl --user daemon-reload
 systemctl --user enable --now kwybars-daemon.service
 ```
 
-Useful commands:
+Useful systemd commands:
 ```bash
 systemctl --user status kwybars-daemon.service # check service status
 journalctl --user -u kwybars-daemon.service -f # follow logs
 systemctl --user disable --now kwybars-daemon.service # disable and stop service
 ```
 
-### Install from source
+## Install from source
 Install dependencies:
 
 ``` bash
 sudo pacman -S --needed rust gtk4 gtk4-layer-shell pipewire cava libnotify
 ```
 
-## Build and run
+### Build and run
 
 ``` bash
 cargo build --workspace
@@ -136,7 +135,9 @@ output_path = '~/.config/kwybars/colors.toml'
 - `theme_opacity` multiplies the theme alpha for all bars.
 
 Theme lookup order for `<theme>.toml`:
-`~/.config/kwybars/themes/<theme>.toml` (or next to your active `KWYBARS_CONFIG`)
+- `~/.config/kwybars/themes/<theme>.toml` (or next to your active `KWYBARS_CONFIG`)
+- `/usr/share/kwybars/themes/<theme>.toml` (installed package themes)
+- `<cwd>/assets/themes/<theme>.toml` (source checkout fallback)
 
 Available built-in themes:
 - `ayu-dark`
