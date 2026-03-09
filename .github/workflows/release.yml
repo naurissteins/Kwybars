@@ -1,0 +1,81 @@
+name: release
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: write
+
+jobs:
+  linux-x86_64:
+    name: linux-x86_64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-rust-cache
+
+      - name: Install System Dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            pkg-config \
+            git \
+            meson \
+            ninja-build \
+            valac \
+            gobject-introspection \
+            libgirepository1.0-dev \
+            libgtk-4-dev \
+            libcairo2-dev \
+            libglib2.0-dev \
+            libwayland-dev \
+            wayland-protocols
+
+          if ! pkg-config --exists gtk4-layer-shell-0; then
+            git clone --depth 1 https://github.com/wmww/gtk4-layer-shell.git /tmp/gtk4-layer-shell
+            meson setup /tmp/gtk4-layer-shell/build /tmp/gtk4-layer-shell
+            meson compile -C /tmp/gtk4-layer-shell/build
+            sudo meson install -C /tmp/gtk4-layer-shell/build
+            sudo ldconfig
+          fi
+
+      - name: Build Release
+        run: cargo build --release --workspace
+
+      - name: Package Release Tarball
+        shell: bash
+        run: |
+          set -euxo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          dist_dir="dist/kwybars-${version}-x86_64-linux"
+
+          rm -rf "$dist_dir"
+          mkdir -p "$dist_dir/themes"
+
+          install -m755 target/release/kwybars-overlay "$dist_dir/kwybars-overlay"
+          install -m755 target/release/kwybars-daemon "$dist_dir/kwybars-daemon"
+          install -m755 target/release/kwybarsctl "$dist_dir/kwybarsctl"
+          install -m644 assets/systemd/kwybars-daemon.service "$dist_dir/kwybars-daemon.service"
+          install -m644 assets/themes/*.toml "$dist_dir/themes/"
+          install -m644 LICENSE "$dist_dir/LICENSE"
+
+          tar -C dist -czf "dist/kwybars-${version}-x86_64-linux.tar.gz" "kwybars-${version}-x86_64-linux"
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/kwybars-*-x86_64-linux.tar.gz

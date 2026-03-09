@@ -22,7 +22,8 @@ Think of it like `cava`... but instead of living in the terminal, it becomes a t
 ### AUR (Arch Linux)
 
 ``` bash
-yay -S kwybars # Not available yet via AUR
+yay -S kwybars-bin # install prebuilt release binaries
+yay -S kwybars-git # build from source
 ```
 
 Start the daemon after install:
@@ -53,7 +54,9 @@ systemctl --user enable --now kwybars-daemon.service
 Install dependencies:
 
 ``` bash
-sudo pacman -S --needed rust gtk4 gtk4-layer-shell pipewire cava libnotify
+sudo pacman -S --needed rust gtk4 gtk4-layer-shell pipewire cava
+# optional: desktop error notifications
+sudo pacman -S --needed libnotify
 ```
 
 ### Build and run
