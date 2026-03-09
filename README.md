@@ -2,11 +2,7 @@
 
 Kwybars is a GTK4-based desktop audio visualizer for GNU/Linux (Wayland) that renders real-time audio bars on your screen.
 
-Think of it like `cava`... but instead of living in the terminal, it becomes a transparent overlay on your desktop.
-
-Place visualizer on any screen edge: top, bottom, left, right or center and watch your music bounce in real time.
-
-Highly customizable with multiple layouts, segmented bars, gradients, themes, and extensive configuration options.
+Think of it like `cava`... but instead of living in the terminal, it becomes a transparent overlay on your desktop. Place visualizer on any screen edge: top, bottom, left, right or center and watch your music bounce in real time. Kwybars are highly customizable with multiple layouts, segmented bars, gradients, themes, and extensive configuration options.
 
 ## 🔥 Features
 
@@ -53,13 +49,6 @@ If you prefer `systemd` service:
 systemctl --user enable --now kwybars-daemon.service
 ```
 
-Useful systemd commands:
-```bash
-systemctl --user status kwybars-daemon.service # check service status
-journalctl --user -u kwybars-daemon.service -f # follow logs
-systemctl --user disable --now kwybars-daemon.service # disable and stop service
-```
-
 ## Install from source
 Install dependencies:
 
@@ -84,12 +73,6 @@ Run with a specific config path:
 
 ```bash
 cargo run -p kwybars-daemon -- --config ~/.config/kwybars/custom/my_config.toml
-```
-
-Use the control tool from source checkout:
-
-```bash
-cargo run -p kwybarsctl -- switch-config ~/.config/kwybars/custom/my_config.toml
 ```
 
 ## Configuration
@@ -344,7 +327,7 @@ overlay_command = "cargo"
 overlay_args = ["run", "-p", "kwybars-overlay"]
 ```
 
-### Fast Config Switching
+## Fast Config Switching
 
 `kwybarsctl switch-config` lets you swap the active config file atomically so a running
 `kwybars-daemon` or `kwybars-overlay` can reload it without a restart.
@@ -384,6 +367,7 @@ Example:
 kwybars-daemon --config ~/.config/kwybars/current.toml
 kwybarsctl switch-config --active ~/.config/kwybars/current.toml ~/.config/kwybars/custom/my_radial_config.toml
 kwybarsctl switch-config --active ~/.config/kwybars/current.toml ~/.config/kwybars/custom/my_line_top_config.toml
+kwybarsctl switch-config --active ~/.config/kwybars/current.toml ~/.config/kwybars/custom/my_segmented_config.toml
 ```
 
 Example Hyprland binds:

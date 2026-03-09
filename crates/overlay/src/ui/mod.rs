@@ -18,15 +18,19 @@ use tracing::{error, info};
 
 use crate::theme::ThemePalette;
 
+pub fn spawn_frame_stream(config: &AppConfig) -> Rc<LiveFrameStream> {
+    let stream = Rc::new(LiveFrameStream::spawn(config.visualizer.clone()));
+    info!("kwybars: using {:?} frame source", stream.source_kind());
+    stream
+}
+
 pub fn build_overlay_windows(
     app: &gtk::Application,
     config: AppConfig,
     theme_palette: Option<ThemePalette>,
+    stream: Rc<LiveFrameStream>,
 ) -> Vec<gtk::ApplicationWindow> {
     style::install_css();
-
-    let stream = Rc::new(LiveFrameStream::spawn(config.visualizer.clone()));
-    info!("kwybars: using {:?} frame source", stream.source_kind());
 
     let monitors = layer::selected_monitors(&config.overlay);
     if monitors.is_empty() {

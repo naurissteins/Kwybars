@@ -92,6 +92,7 @@ pub fn run(config_path: PathBuf) -> Result<(), DaemonError> {
     let mut config_stamp = ConfigStamp::read(&config_path);
     let mut stream = LiveFrameStream::spawn(runtime.visualizer.clone());
     info!("audio source: {:?}", stream.source_kind());
+    let mut stream_restart_grace_until: Option<Instant> = None;
 
     let mut activity = ActivityTracker::new();
     let mut overlay = OverlayProcess::new();
@@ -126,9 +127,17 @@ pub fn run(config_path: PathBuf) -> Result<(), DaemonError> {
                             );
                             overlay.stop().map_err(DaemonError::Runtime)?;
                         }
-                        if runtime.visualizer != next_runtime.visualizer {
+                        if audio_probe_config_changed(&runtime.visualizer, &next_runtime.visualizer)
+                        {
                             stream = LiveFrameStream::spawn(next_runtime.visualizer.clone());
                             info!("audio source: {:?}", stream.source_kind());
+                            if activity.state() == ActivityState::Active {
+                                stream_restart_grace_until = Some(
+                                    now + Duration::from_millis(
+                                        next_runtime.daemon.deactivate_delay_ms,
+                                    ),
+                                );
+                            }
                         }
                         if !next_runtime.daemon.enabled {
                             overlay.stop().map_err(DaemonError::Runtime)?;
@@ -154,7 +163,16 @@ pub fn run(config_path: PathBuf) -> Result<(), DaemonError> {
         }
 
         let peak = stream.latest_frame().peak;
-        let instantaneous_active = peak >= runtime.daemon.activity_threshold;
+        let mut instantaneous_active = peak >= runtime.daemon.activity_threshold;
+        if !instantaneous_active
+            && activity.state() == ActivityState::Active
+            && stream_restart_grace_until.is_some_and(|until| now < until)
+        {
+            instantaneous_active = true;
+        }
+        if stream_restart_grace_until.is_some_and(|until| now >= until) {
+            stream_restart_grace_until = None;
+        }
         let state_changed = activity.update(
             now,
             instantaneous_active,
@@ -209,6 +227,54 @@ fn overlay_launch_changed(current: &DaemonConfig, next: &DaemonConfig) -> bool {
     current.overlay_command != next.overlay_command || current.overlay_args != next.overlay_args
 }
 
+fn audio_probe_config_changed(current: &VisualizerConfig, next: &VisualizerConfig) -> bool {
+    current.backend != next.backend
+        || current.bars != next.bars
+        || current.framerate != next.framerate
+        || current.pipewire_attack != next.pipewire_attack
+        || current.pipewire_decay != next.pipewire_decay
+        || current.pipewire_gain != next.pipewire_gain
+        || current.pipewire_curve != next.pipewire_curve
+        || current.pipewire_neighbor_mix != next.pipewire_neighbor_mix
+}
+
 fn resolve_runtime_config_path(path: &Path) -> Option<PathBuf> {
     std::fs::canonicalize(path).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use kwybars_common::config::{VisualizerBackend, VisualizerConfig};
+
+    use super::audio_probe_config_changed;
+
+    #[test]
+    fn ignores_purely_visual_visualizer_changes() {
+        let current = VisualizerConfig::default();
+        let mut next = current.clone();
+        next.layout = kwybars_common::config::VisualizerLayout::Polygon;
+        next.bar_width = 42;
+        next.gap = 7;
+        next.color_mode = kwybars_common::config::VisualizerColorMode::Solid;
+        next.center_offset_x = 10.0;
+        next.polygon_rotation = 45.0;
+
+        assert!(!audio_probe_config_changed(&current, &next));
+    }
+
+    #[test]
+    fn detects_audio_probe_changes() {
+        let current = VisualizerConfig::default();
+        let mut next = current.clone();
+        next.backend = VisualizerBackend::Pipewire;
+        assert!(audio_probe_config_changed(&current, &next));
+
+        let mut next = current.clone();
+        next.bars += 8;
+        assert!(audio_probe_config_changed(&current, &next));
+
+        let mut next = current.clone();
+        next.pipewire_gain += 0.1;
+        assert!(audio_probe_config_changed(&current, &next));
+    }
 }

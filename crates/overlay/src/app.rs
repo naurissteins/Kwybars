@@ -75,6 +75,7 @@ impl ConfigStamp {
 struct RunningOverlay {
     windows: Vec<gtk::ApplicationWindow>,
     runtime: RuntimeConfig,
+    stream: Rc<kwybars_engine::live::LiveFrameStream>,
 }
 
 type OverlayState = Rc<std::cell::RefCell<Option<RunningOverlay>>>;
@@ -195,14 +196,24 @@ pub fn run(config_path: PathBuf) -> Result<(), AppError> {
 }
 
 fn apply_config(app: &gtk::Application, state: &OverlayState, next_runtime: RuntimeConfig) {
+    let next_stream = state
+        .borrow()
+        .as_ref()
+        .filter(|running| {
+            !audio_stream_config_changed(&running.runtime.app_config, &next_runtime.app_config)
+        })
+        .map(|running| Rc::clone(&running.stream))
+        .unwrap_or_else(|| crate::ui::spawn_frame_stream(&next_runtime.app_config));
     let next_windows = crate::ui::build_overlay_windows(
         app,
         next_runtime.app_config.clone(),
         next_runtime.theme_palette.clone(),
+        Rc::clone(&next_stream),
     );
     let previous = state.borrow_mut().replace(RunningOverlay {
         windows: next_windows,
         runtime: next_runtime,
+        stream: next_stream,
     });
 
     if let Some(running) = previous {
@@ -210,6 +221,17 @@ fn apply_config(app: &gtk::Application, state: &OverlayState, next_runtime: Runt
             window.close();
         }
     }
+}
+
+fn audio_stream_config_changed(current: &AppConfig, next: &AppConfig) -> bool {
+    current.visualizer.backend != next.visualizer.backend
+        || current.visualizer.bars != next.visualizer.bars
+        || current.visualizer.framerate != next.visualizer.framerate
+        || current.visualizer.pipewire_attack != next.visualizer.pipewire_attack
+        || current.visualizer.pipewire_decay != next.visualizer.pipewire_decay
+        || current.visualizer.pipewire_gain != next.visualizer.pipewire_gain
+        || current.visualizer.pipewire_curve != next.visualizer.pipewire_curve
+        || current.visualizer.pipewire_neighbor_mix != next.visualizer.pipewire_neighbor_mix
 }
 
 fn load_runtime_config(config_path: &Path) -> Result<RuntimeConfig, config::ConfigLoadError> {
