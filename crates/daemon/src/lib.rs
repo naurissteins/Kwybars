@@ -99,7 +99,7 @@ pub fn run(config_path: PathBuf) -> Result<(), DaemonError> {
     let mut config_stamp = ConfigStamp::read(&config_path);
     let mut stream = LiveFrameStream::spawn(runtime.visualizer.clone());
     info!("audio source: {:?}", stream.source_kind());
-    let mut stream_restart_grace_until: Option<Instant> = None;
+    let mut inactivity_grace_until: Option<Instant> = None;
 
     let mut activity = ActivityTracker::new();
     let mut overlay = OverlayProcess::new();
@@ -128,6 +128,12 @@ pub fn run(config_path: PathBuf) -> Result<(), DaemonError> {
                 Ok(next_runtime) => {
                     if runtime != next_runtime {
                         info!("kwybars-daemon: config changed, reloading daemon settings");
+                        inactivity_grace_until = extend_inactivity_grace(
+                            inactivity_grace_until,
+                            activity.state(),
+                            now,
+                            config_switch_grace_duration(&runtime.daemon, &next_runtime.daemon),
+                        );
                         if overlay_launch_changed(&runtime.daemon, &next_runtime.daemon) {
                             info!(
                                 "kwybars-daemon: overlay launch settings changed, restarting overlay"
@@ -138,13 +144,6 @@ pub fn run(config_path: PathBuf) -> Result<(), DaemonError> {
                         {
                             stream = LiveFrameStream::spawn(next_runtime.visualizer.clone());
                             info!("audio source: {:?}", stream.source_kind());
-                            if activity.state() == ActivityState::Active {
-                                stream_restart_grace_until = Some(
-                                    now + Duration::from_millis(
-                                        next_runtime.daemon.deactivate_delay_ms,
-                                    ),
-                                );
-                            }
                         }
                         if !next_runtime.daemon.enabled {
                             overlay.stop().map_err(DaemonError::Runtime)?;
@@ -173,12 +172,12 @@ pub fn run(config_path: PathBuf) -> Result<(), DaemonError> {
         let mut instantaneous_active = peak >= runtime.daemon.activity_threshold;
         if !instantaneous_active
             && activity.state() == ActivityState::Active
-            && stream_restart_grace_until.is_some_and(|until| now < until)
+            && inactivity_grace_until.is_some_and(|until| now < until)
         {
             instantaneous_active = true;
         }
-        if stream_restart_grace_until.is_some_and(|until| now >= until) {
-            stream_restart_grace_until = None;
+        if inactivity_grace_until.is_some_and(|until| now >= until) {
+            inactivity_grace_until = None;
         }
         let state_changed = activity.update(
             now,
@@ -245,15 +244,45 @@ fn audio_probe_config_changed(current: &VisualizerConfig, next: &VisualizerConfi
         || current.pipewire_neighbor_mix != next.pipewire_neighbor_mix
 }
 
+fn config_switch_grace_duration(current: &DaemonConfig, next: &DaemonConfig) -> Duration {
+    let millis = current
+        .deactivate_delay_ms
+        .max(next.deactivate_delay_ms)
+        .max(2500);
+    Duration::from_millis(millis)
+}
+
+fn extend_inactivity_grace(
+    current_until: Option<Instant>,
+    activity_state: ActivityState,
+    now: Instant,
+    duration: Duration,
+) -> Option<Instant> {
+    if activity_state != ActivityState::Active {
+        return current_until;
+    }
+
+    let next_until = now + duration;
+    match current_until {
+        Some(existing) if existing > next_until => Some(existing),
+        _ => Some(next_until),
+    }
+}
+
 fn resolve_runtime_config_path(path: &Path) -> Option<PathBuf> {
     std::fs::canonicalize(path).ok()
 }
 
 #[cfg(test)]
 mod tests {
-    use kwybars_common::config::{VisualizerBackend, VisualizerConfig};
+    use std::time::{Duration, Instant};
 
-    use super::audio_probe_config_changed;
+    use kwybars_common::config::{DaemonConfig, VisualizerBackend, VisualizerConfig};
+
+    use super::{
+        ActivityState, audio_probe_config_changed, config_switch_grace_duration,
+        extend_inactivity_grace,
+    };
 
     #[test]
     fn ignores_purely_visual_visualizer_changes() {
@@ -283,5 +312,36 @@ mod tests {
         let mut next = current.clone();
         next.pipewire_gain += 0.1;
         assert!(audio_probe_config_changed(&current, &next));
+    }
+
+    #[test]
+    fn config_switch_grace_has_minimum_duration() {
+        let current = DaemonConfig {
+            deactivate_delay_ms: 1200,
+            ..DaemonConfig::default()
+        };
+        let next = DaemonConfig {
+            deactivate_delay_ms: 1800,
+            ..DaemonConfig::default()
+        };
+
+        assert_eq!(
+            config_switch_grace_duration(&current, &next),
+            Duration::from_millis(2500)
+        );
+    }
+
+    #[test]
+    fn extend_inactivity_grace_only_when_active() {
+        let now = Instant::now();
+        let duration = Duration::from_secs(3);
+
+        assert_eq!(
+            extend_inactivity_grace(None, ActivityState::Inactive, now, duration),
+            None
+        );
+
+        let active_until = extend_inactivity_grace(None, ActivityState::Active, now, duration);
+        assert!(active_until.is_some_and(|until| until >= now + duration));
     }
 }

@@ -357,19 +357,9 @@ Examples:
 
 ```bash
 kwybarsctl switch-config ~/.config/kwybars/custom/my_radial_config.toml
-kwybarsctl switch-config ~/.config/kwybars/custom/my_line_top_config.toml
 ```
 
-If your overlay/daemon is watching a different active path, use `--active`:
-
-```bash
-kwybarsctl switch-config --active ~/.config/kwybars/current.toml ~/.config/kwybars/custom/config3.toml
-kwybars-daemon --config ~/.config/kwybars/current.toml
-```
-
-Notes:
-- The daemon/overlay and `kwybarsctl --active` must use the exact same active path.
-- If the switched config changes `[daemon].overlay_command` or `overlay_args`, the daemon restarts the overlay once so the new command takes effect.
+If overlay/daemon is watching a different active path, use `--active`:
 
 Recommended workflow:
 - keep one stable active file such as `~/.config/kwybars/current.toml`
