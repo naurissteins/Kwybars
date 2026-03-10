@@ -5,13 +5,23 @@ use std::fs::{self, OpenOptions};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
+use time::OffsetDateTime;
+use time::UtcOffset;
+use time::format_description::FormatItem;
+use time::macros::format_description;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::fmt::format::Writer;
+use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 static INIT_RESULT: OnceLock<Result<(), String>> = OnceLock::new();
 static FILE_GUARD: OnceLock<Mutex<Option<WorkerGuard>>> = OnceLock::new();
+static LOCAL_OFFSET: OnceLock<Option<UtcOffset>> = OnceLock::new();
+
+const LOG_TIME_FORMAT: &[FormatItem<'static>] =
+    format_description!("[year]-[month]-[day] [hour]:[minute]:[second]");
 
 #[derive(Debug)]
 pub enum LoggingInitError {
@@ -27,6 +37,19 @@ impl Display for LoggingInitError {
 }
 
 impl Error for LoggingInitError {}
+
+#[derive(Clone, Copy, Debug)]
+struct HumanTime;
+
+impl FormatTime for HumanTime {
+    fn format_time(&self, w: &mut Writer<'_>) -> std::fmt::Result {
+        let now = OffsetDateTime::now_utc().to_offset(local_offset());
+        match now.format(LOG_TIME_FORMAT) {
+            Ok(value) => w.write_str(&value),
+            Err(_) => w.write_str("0000-00-00 00:00:00"),
+        }
+    }
+}
 
 pub fn init_logging(process_name: &str) -> Result<(), LoggingInitError> {
     let result =
@@ -45,6 +68,7 @@ fn setup_subscriber(process_name: &str) -> Result<(), Box<dyn Error>> {
     let env_filter = EnvFilter::try_new(log_filter).unwrap_or_else(|_| EnvFilter::new("info"));
 
     let stderr_layer = tracing_subscriber::fmt::layer()
+        .with_timer(HumanTime)
         .with_target(false)
         .with_writer(std::io::stderr);
 
@@ -71,6 +95,7 @@ fn setup_subscriber(process_name: &str) -> Result<(), Box<dyn Error>> {
     if let Some(file_writer) = file_writer {
         let file_layer = tracing_subscriber::fmt::layer()
             .with_ansi(false)
+            .with_timer(HumanTime)
             .with_target(false)
             .with_writer(file_writer);
         subscriber.with(file_layer).try_init()?;
@@ -79,6 +104,13 @@ fn setup_subscriber(process_name: &str) -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+fn local_offset() -> UtcOffset {
+    *LOCAL_OFFSET
+        .get_or_init(|| UtcOffset::current_local_offset().ok())
+        .as_ref()
+        .unwrap_or(&UtcOffset::UTC)
 }
 
 fn build_file_writer(

@@ -87,7 +87,14 @@ pub fn run(config_path: PathBuf) -> Result<(), DaemonError> {
     }
 
     info!("kwybars-daemon starting");
-    info!("config path: {}", config_path.display());
+    if config_path.exists() {
+        info!("config path: {} (found)", config_path.display());
+    } else {
+        info!(
+            "config path: {} (not found, using built-in defaults)",
+            config_path.display()
+        );
+    }
 
     let mut config_stamp = ConfigStamp::read(&config_path);
     let mut stream = LiveFrameStream::spawn(runtime.visualizer.clone());

@@ -105,19 +105,36 @@ struct RuntimeConfig {
     app_config: AppConfig,
     theme_palette: Option<ThemePalette>,
     theme_path: Option<PathBuf>,
-    resolved_config_path: PathBuf,
+    config_exists: bool,
+    resolved_config_path: Option<PathBuf>,
     colors_path: PathBuf,
+    colors_exists: bool,
 }
 
 pub fn run(config_path: PathBuf) -> Result<(), AppError> {
     let runtime = load_runtime_config(&config_path).map_err(AppError::Config)?;
     info!("kwybars-overlay starting");
-    info!("config path: {}", config_path.display());
-    info!(
-        "resolved config path: {}",
-        runtime.resolved_config_path.display()
-    );
-    info!("colors path: {}", runtime.colors_path.display());
+    if runtime.config_exists {
+        info!("config path: {} (found)", config_path.display());
+    } else {
+        info!(
+            "config path: {} (not found, using built-in defaults)",
+            config_path.display()
+        );
+    }
+    if let Some(resolved_config_path) = runtime.resolved_config_path.as_ref()
+        && resolved_config_path != &config_path
+    {
+        info!("resolved config path: {}", resolved_config_path.display());
+    }
+    if runtime.colors_exists {
+        info!("colors path: {} (found)", runtime.colors_path.display());
+    } else {
+        info!(
+            "colors path: {} (not found, using config/default colors)",
+            runtime.colors_path.display()
+        );
+    }
     if let Some(theme_path) = runtime.theme_path.as_ref() {
         info!("theme path: {}", theme_path.display());
     }
@@ -235,10 +252,12 @@ fn audio_stream_config_changed(current: &AppConfig, next: &AppConfig) -> bool {
 }
 
 fn load_runtime_config(config_path: &Path) -> Result<RuntimeConfig, config::ConfigLoadError> {
-    let resolved_config_path =
-        resolve_runtime_config_path(config_path).unwrap_or_else(|| config_path.to_path_buf());
-    let colors_path = config::default_colors_path(&resolved_config_path);
-    let mut config = config::load_or_default(&resolved_config_path)?;
+    let config_exists = config_path.exists();
+    let resolved_config_path = resolve_runtime_config_path(config_path);
+    let config_load_path = resolved_config_path.as_deref().unwrap_or(config_path);
+    let colors_path = config::default_colors_path(config_load_path);
+    let colors_exists = colors_path.exists();
+    let mut config = config::load_or_default(config_load_path)?;
     match config::load_color_overrides(&colors_path) {
         Ok(overrides) => config::apply_color_overrides(&mut config, overrides),
         Err(err) => {
@@ -253,13 +272,15 @@ fn load_runtime_config(config_path: &Path) -> Result<RuntimeConfig, config::Conf
         }
     }
 
-    let (theme_palette, theme_path) = load_theme_for_config(&config, &resolved_config_path);
+    let (theme_palette, theme_path) = load_theme_for_config(&config, config_load_path);
     Ok(RuntimeConfig {
         app_config: config,
         theme_palette,
         theme_path,
         resolved_config_path,
+        config_exists,
         colors_path,
+        colors_exists,
     })
 }
 

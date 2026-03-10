@@ -1,4 +1,13 @@
-# Kwybars
+<h1 align=center>kwybars</h1>
+
+<div align=center>
+
+![GitHub last commit](https://img.shields.io/github/last-commit/naurissteins/kwybars?style=for-the-badge&labelColor=181825&color=a6e3a1)
+![GitHub repo size](https://img.shields.io/github/repo-size/naurissteins/kwybars?style=for-the-badge&labelColor=181825&color=d3bfe6)
+![AUR Version](https://img.shields.io/aur/version/kwybars-bin?style=for-the-badge&labelColor=181825&color=b4befe)
+![GitHub Repo stars](https://img.shields.io/github/stars/naurissteins/kwybars?style=for-the-badge&labelColor=181825&color=f9e2af)
+
+</div>
 
 Kwybars is a GTK4-based desktop audio visualizer for GNU/Linux (Wayland) that renders real-time audio bars on your screen.
 
@@ -18,12 +27,17 @@ Think of it like `cava`... but instead of living in the terminal, it becomes a t
 -   Built-in themes and optional custom theme palettes (`~/.config/kwybars/themes/*.toml`)
 -   Optional but recommended `kwybars-daemon` that auto starts/stops overlay based on audio activity
 
+> [!NOTE]
+> Kwybars are not heavily tested on all Wayland compositors yet. If you encounter issues, please open an issue and provide details what distro and Wayland compositor you are using.
+
 ## Installation
 ### AUR (Arch Linux)
 
 ``` bash
-yay -S kwybars-bin # install prebuilt release binaries
-yay -S kwybars-git # build from source
+yay -S kwybars-bin
+
+# or build the latest git commit from source
+yay -S kwybars-git
 ```
 
 Start the daemon after install:
@@ -187,7 +201,6 @@ margin_left = 20
 margin_right = 20
 
 [visualizer]
-backend = "cava"
 layout = "line"
 bar_corner_radius = 20
 segmented_bars = false
