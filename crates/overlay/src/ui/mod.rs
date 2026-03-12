@@ -101,6 +101,7 @@ fn build_overlay_window(
         .build();
 
     window.set_widget_name("kwybars-overlay");
+    style::strip_background_classes(&window);
     window.set_decorated(false);
     window.set_resizable(false);
     window.set_focusable(false);
@@ -177,6 +178,7 @@ fn build_drawing_area(
 
     let drawing_area = gtk::DrawingArea::new();
     drawing_area.set_widget_name("kwybars-bars");
+    style::strip_background_classes(&drawing_area);
     drawing_area.set_can_target(false);
 
     if is_centered {

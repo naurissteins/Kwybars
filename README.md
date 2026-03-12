@@ -424,3 +424,10 @@ bind = SUPER ALT, 3, exec, kwybarsctl switch-config --active ~/.config/kwybars/c
 - You can set log level with `KWYBARS_LOG` (or `RUST_LOG`), for example:
   - `KWYBARS_LOG=debug cargo run -p kwybars-daemon`
 - Override log file location with `KWYBARS_LOG_FILE=/path/to/kwybars.log`
+
+## Troubleshooting
+
+If you see a solid panel or background behind the bars instead of a transparent overlay, try checking the following:
+
+* **Compositor rules** – Look for blur, shadow, opacity, or layer-surface rules that might be targeting `kwybars`.
+* **Custom GTK themes** – Kwybars already removes the GTK `background` class from its overlay widgets and applies a high-priority transparent CSS rule. However, very aggressive theme or compositor settings can still override this behavior. Check your theme or `~/.config/gtk-4.0/gtk.css` for overrides. Broad rules like `.background { background-color: ... }` can force a visible background.
