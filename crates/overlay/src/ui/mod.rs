@@ -11,12 +11,43 @@ use gtk::gdk;
 use gtk::glib;
 use gtk::prelude::*;
 use kwybars_common::config::{
-    AppConfig, OverlayPosition, RgbaColor, VisualizerColorMode, VisualizerLayout,
+    AppConfig, FrameMirrorMode, OverlayPosition, RgbaColor, VisualizerColorMode, VisualizerLayout,
 };
 use kwybars_engine::live::LiveFrameStream;
 use tracing::{error, info};
 
 use crate::theme::ThemePalette;
+
+#[derive(Clone, Copy)]
+struct FrameMetrics {
+    width: f64,
+    height: f64,
+    top_thickness: f64,
+    bottom_thickness: f64,
+    left_thickness: f64,
+    right_thickness: f64,
+    anchor_margin: f64,
+    margin_left: f64,
+    margin_right: f64,
+    margin_top: f64,
+    margin_bottom: f64,
+}
+
+struct EdgePaint<'a> {
+    ctx: &'a gtk::cairo::Context,
+    total_count: usize,
+    global_offset: usize,
+    style: draw::BarStyle,
+    color_mode: VisualizerColorMode,
+    color: RgbaColor,
+    color2: RgbaColor,
+    theme_colors: Option<&'a [RgbaColor]>,
+}
+
+struct FrameEdgeSlice<'a> {
+    values: &'a [f64],
+    global_offset: usize,
+}
 
 pub fn spawn_frame_stream(config: &AppConfig) -> Rc<LiveFrameStream> {
     let stream = Rc::new(LiveFrameStream::spawn(config.visualizer.clone()));
@@ -94,10 +125,11 @@ fn build_drawing_area(
     let is_left = matches!(position, OverlayPosition::Left);
     let is_top = matches!(position, OverlayPosition::Top);
     let is_radial = config.visualizer.layout == VisualizerLayout::Radial;
+    let is_frame = config.visualizer.layout == VisualizerLayout::Frame;
     let is_polygon = config.visualizer.layout == VisualizerLayout::Polygon;
     let is_centered = matches!(
         config.visualizer.layout,
-        VisualizerLayout::Radial | VisualizerLayout::Polygon
+        VisualizerLayout::Frame | VisualizerLayout::Radial | VisualizerLayout::Polygon
     );
     let bar_thickness = f64::from(config.visualizer.bar_width.max(1));
     let corner_radius = f64::from(config.visualizer.bar_corner_radius.max(0.0));
@@ -128,6 +160,17 @@ fn build_drawing_area(
     let polygon_rotation = f64::from(config.visualizer.polygon_rotation).to_radians();
     let polygon_rotation_radians_per_second =
         f64::from(config.visualizer.polygon_rotation_speed).to_radians();
+    let frame_edges = config.visualizer.frame_edges.clone();
+    let frame_mirror_mode = config.visualizer.frame_mirror_mode;
+    let frame_top_thickness = f64::from(config.overlay.height.max(1));
+    let frame_bottom_thickness = f64::from(config.overlay.height.max(1));
+    let frame_left_thickness = f64::from(config.overlay.width.max(1));
+    let frame_right_thickness = f64::from(config.overlay.width.max(1));
+    let frame_anchor = f64::from(config.overlay.anchor_margin);
+    let frame_margin_left = f64::from(config.overlay.margin_left);
+    let frame_margin_right = f64::from(config.overlay.margin_right);
+    let frame_margin_top = f64::from(config.overlay.margin_top);
+    let frame_margin_bottom = f64::from(config.overlay.margin_bottom);
     let theme_colors = theme_palette
         .map(|theme| theme.colors)
         .filter(|colors| !colors.is_empty());
@@ -210,6 +253,53 @@ fn build_drawing_area(
                         }
                     },
                 );
+                return;
+            }
+
+            if is_frame {
+                let active_edges = normalized_frame_edges(&frame_edges);
+                if active_edges.is_empty() {
+                    return;
+                }
+
+                let frame_metrics = FrameMetrics {
+                    width: f64::from(width),
+                    height: f64::from(height),
+                    top_thickness: frame_top_thickness,
+                    bottom_thickness: frame_bottom_thickness,
+                    left_thickness: frame_left_thickness,
+                    right_thickness: frame_right_thickness,
+                    anchor_margin: frame_anchor,
+                    margin_left: frame_margin_left,
+                    margin_right: frame_margin_right,
+                    margin_top: frame_margin_top,
+                    margin_bottom: frame_margin_bottom,
+                };
+
+                for (edge_index, edge) in active_edges.iter().enumerate() {
+                    let edge_slice = resolve_frame_edge_slice(
+                        &values,
+                        &active_edges,
+                        edge_index,
+                        frame_mirror_mode,
+                    );
+                    if edge_slice.values.is_empty() {
+                        continue;
+                    }
+
+                    let edge_rect = frame_edge_rect(edge.clone(), frame_metrics);
+                    let edge_paint = EdgePaint {
+                        ctx,
+                        total_count: values.len(),
+                        global_offset: edge_slice.global_offset,
+                        style: bar_style,
+                        color_mode: bar_color_mode,
+                        color: bar_color,
+                        color2: bar_color2,
+                        theme_colors: theme_colors.as_deref(),
+                    };
+                    paint_line_edge(edge_slice.values, edge_rect, &edge_paint);
+                }
                 return;
             }
 
@@ -435,6 +525,193 @@ fn build_drawing_area(
     }
 
     drawing_area
+}
+
+fn normalized_frame_edges(edges: &[OverlayPosition]) -> Vec<OverlayPosition> {
+    let mut normalized = Vec::new();
+    for edge in edges {
+        if !normalized.contains(edge) {
+            normalized.push(edge.clone());
+        }
+    }
+    normalized
+}
+
+fn resolve_frame_edge_slice<'a>(
+    values: &'a [f64],
+    active_edges: &[OverlayPosition],
+    edge_index: usize,
+    mirror_mode: FrameMirrorMode,
+) -> FrameEdgeSlice<'a> {
+    match mirror_mode {
+        FrameMirrorMode::Off => FrameEdgeSlice {
+            values: draw::distributed_chunk(values, edge_index, active_edges.len()),
+            global_offset: values.len() * edge_index / active_edges.len(),
+        },
+        FrameMirrorMode::All => FrameEdgeSlice {
+            values,
+            global_offset: 0,
+        },
+        FrameMirrorMode::Pairs => {
+            let has_horizontal = active_edges
+                .iter()
+                .any(|edge| matches!(edge, OverlayPosition::Top | OverlayPosition::Bottom));
+            let has_vertical = active_edges
+                .iter()
+                .any(|edge| matches!(edge, OverlayPosition::Left | OverlayPosition::Right));
+
+            if has_horizontal && has_vertical {
+                let (group_index, group_offset) = if matches!(
+                    active_edges[edge_index],
+                    OverlayPosition::Top | OverlayPosition::Bottom
+                ) {
+                    (0, 0)
+                } else {
+                    (1, values.len() / 2)
+                };
+
+                FrameEdgeSlice {
+                    values: draw::distributed_chunk(values, group_index, 2),
+                    global_offset: group_offset,
+                }
+            } else {
+                FrameEdgeSlice {
+                    values,
+                    global_offset: 0,
+                }
+            }
+        }
+    }
+}
+
+fn frame_edge_rect(edge: OverlayPosition, metrics: FrameMetrics) -> draw::FrameEdgeRect {
+    match edge {
+        OverlayPosition::Top => draw::FrameEdgeRect {
+            x: metrics.margin_left,
+            y: metrics.anchor_margin + metrics.margin_top,
+            width: (metrics.width - metrics.margin_left - metrics.margin_right).max(1.0),
+            height: metrics.top_thickness.max(1.0),
+            orientation: draw::BarOrientation::Horizontal,
+            from_start: true,
+        },
+        OverlayPosition::Bottom => draw::FrameEdgeRect {
+            x: metrics.margin_left,
+            y: (metrics.height
+                - metrics.anchor_margin
+                - metrics.margin_bottom
+                - metrics.bottom_thickness)
+                .max(0.0),
+            width: (metrics.width - metrics.margin_left - metrics.margin_right).max(1.0),
+            height: metrics.bottom_thickness.max(1.0),
+            orientation: draw::BarOrientation::Horizontal,
+            from_start: false,
+        },
+        OverlayPosition::Left => draw::FrameEdgeRect {
+            x: metrics.anchor_margin + metrics.margin_left,
+            y: metrics.margin_top,
+            width: metrics.left_thickness.max(1.0),
+            height: (metrics.height - metrics.margin_top - metrics.margin_bottom).max(1.0),
+            orientation: draw::BarOrientation::Vertical,
+            from_start: true,
+        },
+        OverlayPosition::Right => draw::FrameEdgeRect {
+            x: (metrics.width
+                - metrics.anchor_margin
+                - metrics.margin_right
+                - metrics.right_thickness)
+                .max(0.0),
+            y: metrics.margin_top,
+            width: metrics.right_thickness.max(1.0),
+            height: (metrics.height - metrics.margin_top - metrics.margin_bottom).max(1.0),
+            orientation: draw::BarOrientation::Vertical,
+            from_start: false,
+        },
+    }
+}
+
+fn paint_line_edge(values: &[f64], edge_rect: draw::FrameEdgeRect, edge_paint: &EdgePaint<'_>) {
+    let paint_color = |ctx: &gtk::cairo::Context, local_index: usize| {
+        let global_index = edge_paint.global_offset + local_index;
+        let resolved = if let Some(colors) = edge_paint.theme_colors {
+            let color_idx =
+                draw::bar_color_index(global_index, edge_paint.total_count, colors.len());
+            colors[color_idx]
+        } else {
+            color_for_index(
+                edge_paint.color_mode,
+                edge_paint.color,
+                edge_paint.color2,
+                global_index,
+                edge_paint.total_count,
+            )
+        };
+
+        ctx.set_source_rgba(
+            f64::from(resolved.r),
+            f64::from(resolved.g),
+            f64::from(resolved.b),
+            f64::from(resolved.a),
+        );
+    };
+
+    match edge_rect.orientation {
+        draw::BarOrientation::Horizontal => {
+            draw::for_each_horizontal_bar(
+                values,
+                edge_rect.width,
+                edge_rect.height,
+                edge_paint.style.thickness,
+                edge_paint.style.gap,
+                edge_rect.from_start,
+                |index, x, y, bar_width, bar_height| {
+                    paint_color(edge_paint.ctx, index);
+                    draw::append_bar_path(
+                        edge_paint.ctx,
+                        draw::BarRect {
+                            x: edge_rect.x + x,
+                            y: edge_rect.y + y,
+                            width: bar_width,
+                            height: bar_height,
+                        },
+                        edge_paint.style,
+                        draw::BarOrientation::Horizontal,
+                        edge_rect.from_start,
+                    );
+                    if edge_paint.ctx.fill().is_err() {
+                        error!("kwybars: cairo fill failed");
+                    }
+                },
+            );
+        }
+        draw::BarOrientation::Vertical => {
+            draw::for_each_vertical_bar(
+                values,
+                edge_rect.width,
+                edge_rect.height,
+                edge_paint.style.thickness,
+                edge_paint.style.gap,
+                edge_rect.from_start,
+                |index, x, y, bar_width, bar_height| {
+                    paint_color(edge_paint.ctx, index);
+                    draw::append_bar_path(
+                        edge_paint.ctx,
+                        draw::BarRect {
+                            x: edge_rect.x + x,
+                            y: edge_rect.y + y,
+                            width: bar_width,
+                            height: bar_height,
+                        },
+                        edge_paint.style,
+                        draw::BarOrientation::Vertical,
+                        edge_rect.from_start,
+                    );
+                    if edge_paint.ctx.fill().is_err() {
+                        error!("kwybars: cairo fill failed");
+                    }
+                },
+            );
+        }
+    }
 }
 
 fn to_i32(value: u32) -> i32 {

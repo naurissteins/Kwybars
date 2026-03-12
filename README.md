@@ -24,6 +24,7 @@ https://github.com/user-attachments/assets/5fe84372-86be-49a8-b9c0-6564e81f1eaa
 -   Solid or gradient bar colors
 -   Segmented bar style (oldschool split blocks)
 -   Radial layout (circular)
+-   Frame layout for top+bottom, left+right, or all monitor edges at once
 -   Polygon layout for triangle, square, hexagon, and similar shapes
 -   Hot reload config changes (no restart needed)
 -   Built-in themes and optional custom theme palettes (`~/.config/kwybars/themes/*.toml`)
@@ -250,7 +251,7 @@ overlay_args = []
 - `monitors`: monitor selector list (connector names like `DP-1` or 1-based indices like `"1"`), used when `monitor_mode="list"`. (`monitors = ["DP-1", "HDMI-A-1"]`)
 
 `[visualizer]`
-- `layout`: layout mode: `line|radial|polygon`.
+- `layout`: layout mode: `line|frame|radial|polygon`.
 - `bars`: number of bars.
 - `bar_width`: base bar thickness in pixels.
 - `bar_corner_radius`: bar corner radius in pixels (`0` = square bars).
@@ -258,6 +259,8 @@ overlay_args = []
 - `segment_length`: segment size in pixels along bar growth direction.
 - `segment_gap`: empty spacing in pixels between segments.
 - `radial_inner_radius`: inner circle radius in pixels for `layout="radial"`.
+- `frame_edges`: selected edges for `layout="frame"` (`["top", "bottom"]` by default).
+- `frame_mirror_mode`: frame edge mirroring: `off|all|pairs` (`pairs` by default). `off` splits bars across selected edges, `all` mirrors the same motion on every selected edge, `pairs` mirrors `top+bottom` together and `left+right` together.
 - `radial_start_angle`: arc start angle in degrees for `layout="radial"` (`-90` starts at the top).
 - `radial_arc_degrees`: arc span in degrees for `layout="radial"` (`360` = full ring, `180` = half circle).
 - `radial_rotation_speed`: rotation speed in degrees per second for `layout="radial"` (`0` = static, negative reverses direction).
@@ -285,6 +288,41 @@ radial_start_angle = -180
 radial_arc_degrees = 180
 center_offset_x = 0
 center_offset_y = 0
+```
+
+Example frame layout on all sides:
+
+```toml
+[visualizer]
+layout = "frame"
+frame_edges = ["top", "bottom", "left", "right"]
+frame_mirror_mode = "off"
+```
+
+Example frame layout on top and bottom only:
+
+```toml
+[visualizer]
+layout = "frame"
+frame_edges = ["top", "bottom"]
+```
+
+Example mirrored frame layout:
+
+```toml
+[visualizer]
+layout = "frame"
+frame_edges = ["top", "bottom", "left", "right"]
+frame_mirror_mode = "all"
+```
+
+Example paired frame mirroring:
+
+```toml
+[visualizer]
+layout = "frame"
+frame_edges = ["top", "bottom", "left", "right"]
+frame_mirror_mode = "pairs"
 ```
 
 Example triangle/polygon layout:

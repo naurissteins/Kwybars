@@ -243,6 +243,7 @@ impl VisualizerColorMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VisualizerLayout {
     Line,
+    Frame,
     Radial,
     Polygon,
 }
@@ -251,6 +252,7 @@ impl VisualizerLayout {
     fn parse(value: &str) -> Result<Self, ConfigLoadError> {
         match value {
             "line" => Ok(Self::Line),
+            "frame" => Ok(Self::Frame),
             "radial" => Ok(Self::Radial),
             "polygon" => Ok(Self::Polygon),
             _ => Err(ConfigLoadError::Parse(format!(
@@ -260,10 +262,32 @@ impl VisualizerLayout {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrameMirrorMode {
+    Off,
+    All,
+    Pairs,
+}
+
+impl FrameMirrorMode {
+    fn parse(value: &str) -> Result<Self, ConfigLoadError> {
+        match value {
+            "off" => Ok(Self::Off),
+            "all" => Ok(Self::All),
+            "pairs" => Ok(Self::Pairs),
+            _ => Err(ConfigLoadError::Parse(format!(
+                "unknown visualizer.frame_mirror_mode value: {value}"
+            ))),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct VisualizerConfig {
     pub backend: VisualizerBackend,
     pub layout: VisualizerLayout,
+    pub frame_edges: Vec<OverlayPosition>,
+    pub frame_mirror_mode: FrameMirrorMode,
     pub bars: usize,
     pub bar_width: u32,
     pub bar_corner_radius: f32,
@@ -299,6 +323,8 @@ impl Default for VisualizerConfig {
         Self {
             backend: VisualizerBackend::Cava,
             layout: VisualizerLayout::Line,
+            frame_edges: vec![OverlayPosition::Top, OverlayPosition::Bottom],
+            frame_mirror_mode: FrameMirrorMode::Pairs,
             bars: 50,
             bar_width: 8,
             bar_corner_radius: 20.0,
@@ -598,6 +624,15 @@ fn parse_visualizer_key(
     match key {
         "backend" => visualizer.backend = VisualizerBackend::parse(value)?,
         "layout" => visualizer.layout = VisualizerLayout::parse(value)?,
+        "frame_edges" => visualizer.frame_edges = parse_overlay_position_list(value)?,
+        "frame_mirror_mode" => visualizer.frame_mirror_mode = FrameMirrorMode::parse(value)?,
+        "frame_mirror" => {
+            visualizer.frame_mirror_mode = if parse_bool(key, value)? {
+                FrameMirrorMode::All
+            } else {
+                FrameMirrorMode::Off
+            };
+        }
         "bars" => visualizer.bars = parse_usize(key, value)?,
         "bar_width" => visualizer.bar_width = parse_u32(key, value)?,
         "bar_corner_radius" => {
@@ -715,6 +750,22 @@ fn parse_root_key(config: &mut AppConfig, key: &str, value: &str) -> Result<bool
     }
 }
 
+fn parse_overlay_position_list(value: &str) -> Result<Vec<OverlayPosition>, ConfigLoadError> {
+    let mut edges = Vec::new();
+    for item in parse_string_list(value) {
+        let edge = OverlayPosition::parse(&item)?;
+        if !edges.contains(&edge) {
+            edges.push(edge);
+        }
+    }
+
+    if edges.is_empty() {
+        Ok(VisualizerConfig::default().frame_edges)
+    } else {
+        Ok(edges)
+    }
+}
+
 fn with_line_context(error: ConfigLoadError, line_no: usize) -> ConfigLoadError {
     match error {
         ConfigLoadError::Parse(message) => {
@@ -787,10 +838,10 @@ fn normalize_value(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppConfig, DaemonConfig, HorizontalAlignment, OverlayLayer, OverlayMonitorMode,
-        OverlayPosition, VerticalAlignment, VisualizerBackend, VisualizerColorMode,
-        VisualizerColorOverrides, VisualizerLayout, apply_color_overrides, parse_color_overrides,
-        parse_config,
+        AppConfig, DaemonConfig, FrameMirrorMode, HorizontalAlignment, OverlayLayer,
+        OverlayMonitorMode, OverlayPosition, VerticalAlignment, VisualizerBackend,
+        VisualizerColorMode, VisualizerColorOverrides, VisualizerLayout, apply_color_overrides,
+        parse_color_overrides, parse_config,
     };
 
     #[test]
@@ -815,6 +866,8 @@ mod tests {
         [visualizer]
         backend = "dummy"
         layout = "polygon"
+        frame_edges = ["top", "bottom"]
+        frame_mirror_mode = "pairs"
         bars = 64
         bar_width = 5
         bar_corner_radius = 3.5
@@ -880,6 +933,11 @@ mod tests {
         assert_eq!(parsed.overlay.monitors, vec!["DP-1", "HDMI-A-1"]);
         assert_eq!(parsed.visualizer.backend, VisualizerBackend::Dummy);
         assert_eq!(parsed.visualizer.layout, VisualizerLayout::Polygon);
+        assert_eq!(
+            parsed.visualizer.frame_edges,
+            vec![OverlayPosition::Top, OverlayPosition::Bottom]
+        );
+        assert_eq!(parsed.visualizer.frame_mirror_mode, FrameMirrorMode::Pairs);
         assert_eq!(parsed.visualizer.bars, 64);
         assert_eq!(parsed.visualizer.bar_width, 5);
         assert!((parsed.visualizer.bar_corner_radius - 3.5).abs() < 1e-5);
@@ -959,6 +1017,11 @@ mod tests {
 
         assert_eq!(config.visualizer.backend, VisualizerBackend::Cava);
         assert_eq!(config.visualizer.layout, VisualizerLayout::Line);
+        assert_eq!(
+            config.visualizer.frame_edges,
+            vec![OverlayPosition::Top, OverlayPosition::Bottom]
+        );
+        assert_eq!(config.visualizer.frame_mirror_mode, FrameMirrorMode::Pairs);
         assert!((config.visualizer.bar_corner_radius - 20.0).abs() < 1e-5);
         assert_eq!(config.visualizer.bars, 50);
         assert_eq!(config.visualizer.bar_width, 8);
@@ -1024,6 +1087,23 @@ mod tests {
         assert!((color2.g - (110.0 / 255.0)).abs() < 1e-5);
         assert!((color2.b - (120.0 / 255.0)).abs() < 1e-5);
         assert!((color2.a - 0.6).abs() < 1e-5);
+    }
+
+    #[test]
+    fn parses_legacy_frame_mirror_alias() {
+        let raw = r#"
+        [visualizer]
+        layout = "frame"
+        frame_mirror = true
+        "#;
+
+        let parsed = match parse_config(raw) {
+            Ok(value) => value,
+            Err(err) => panic!("legacy frame_mirror alias should parse, got error: {err}"),
+        };
+
+        assert_eq!(parsed.visualizer.layout, VisualizerLayout::Frame);
+        assert_eq!(parsed.visualizer.frame_mirror_mode, FrameMirrorMode::All);
     }
 
     #[test]

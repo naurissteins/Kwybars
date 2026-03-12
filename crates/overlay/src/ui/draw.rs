@@ -59,6 +59,16 @@ pub struct DirectedBarSpec {
     pub thickness: f64,
 }
 
+#[derive(Clone, Copy)]
+pub struct FrameEdgeRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub orientation: BarOrientation,
+    pub from_start: bool,
+}
+
 #[derive(Clone, Copy, Debug)]
 struct RadialDistribution {
     first_angle: f64,
@@ -70,6 +80,16 @@ struct RadialDistribution {
 struct Point {
     x: f64,
     y: f64,
+}
+
+pub fn distributed_chunk<T>(values: &[T], group_index: usize, group_count: usize) -> &[T] {
+    if values.is_empty() || group_count == 0 {
+        return &[];
+    }
+
+    let start = values.len() * group_index / group_count;
+    let end = values.len() * (group_index + 1) / group_count;
+    &values[start..end]
 }
 
 pub fn for_each_horizontal_bar(
