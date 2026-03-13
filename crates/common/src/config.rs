@@ -247,6 +247,7 @@ pub enum VisualizerLayout {
     Radial,
     Polygon,
     Particle,
+    Floating,
 }
 
 impl VisualizerLayout {
@@ -257,6 +258,7 @@ impl VisualizerLayout {
             "radial" => Ok(Self::Radial),
             "polygon" => Ok(Self::Polygon),
             "particle" => Ok(Self::Particle),
+            "floating" => Ok(Self::Floating),
             _ => Err(ConfigLoadError::Parse(format!(
                 "unknown visualizer.layout value: {value}"
             ))),

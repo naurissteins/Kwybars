@@ -252,7 +252,7 @@ overlay_args = []
 - `monitors`: monitor selector list (connector names like `DP-1` or 1-based indices like `"1"`), used when `monitor_mode="list"`. (`monitors = ["DP-1", "HDMI-A-1"]`)
 
 `[visualizer]`
-- `layout`: layout mode: `line|frame|radial|polygon|particle`.
+- `layout`: layout mode: `line|frame|radial|polygon|particle|floating`.
 - `bars`: number of bars.
 - `bar_width`: base bar thickness in pixels.
 - `bar_corner_radius`: bar corner radius in pixels (`0` = square bars).
@@ -357,6 +357,16 @@ Example particle layout:
 ```toml
 [visualizer]
 layout = "particle"
+bars = 10
+bar_width = 40
+gap = 10
+```
+
+Example floating layout:
+
+```toml
+[visualizer]
+layout = "floating"
 bars = 10
 bar_width = 40
 gap = 10

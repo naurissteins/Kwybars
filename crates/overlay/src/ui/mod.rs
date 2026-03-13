@@ -18,6 +18,12 @@ use tracing::{error, info};
 
 use crate::theme::ThemePalette;
 
+#[derive(Clone, Copy, Default)]
+struct FloatingParticle {
+    offset: f64,
+    velocity: f64,
+}
+
 #[derive(Clone, Copy)]
 struct FrameMetrics {
     width: f64,
@@ -129,9 +135,14 @@ fn build_drawing_area(
     let is_frame = config.visualizer.layout == VisualizerLayout::Frame;
     let is_polygon = config.visualizer.layout == VisualizerLayout::Polygon;
     let is_particle = config.visualizer.layout == VisualizerLayout::Particle;
+    let is_floating = config.visualizer.layout == VisualizerLayout::Floating;
     let is_centered = matches!(
         config.visualizer.layout,
-        VisualizerLayout::Frame | VisualizerLayout::Radial | VisualizerLayout::Polygon | VisualizerLayout::Particle
+        VisualizerLayout::Frame
+            | VisualizerLayout::Radial
+            | VisualizerLayout::Polygon
+            | VisualizerLayout::Particle
+            | VisualizerLayout::Floating
     );
     let bar_thickness = f64::from(config.visualizer.bar_width.max(1));
     let corner_radius = f64::from(config.visualizer.bar_corner_radius.max(0.0));
@@ -202,13 +213,63 @@ fn build_drawing_area(
     }
 
     let bar_values = Rc::new(RefCell::new(vec![0.0_f64; bar_count]));
+    let particle_state = Rc::new(RefCell::new(vec![FloatingParticle::default(); bar_count]));
+    let particle_offsets = Rc::new(RefCell::new(vec![0.0_f64; bar_count]));
     let rotation_started_at = Instant::now();
 
     {
         let values_for_draw = Rc::clone(&bar_values);
+        let offsets_for_draw = Rc::clone(&particle_offsets);
         drawing_area.set_draw_func(move |_, ctx, width, height| {
             let values = values_for_draw.borrow();
             if values.is_empty() || width <= 0 || height <= 0 {
+                return;
+            }
+
+            if is_floating {
+                let floating_orientation = if is_horizontal {
+                    draw::BarOrientation::Horizontal
+                } else {
+                    draw::BarOrientation::Vertical
+                };
+                let from_start = is_top || is_left;
+
+                draw::for_each_floating_particle(
+                    &values,
+                    &offsets_for_draw.borrow(),
+                    f64::from(width),
+                    f64::from(height),
+                    bar_thickness,
+                    gap,
+                    floating_orientation,
+                    from_start,
+                    |index, spec| {
+                        let color = if let Some(colors) = theme_colors.as_ref() {
+                            let color_idx =
+                                draw::bar_color_index(index, values.len(), colors.len());
+                            colors[color_idx]
+                        } else {
+                            color_for_index(
+                                bar_color_mode,
+                                bar_color,
+                                bar_color2,
+                                index,
+                                values.len(),
+                            )
+                        };
+
+                        ctx.set_source_rgba(
+                            f64::from(color.r),
+                            f64::from(color.g),
+                            f64::from(color.b),
+                            f64::from(color.a),
+                        );
+                        draw::draw_particle(ctx, spec);
+                        if ctx.fill().is_err() {
+                            error!("kwybars: cairo fill failed");
+                        }
+                    },
+                );
                 return;
             }
 
@@ -550,7 +611,13 @@ fn build_drawing_area(
     {
         let stream_for_tick = Rc::clone(&stream);
         let values_for_tick = Rc::clone(&bar_values);
+        let physics_for_tick = Rc::clone(&particle_state);
+        let offsets_for_tick = Rc::clone(&particle_offsets);
         let drawing_area_weak = drawing_area.downgrade();
+
+        let gravity = 0.042_f64;
+        let jump_factor = 0.10_f64;
+
         glib::timeout_add_local(Duration::from_millis(interval_ms), move || {
             let Some(drawing_area_for_tick) = drawing_area_weak.upgrade() else {
                 return glib::ControlFlow::Break;
@@ -558,12 +625,39 @@ fn build_drawing_area(
 
             let frame = stream_for_tick.latest_frame();
             let mut target = values_for_tick.borrow_mut();
+            let mut physics = physics_for_tick.borrow_mut();
+            let mut offsets = offsets_for_tick.borrow_mut();
+
             if target.len() != frame.bars.len() {
                 target.resize(frame.bars.len(), 0.0);
+                physics.resize(frame.bars.len(), FloatingParticle::default());
+                offsets.resize(frame.bars.len(), 0.0);
             }
 
-            for (slot, value) in target.iter_mut().zip(frame.bars.iter()) {
-                *slot = f64::from(*value);
+            for (((slot, value), p), off) in target
+                .iter_mut()
+                .zip(frame.bars.iter())
+                .zip(physics.iter_mut())
+                .zip(offsets.iter_mut())
+            {
+                let val = f64::from(*value);
+                *slot = val;
+
+                // Physics update: energy gives an upward impulse
+                if val > 0.05 {
+                    p.velocity += val * jump_factor;
+                }
+                p.velocity -= gravity;
+                p.offset += p.velocity;
+
+                if p.offset < 0.0 {
+                    p.offset = 0.0;
+                    p.velocity = 0.0;
+                } else if p.offset > 1.0 {
+                    p.offset = 1.0;
+                    p.velocity = -p.velocity * 0.2; // Small bounce off the ceiling
+                }
+                *off = p.offset;
             }
 
             drawing_area_for_tick.queue_draw();
