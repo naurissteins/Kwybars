@@ -1,3 +1,4 @@
+use std::env;
 use std::ffi::OsString;
 use std::fmt::{Display, Formatter};
 use std::fs;
@@ -15,6 +16,9 @@ enum Command {
     ValidateConfig {
         path: Option<PathBuf>,
     },
+    Doctor {
+        path: Option<PathBuf>,
+    },
     Help,
 }
 
@@ -23,6 +27,7 @@ enum ControlError {
     Usage(String),
     Io(std::io::Error),
     InvalidTarget(String),
+    Report(String),
 }
 
 impl Display for ControlError {
@@ -31,6 +36,7 @@ impl Display for ControlError {
             Self::Usage(message) => write!(f, "{message}"),
             Self::Io(err) => write!(f, "{err}"),
             Self::InvalidTarget(message) => write!(f, "{message}"),
+            Self::Report(message) => write!(f, "{message}"),
         }
     }
 }
@@ -50,6 +56,10 @@ fn main() {
         Err(ControlError::Usage(message)) => {
             eprintln!("{message}");
             std::process::exit(2);
+        }
+        Err(ControlError::Report(message)) => {
+            eprintln!("{message}");
+            std::process::exit(1);
         }
         Err(err) => {
             eprintln!("kwybarsctl: {err}");
@@ -72,6 +82,11 @@ fn run() -> Result<Option<String>, ControlError> {
             let message = validate_config(&path)?;
             Ok(Some(message))
         }
+        Command::Doctor { path } => {
+            let path = path.unwrap_or_else(config::default_config_path);
+            let message = doctor(&path)?;
+            Ok(Some(message))
+        }
     }
 }
 
@@ -85,6 +100,7 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Command, Contr
         "-h" | "--help" | "help" => Ok(Command::Help),
         "switch-config" => parse_switch_config(args),
         "validate-config" => parse_validate_config(args),
+        "doctor" => parse_doctor(args),
         other => Err(ControlError::Usage(format!(
             "unknown command: {other}\n\n{}",
             usage()
@@ -184,6 +200,47 @@ fn parse_validate_config(
     Ok(Command::ValidateConfig { path })
 }
 
+fn parse_doctor(args: impl IntoIterator<Item = OsString>) -> Result<Command, ControlError> {
+    let mut args = args.into_iter();
+    let mut path = None;
+
+    while let Some(arg) = args.next() {
+        match arg.to_string_lossy().as_ref() {
+            "-h" | "--help" => return Ok(Command::Help),
+            "-c" | "--config" => {
+                let Some(value) = args.next() else {
+                    return Err(ControlError::Usage(format!(
+                        "missing value for --config\n\n{}",
+                        usage()
+                    )));
+                };
+                path = Some(PathBuf::from(value));
+            }
+            value if value.starts_with("--config=") => {
+                let path_value = &value["--config=".len()..];
+                if path_value.is_empty() {
+                    return Err(ControlError::Usage(format!(
+                        "missing value for --config\n\n{}",
+                        usage()
+                    )));
+                }
+                path = Some(PathBuf::from(path_value));
+            }
+            other => {
+                if path.is_some() {
+                    return Err(ControlError::Usage(format!(
+                        "unexpected extra argument: {other}\n\n{}",
+                        usage()
+                    )));
+                }
+                path = Some(PathBuf::from(other));
+            }
+        }
+    }
+
+    Ok(Command::Doctor { path })
+}
+
 fn validate_target(path: &Path) -> Result<PathBuf, ControlError> {
     let canonical = fs::canonicalize(path).map_err(|err| {
         if err.kind() == std::io::ErrorKind::NotFound {
@@ -256,8 +313,135 @@ fn validate_config(path: &Path) -> Result<String, ControlError> {
     ))
 }
 
+fn doctor(path: &Path) -> Result<String, ControlError> {
+    let explicit_path = path != config::default_config_path();
+    let resolved_config_path = resolve_runtime_config_path(path);
+    let config_load_path = resolved_config_path.as_deref().unwrap_or(path);
+    let colors_path = config::default_colors_path(config_load_path);
+    let mut issues = Vec::new();
+    let mut lines = vec!["kwybars doctor".to_owned()];
+
+    let session_type = env::var("XDG_SESSION_TYPE").ok();
+    let wayland_display = env::var("WAYLAND_DISPLAY").ok();
+    let session_line = match (session_type.as_deref(), wayland_display.as_deref()) {
+        (Some(session), Some(display)) => {
+            format!("session: {session} (WAYLAND_DISPLAY={display})")
+        }
+        (Some(session), None) => format!("session: {session} (WAYLAND_DISPLAY not set)"),
+        (None, Some(display)) => format!("session: unknown (WAYLAND_DISPLAY={display})"),
+        (None, None) => "session: unknown (WAYLAND_DISPLAY not set)".to_owned(),
+    };
+    lines.push(session_line);
+    if session_type.as_deref() != Some("wayland") && wayland_display.is_none() {
+        issues.push("Wayland session not detected".to_owned());
+    }
+
+    let cava_path = find_in_path("cava");
+    lines.push(match cava_path {
+        Some(ref found) => format!("cava: found ({})", found.display()),
+        None => "cava: not found in PATH".to_owned(),
+    });
+
+    let config_exists = path.exists();
+    if explicit_path && !config_exists {
+        issues.push(format!("Config does not exist: {}", path.display()));
+        lines.push(format!("config: missing ({})", path.display()));
+    } else if config_exists {
+        lines.push(format!("config: found ({})", path.display()));
+    } else {
+        lines.push(format!(
+            "config: not found ({}), built-in defaults will be used",
+            path.display()
+        ));
+    }
+
+    if let Some(resolved) = resolved_config_path.as_ref()
+        && resolved != path
+    {
+        lines.push(format!("resolved config path: {}", resolved.display()));
+    }
+
+    let loaded = match config::load_or_default(config_load_path) {
+        Ok(value) => {
+            lines.push("config parse: ok".to_owned());
+            Some(value)
+        }
+        Err(err) => {
+            issues.push(format!("Config parse failed: {err}"));
+            lines.push(format!("config parse: error ({err})"));
+            None
+        }
+    };
+
+    let colors_exists = colors_path.exists();
+    if colors_exists {
+        match config::load_color_overrides(&colors_path) {
+            Ok(_) => lines.push(format!("colors: ok ({})", colors_path.display())),
+            Err(err) => {
+                issues.push(format!("Colors override parse failed: {err}"));
+                lines.push(format!("colors: error ({err})"));
+            }
+        }
+    } else {
+        lines.push(format!("colors: not found ({})", colors_path.display()));
+    }
+
+    if let Some(config) = loaded.as_ref() {
+        let backend = format!("{:?}", config.visualizer.backend).to_lowercase();
+        lines.push(format!("backend: {backend}"));
+        if matches!(
+            config.visualizer.backend,
+            config::VisualizerBackend::Cava | config::VisualizerBackend::Auto
+        ) && cava_path.is_none()
+        {
+            issues.push("Backend requires `cava` in PATH".to_owned());
+        }
+
+        if let Some(theme_name) = config.visualizer.theme.as_deref() {
+            let trimmed = theme_name.trim();
+            if !trimmed.is_empty() {
+                let theme_path = theme::resolve_theme_path(config_load_path, trimmed);
+                match theme::load_theme_palette(
+                    &theme_path,
+                    trimmed,
+                    config.visualizer.theme_opacity,
+                ) {
+                    Ok(palette) => lines.push(format!(
+                        "theme: ok ({} -> {})",
+                        palette.name,
+                        theme_path.display()
+                    )),
+                    Err(err) => {
+                        issues.push(format!("Theme load failed: {err}"));
+                        lines.push(format!("theme: error ({err})"));
+                    }
+                }
+            } else {
+                lines.push("theme: none".to_owned());
+            }
+        } else {
+            lines.push("theme: none".to_owned());
+        }
+    }
+
+    if issues.is_empty() {
+        lines.push("summary: ok".to_owned());
+        Ok(lines.join("\n"))
+    } else {
+        lines.push(format!("summary: {} issue(s) found", issues.len()));
+        Err(ControlError::Report(lines.join("\n")))
+    }
+}
+
 fn resolve_runtime_config_path(path: &Path) -> Option<PathBuf> {
     fs::canonicalize(path).ok()
+}
+
+fn find_in_path(binary: &str) -> Option<PathBuf> {
+    let path = env::var_os("PATH")?;
+    env::split_paths(&path)
+        .map(|dir| dir.join(binary))
+        .find(|candidate| candidate.is_file())
 }
 
 fn switch_config(active_path: &Path, target_path: &Path) -> Result<String, ControlError> {
@@ -344,7 +528,7 @@ fn create_symlink(_target: &Path, _link: &Path) -> Result<(), ControlError> {
 }
 
 fn usage() -> String {
-    "Usage:\n  kwybarsctl switch-config [--active <path>] <target-config.toml>\n  kwybarsctl validate-config [--config <path>]\n  kwybarsctl validate-config [path]\n  kwybarsctl --help\n\nCommands:\n  switch-config         Atomically switch the watched config path to another config file\n  validate-config       Validate config.toml, adjacent colors.toml, and configured theme\n\nOptions:\n  -a, --active <path>   Active config path to update (default: normal Kwybars config path)\n  -c, --config <path>   Config path to validate\n  -h, --help            Show this help message"
+    "Usage:\n  kwybarsctl switch-config [--active <path>] <target-config.toml>\n  kwybarsctl validate-config [--config <path>]\n  kwybarsctl validate-config [path]\n  kwybarsctl doctor [--config <path>]\n  kwybarsctl doctor [path]\n  kwybarsctl --help\n\nCommands:\n  switch-config         Atomically switch the watched config path to another config file\n  validate-config       Validate config.toml, adjacent colors.toml, and configured theme\n  doctor                Report config/runtime environment status and likely setup issues\n\nOptions:\n  -a, --active <path>   Active config path to update (default: normal Kwybars config path)\n  -c, --config <path>   Config path to validate/report\n  -h, --help            Show this help message"
         .to_owned()
 }
 
@@ -385,6 +569,16 @@ mod tests {
 
         let Ok(Command::ValidateConfig { path }) = parsed else {
             panic!("expected validate-config command");
+        };
+        assert_eq!(path, Some(PathBuf::from("/tmp/custom.toml")));
+    }
+
+    #[test]
+    fn parses_doctor_command() {
+        let parsed = parse_args(["doctor".into(), "/tmp/custom.toml".into()]);
+
+        let Ok(Command::Doctor { path }) = parsed else {
+            panic!("expected doctor command");
         };
         assert_eq!(path, Some(PathBuf::from("/tmp/custom.toml")));
     }
