@@ -25,6 +25,16 @@ impl OverlayPosition {
         }
     }
 }
+impl Display for OverlayPosition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Bottom => write!(f, "bottom"),
+            Self::Top => write!(f, "top"),
+            Self::Left => write!(f, "left"),
+            Self::Right => write!(f, "right"),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OverlayLayer {
@@ -45,6 +55,15 @@ impl OverlayLayer {
         }
     }
 }
+impl Display for OverlayLayer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Background => write!(f, "background"),
+            Self::Bottom => write!(f, "bottom"),
+            Self::Top => write!(f, "top"),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HorizontalAlignment {
@@ -62,6 +81,15 @@ impl HorizontalAlignment {
             _ => Err(ConfigLoadError::Parse(format!(
                 "unknown overlay.horizontal_alignment value: {value}"
             ))),
+        }
+    }
+}
+impl Display for HorizontalAlignment {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Left => write!(f, "left"),
+            Self::Center => write!(f, "center"),
+            Self::Right => write!(f, "right"),
         }
     }
 }
@@ -86,6 +114,16 @@ impl VerticalAlignment {
     }
 }
 
+impl Display for VerticalAlignment {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Top => write!(f, "top"),
+            Self::Center => write!(f, "center"),
+            Self::Bottom => write!(f, "bottom"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OverlayMonitorMode {
     Primary,
@@ -102,6 +140,16 @@ impl OverlayMonitorMode {
             _ => Err(ConfigLoadError::Parse(format!(
                 "unknown overlay.monitor_mode value: {value}"
             ))),
+        }
+    }
+}
+
+impl Display for OverlayMonitorMode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Primary => write!(f, "primary"),
+            Self::All => write!(f, "all"),
+            Self::List => write!(f, "list"),
         }
     }
 }
@@ -163,6 +211,17 @@ impl VisualizerBackend {
             _ => Err(ConfigLoadError::Parse(format!(
                 "unknown visualizer.backend value: {value}"
             ))),
+        }
+    }
+}
+
+impl Display for VisualizerBackend {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Auto => write!(f, "auto"),
+            Self::Pipewire => write!(f, "pipewire"),
+            Self::Cava => write!(f, "cava"),
+            Self::Dummy => write!(f, "dummy"),
         }
     }
 }
@@ -240,6 +299,15 @@ impl VisualizerColorMode {
     }
 }
 
+impl Display for VisualizerColorMode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Solid => write!(f, "solid"),
+            Self::Gradient => write!(f, "gradient"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VisualizerLayout {
     Line,
@@ -266,6 +334,19 @@ impl VisualizerLayout {
     }
 }
 
+impl Display for VisualizerLayout {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Line => write!(f, "line"),
+            Self::Frame => write!(f, "frame"),
+            Self::Radial => write!(f, "radial"),
+            Self::Polygon => write!(f, "polygon"),
+            Self::Particle => write!(f, "particle"),
+            Self::Floating => write!(f, "floating"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FrameMirrorMode {
     Off,
@@ -282,6 +363,16 @@ impl FrameMirrorMode {
             _ => Err(ConfigLoadError::Parse(format!(
                 "unknown visualizer.frame_mirror_mode value: {value}"
             ))),
+        }
+    }
+}
+
+impl Display for FrameMirrorMode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Off => write!(f, "off"),
+            Self::All => write!(f, "all"),
+            Self::Pairs => write!(f, "pairs"),
         }
     }
 }
