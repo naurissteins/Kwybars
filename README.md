@@ -162,7 +162,7 @@ output_path = '~/.config/kwybars/colors.toml'
 Theme lookup order for `<theme>.toml`:
 - `~/.config/kwybars/themes/<theme>.toml` (or next to your active `KWYBARS_CONFIG`)
 - `/usr/share/kwybars/themes/<theme>.toml` (installed package themes)
-- `<cwd>/assets/themes/<theme>.toml` (source checkout fallback)
+- `<repo>/assets/themes/<theme>.toml` (source checkout fallback, independent of current working directory)
 
 Available built-in themes:
 - `ayu-dark`
@@ -441,6 +441,9 @@ bind = SUPER ALT, 3, exec, kwybarsctl switch-config --active ~/.config/kwybars/c
 - `config.toml` parsing
 - adjacent `colors.toml` parsing
 - configured theme resolution and theme file parsing
+
+`kwybarsctl doctor` also prints resolved enum-backed settings like `overlay.layer`,
+`overlay.position`, `visualizer.backend`, and `visualizer.layout` using their runtime string values.
 
 Examples:
 

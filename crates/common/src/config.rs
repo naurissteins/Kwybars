@@ -1202,6 +1202,35 @@ mod tests {
     }
 
     #[test]
+    fn display_tokens_round_trip_with_enum_parsers() {
+        macro_rules! assert_round_trip {
+            ($enum_type:ident [$($variant:ident),+ $(,)?]) => {
+                $(
+                    let value = $enum_type::$variant;
+                    let token = value.to_string();
+                    let reparsed = $enum_type::parse(&token)
+                        .unwrap_or_else(|err| panic!(
+                            "{} token `{}` should parse: {err}",
+                            stringify!($enum_type),
+                            token
+                        ));
+                    assert_eq!(reparsed, value);
+                )+
+            };
+        }
+
+        assert_round_trip!(OverlayPosition [Bottom, Top, Left, Right]);
+        assert_round_trip!(OverlayLayer [Background, Bottom, Top]);
+        assert_round_trip!(HorizontalAlignment [Left, Center, Right]);
+        assert_round_trip!(VerticalAlignment [Top, Center, Bottom]);
+        assert_round_trip!(OverlayMonitorMode [Primary, All, List]);
+        assert_round_trip!(VisualizerBackend [Auto, Pipewire, Cava, Dummy]);
+        assert_round_trip!(VisualizerColorMode [Solid, Gradient]);
+        assert_round_trip!(VisualizerLayout [Line, Frame, Radial, Polygon, Particle, Floating]);
+        assert_round_trip!(FrameMirrorMode [Off, All, Pairs]);
+    }
+
+    #[test]
     fn parses_colors_override_with_inline_comment_and_separator() {
         let raw = r#"
         [visualizer]

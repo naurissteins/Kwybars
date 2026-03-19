@@ -17,7 +17,7 @@ pub struct ThemePalette {
 pub enum ThemeSource {
     User,
     System,
-    Cwd,
+    SourceCheckout,
 }
 
 impl ThemeSource {
@@ -25,7 +25,7 @@ impl ThemeSource {
         match self {
             Self::User => "user",
             Self::System => "system",
-            Self::Cwd => "cwd",
+            Self::SourceCheckout => "source",
         }
     }
 }
@@ -70,12 +70,9 @@ pub fn resolve_theme_path(config_path: &Path, theme_name: &str) -> PathBuf {
         return system_path;
     }
 
-    let cwd_path = std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("assets/themes")
-        .join(&theme_file);
-    if cwd_path.exists() {
-        return cwd_path;
+    let source_checkout_path = source_checkout_themes_dir().join(&theme_file);
+    if source_checkout_path.exists() {
+        return source_checkout_path;
     }
 
     config_path_candidate
@@ -103,10 +100,8 @@ pub fn list_available_themes(config_path: &Path) -> Vec<AvailableTheme> {
         ThemeSource::System,
         &mut themes,
     );
-    let cwd_dir = std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("assets/themes");
-    collect_theme_dir(&cwd_dir, ThemeSource::Cwd, &mut themes);
+    let source_dir = source_checkout_themes_dir();
+    collect_theme_dir(&source_dir, ThemeSource::SourceCheckout, &mut themes);
 
     themes.into_values().collect()
 }
@@ -228,6 +223,12 @@ fn collect_theme_dir(
             .entry(name.clone())
             .or_insert(AvailableTheme { name, path, source });
     }
+}
+
+fn source_checkout_themes_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("assets/themes")
 }
 
 fn parse_hex_byte(value: &str) -> Result<u8, String> {

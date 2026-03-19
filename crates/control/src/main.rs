@@ -437,8 +437,30 @@ fn doctor(path: &Path) -> Result<String, ControlError> {
     }
 
     if let Some(config) = loaded.as_ref() {
-        let backend = format!("{:?}", config.visualizer.backend).to_lowercase();
-        lines.push(format!("backend: {backend}"));
+        lines.push(format!("overlay.position: {}", config.overlay.position));
+        lines.push(format!("overlay.layer: {}", config.overlay.layer));
+        lines.push(format!(
+            "overlay.monitor_mode: {}",
+            config.overlay.monitor_mode
+        ));
+        lines.push(format!(
+            "overlay.horizontal_alignment: {}",
+            config.overlay.horizontal_alignment
+        ));
+        lines.push(format!(
+            "overlay.vertical_alignment: {}",
+            config.overlay.vertical_alignment
+        ));
+        lines.push(format!("visualizer.backend: {}", config.visualizer.backend));
+        lines.push(format!("visualizer.layout: {}", config.visualizer.layout));
+        lines.push(format!(
+            "visualizer.color_mode: {}",
+            config.visualizer.color_mode
+        ));
+        lines.push(format!(
+            "visualizer.frame_mirror_mode: {}",
+            config.visualizer.frame_mirror_mode
+        ));
         if matches!(
             config.visualizer.backend,
             config::VisualizerBackend::Cava | config::VisualizerBackend::Auto
