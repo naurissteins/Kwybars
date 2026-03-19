@@ -1,4 +1,3 @@
-
 use super::{
     AppConfig, DaemonConfig, FrameMirrorMode, HorizontalAlignment, LineMode, OverlayLayer,
     OverlayMonitorMode, OverlayPosition, VerticalAlignment, VisualizerBackend, VisualizerColorMode,
