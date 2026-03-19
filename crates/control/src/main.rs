@@ -454,6 +454,10 @@ fn doctor(path: &Path) -> Result<String, ControlError> {
         lines.push(format!("visualizer.backend: {}", config.visualizer.backend));
         lines.push(format!("visualizer.layout: {}", config.visualizer.layout));
         lines.push(format!(
+            "visualizer.line_mode: {}",
+            config.visualizer.line_mode
+        ));
+        lines.push(format!(
             "visualizer.color_mode: {}",
             config.visualizer.color_mode
         ));

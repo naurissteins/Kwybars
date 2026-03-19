@@ -348,6 +348,33 @@ impl Display for VisualizerLayout {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineMode {
+    Continuous,
+    Split,
+}
+
+impl LineMode {
+    fn parse(value: &str) -> Result<Self, ConfigLoadError> {
+        match value {
+            "continuous" => Ok(Self::Continuous),
+            "split" => Ok(Self::Split),
+            _ => Err(ConfigLoadError::Parse(format!(
+                "unknown visualizer.line_mode value: {value}"
+            ))),
+        }
+    }
+}
+
+impl Display for LineMode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Continuous => write!(f, "continuous"),
+            Self::Split => write!(f, "split"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FrameMirrorMode {
     Off,
     All,
@@ -381,6 +408,8 @@ impl Display for FrameMirrorMode {
 pub struct VisualizerConfig {
     pub backend: VisualizerBackend,
     pub layout: VisualizerLayout,
+    pub line_mode: LineMode,
+    pub line_split_gap: u32,
     pub frame_edges: Vec<OverlayPosition>,
     pub frame_mirror_mode: FrameMirrorMode,
     pub bars: usize,
@@ -418,6 +447,8 @@ impl Default for VisualizerConfig {
         Self {
             backend: VisualizerBackend::Cava,
             layout: VisualizerLayout::Line,
+            line_mode: LineMode::Continuous,
+            line_split_gap: 200,
             frame_edges: vec![OverlayPosition::Top, OverlayPosition::Bottom],
             frame_mirror_mode: FrameMirrorMode::Pairs,
             bars: 50,
@@ -719,6 +750,8 @@ fn parse_visualizer_key(
     match key {
         "backend" => visualizer.backend = VisualizerBackend::parse(value)?,
         "layout" => visualizer.layout = VisualizerLayout::parse(value)?,
+        "line_mode" => visualizer.line_mode = LineMode::parse(value)?,
+        "line_split_gap" => visualizer.line_split_gap = parse_u32(key, value)?,
         "frame_edges" => visualizer.frame_edges = parse_overlay_position_list(value)?,
         "frame_mirror_mode" => visualizer.frame_mirror_mode = FrameMirrorMode::parse(value)?,
         "frame_mirror" => {
@@ -933,7 +966,7 @@ fn normalize_value(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppConfig, DaemonConfig, FrameMirrorMode, HorizontalAlignment, OverlayLayer,
+        AppConfig, DaemonConfig, FrameMirrorMode, HorizontalAlignment, LineMode, OverlayLayer,
         OverlayMonitorMode, OverlayPosition, VerticalAlignment, VisualizerBackend,
         VisualizerColorMode, VisualizerColorOverrides, VisualizerLayout, apply_color_overrides,
         parse_color_overrides, parse_config,
@@ -961,6 +994,8 @@ mod tests {
         [visualizer]
         backend = "dummy"
         layout = "polygon"
+        line_mode = "split"
+        line_split_gap = 220
         frame_edges = ["top", "bottom"]
         frame_mirror_mode = "pairs"
         bars = 64
@@ -1028,6 +1063,8 @@ mod tests {
         assert_eq!(parsed.overlay.monitors, vec!["DP-1", "HDMI-A-1"]);
         assert_eq!(parsed.visualizer.backend, VisualizerBackend::Dummy);
         assert_eq!(parsed.visualizer.layout, VisualizerLayout::Polygon);
+        assert_eq!(parsed.visualizer.line_mode, LineMode::Split);
+        assert_eq!(parsed.visualizer.line_split_gap, 220);
         assert_eq!(
             parsed.visualizer.frame_edges,
             vec![OverlayPosition::Top, OverlayPosition::Bottom]
@@ -1112,6 +1149,8 @@ mod tests {
 
         assert_eq!(config.visualizer.backend, VisualizerBackend::Cava);
         assert_eq!(config.visualizer.layout, VisualizerLayout::Line);
+        assert_eq!(config.visualizer.line_mode, LineMode::Continuous);
+        assert_eq!(config.visualizer.line_split_gap, 200);
         assert_eq!(
             config.visualizer.frame_edges,
             vec![OverlayPosition::Top, OverlayPosition::Bottom]
@@ -1227,6 +1266,7 @@ mod tests {
         assert_round_trip!(VisualizerBackend [Auto, Pipewire, Cava, Dummy]);
         assert_round_trip!(VisualizerColorMode [Solid, Gradient]);
         assert_round_trip!(VisualizerLayout [Line, Frame, Radial, Polygon, Particle, Floating]);
+        assert_round_trip!(LineMode [Continuous, Split]);
         assert_round_trip!(FrameMirrorMode [Off, All, Pairs]);
     }
 

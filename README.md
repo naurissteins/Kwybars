@@ -253,6 +253,8 @@ overlay_args = []
 
 `[visualizer]`
 - `layout`: layout mode: `line|frame|radial|polygon|particle|floating`.
+- `line_mode`: line layout variant: `continuous|split` (default: `continuous`).
+- `line_split_gap`: center gap size in pixels when `line_mode="split"` (default: `200`).
 - `bars`: number of bars.
 - `bar_width`: base bar thickness in pixels.
 - `bar_corner_radius`: bar corner radius in pixels (`0` = square bars).
@@ -289,6 +291,15 @@ radial_start_angle = -180
 radial_arc_degrees = 180
 center_offset_x = 0
 center_offset_y = 0
+```
+
+Example split line layout:
+
+```toml
+[visualizer]
+layout = "line"
+line_mode = "split"
+line_split_gap = 220
 ```
 
 Example frame layout on all sides:

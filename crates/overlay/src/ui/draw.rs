@@ -94,6 +94,32 @@ pub struct FloatingParticleLayout {
 }
 
 #[derive(Clone, Copy)]
+pub enum LinearBarMode {
+    Continuous,
+    Split { center_gap: f64 },
+}
+
+#[derive(Clone, Copy)]
+pub struct HorizontalBarLayout {
+    pub width: f64,
+    pub height: f64,
+    pub bar_thickness: f64,
+    pub gap: f64,
+    pub from_top: bool,
+    pub mode: LinearBarMode,
+}
+
+#[derive(Clone, Copy)]
+pub struct VerticalBarLayout {
+    pub width: f64,
+    pub height: f64,
+    pub bar_thickness: f64,
+    pub gap: f64,
+    pub from_left: bool,
+    pub mode: LinearBarMode,
+}
+
+#[derive(Clone, Copy)]
 pub struct Point {
     x: f64,
     y: f64,
@@ -306,6 +332,30 @@ pub fn for_each_horizontal_bar(
     }
 }
 
+pub fn for_each_horizontal_bar_mode(
+    values: &[f64],
+    layout: HorizontalBarLayout,
+    mut paint: impl FnMut(usize, f64, f64, f64, f64),
+) {
+    for_each_linear_slot(
+        values.len(),
+        layout.width,
+        layout.bar_thickness,
+        layout.gap,
+        layout.mode,
+        |index, x, bar_width| {
+            let value = values[index];
+            let bar_height = (layout.height * value.clamp(0.0, 1.0)).max(2.0);
+            let y = if layout.from_top {
+                0.0
+            } else {
+                layout.height - bar_height
+            };
+            paint(index, x, y, bar_width, bar_height);
+        },
+    );
+}
+
 pub fn for_each_vertical_bar(
     values: &[f64],
     width: f64,
@@ -336,68 +386,72 @@ pub fn for_each_vertical_bar(
     }
 }
 
-pub fn draw_horizontal_bars(
-    ctx: &gtk::cairo::Context,
+pub fn for_each_vertical_bar_mode(
     values: &[f64],
-    width: f64,
-    height: f64,
-    style: BarStyle,
-    from_top: bool,
+    layout: VerticalBarLayout,
+    mut paint: impl FnMut(usize, f64, f64, f64, f64),
 ) {
-    for_each_horizontal_bar(
-        values,
-        width,
-        height,
-        style.thickness,
-        style.gap,
-        from_top,
-        |_, x, y, bar_width, bar_height| {
-            append_bar_path(
-                ctx,
-                BarRect {
-                    x,
-                    y,
-                    width: bar_width,
-                    height: bar_height,
-                },
-                style,
-                BarOrientation::Horizontal,
-                from_top,
-            );
+    for_each_linear_slot(
+        values.len(),
+        layout.height,
+        layout.bar_thickness,
+        layout.gap,
+        layout.mode,
+        |index, y, bar_height| {
+            let value = values[index];
+            let bar_width = (layout.width * value.clamp(0.0, 1.0)).max(2.0);
+            let x = if layout.from_left {
+                0.0
+            } else {
+                layout.width - bar_width
+            };
+            paint(index, x, y, bar_width, bar_height);
         },
     );
 }
 
-pub fn draw_vertical_bars(
+pub fn draw_horizontal_bars_mode(
     ctx: &gtk::cairo::Context,
     values: &[f64],
-    width: f64,
-    height: f64,
+    layout: HorizontalBarLayout,
     style: BarStyle,
-    from_left: bool,
 ) {
-    for_each_vertical_bar(
-        values,
-        width,
-        height,
-        style.thickness,
-        style.gap,
-        from_left,
-        |_, x, y, bar_width, bar_height| {
-            append_bar_path(
-                ctx,
-                BarRect {
-                    x,
-                    y,
-                    width: bar_width,
-                    height: bar_height,
-                },
-                style,
-                BarOrientation::Vertical,
-                from_left,
-            );
-        },
-    );
+    for_each_horizontal_bar_mode(values, layout, |_, x, y, bar_width, bar_height| {
+        append_bar_path(
+            ctx,
+            BarRect {
+                x,
+                y,
+                width: bar_width,
+                height: bar_height,
+            },
+            style,
+            BarOrientation::Horizontal,
+            layout.from_top,
+        );
+    });
+}
+
+pub fn draw_vertical_bars_mode(
+    ctx: &gtk::cairo::Context,
+    values: &[f64],
+    layout: VerticalBarLayout,
+    style: BarStyle,
+) {
+    for_each_vertical_bar_mode(values, layout, |_, x, y, bar_width, bar_height| {
+        append_bar_path(
+            ctx,
+            BarRect {
+                x,
+                y,
+                width: bar_width,
+                height: bar_height,
+            },
+            style,
+            BarOrientation::Vertical,
+            layout.from_left,
+        );
+    });
 }
 
 pub fn for_each_radial_bar(
@@ -762,6 +816,83 @@ fn centered_layout_outer_radius(width: f64, height: f64, style: BarStyle) -> f64
     (min_half_extent - padding).max(10.0)
 }
 
+fn for_each_linear_slot(
+    count: usize,
+    available_length: f64,
+    item_thickness: f64,
+    gap: f64,
+    mode: LinearBarMode,
+    mut paint: impl FnMut(usize, f64, f64),
+) {
+    if count == 0 {
+        return;
+    }
+
+    match mode {
+        LinearBarMode::Continuous => {
+            let count = count as f64;
+            let total_nominal = (count * item_thickness) + ((count - 1.0).max(0.0) * gap);
+            let scale = if total_nominal > available_length {
+                available_length / total_nominal
+            } else {
+                1.0
+            };
+            let item_size = (item_thickness * scale).max(1.0);
+            let gap_size = gap * scale;
+            let rendered_total = (count * item_size) + ((count - 1.0).max(0.0) * gap_size);
+            let start = (available_length - rendered_total).max(0.0) * 0.5;
+
+            for index in 0..count as usize {
+                let position = start + (index as f64 * (item_size + gap_size));
+                paint(index, position, item_size);
+            }
+        }
+        LinearBarMode::Split { center_gap } if count >= 2 => {
+            let left_count = count / 2;
+            let right_count = count - left_count;
+            let left_gaps = left_count.saturating_sub(1) as f64;
+            let right_gaps = right_count.saturating_sub(1) as f64;
+            let total_nominal = (count as f64 * item_thickness)
+                + ((left_gaps + right_gaps) * gap)
+                + center_gap.max(0.0);
+            let scale = if total_nominal > available_length {
+                available_length / total_nominal
+            } else {
+                1.0
+            };
+            let item_size = (item_thickness * scale).max(1.0);
+            let gap_size = gap * scale;
+            let center_gap = center_gap.max(0.0) * scale;
+            let left_rendered = (left_count as f64 * item_size) + (left_gaps * gap_size);
+            let right_rendered = (right_count as f64 * item_size) + (right_gaps * gap_size);
+            let rendered_total = left_rendered + center_gap + right_rendered;
+            let start = (available_length - rendered_total).max(0.0) * 0.5;
+
+            for index in 0..left_count {
+                let position = start + (index as f64 * (item_size + gap_size));
+                paint(index, position, item_size);
+            }
+
+            let right_start = start + left_rendered + center_gap;
+            for offset in 0..right_count {
+                let index = left_count + offset;
+                let position = right_start + (offset as f64 * (item_size + gap_size));
+                paint(index, position, item_size);
+            }
+        }
+        LinearBarMode::Split { .. } => {
+            for_each_linear_slot(
+                count,
+                available_length,
+                item_thickness,
+                gap,
+                LinearBarMode::Continuous,
+                paint,
+            );
+        }
+    }
+}
+
 fn regular_polygon_vertices(sides: usize, radius: f64, rotation_radians: f64) -> Vec<Point> {
     (0..sides)
         .map(|index| {
@@ -831,8 +962,9 @@ mod tests {
     use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
     use super::{
-        BarStyle, PolygonLayout, bar_color_index, for_each_polygon_bar, for_each_segment_span,
-        radial_distribution,
+        BarStyle, HorizontalBarLayout, LinearBarMode, PolygonLayout, VerticalBarLayout,
+        bar_color_index, for_each_horizontal_bar_mode, for_each_polygon_bar, for_each_segment_span,
+        for_each_vertical_bar_mode, radial_distribution,
     };
 
     #[test]
@@ -915,5 +1047,49 @@ mod tests {
         angles.sort_unstable();
         angles.dedup();
         assert_eq!(angles.len(), 3);
+    }
+
+    #[test]
+    fn split_horizontal_mode_leaves_center_gap() {
+        let mut positions = Vec::new();
+        for_each_horizontal_bar_mode(
+            &[1.0, 1.0, 1.0, 1.0],
+            HorizontalBarLayout {
+                width: 400.0,
+                height: 100.0,
+                bar_thickness: 20.0,
+                gap: 10.0,
+                from_top: false,
+                mode: LinearBarMode::Split { center_gap: 80.0 },
+            },
+            |_, x, _, bar_width, _| positions.push((x, bar_width)),
+        );
+
+        assert_eq!(positions.len(), 4);
+        let left_end = positions[1].0 + positions[1].1;
+        let right_start = positions[2].0;
+        assert!(right_start - left_end >= 80.0 - 1e-6);
+    }
+
+    #[test]
+    fn split_vertical_mode_leaves_center_gap() {
+        let mut positions = Vec::new();
+        for_each_vertical_bar_mode(
+            &[1.0, 1.0, 1.0, 1.0],
+            VerticalBarLayout {
+                width: 100.0,
+                height: 400.0,
+                bar_thickness: 20.0,
+                gap: 10.0,
+                from_left: false,
+                mode: LinearBarMode::Split { center_gap: 80.0 },
+            },
+            |_, _, y, _, bar_height| positions.push((y, bar_height)),
+        );
+
+        assert_eq!(positions.len(), 4);
+        let top_end = positions[1].0 + positions[1].1;
+        let bottom_start = positions[2].0;
+        assert!(bottom_start - top_end >= 80.0 - 1e-6);
     }
 }

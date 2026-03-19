@@ -11,7 +11,8 @@ use gtk::gdk;
 use gtk::glib;
 use gtk::prelude::*;
 use kwybars_common::config::{
-    AppConfig, FrameMirrorMode, OverlayPosition, RgbaColor, VisualizerColorMode, VisualizerLayout,
+    AppConfig, FrameMirrorMode, LineMode, OverlayPosition, RgbaColor, VisualizerColorMode,
+    VisualizerLayout,
 };
 use kwybars_common::theme::ThemePalette;
 use kwybars_engine::live::LiveFrameStream;
@@ -160,6 +161,12 @@ fn build_drawing_area(
     let bar_color_mode = config.visualizer.color_mode;
     let bar_color = config.visualizer.color_rgba;
     let bar_color2 = config.visualizer.color2_rgba;
+    let line_mode = match config.visualizer.line_mode {
+        LineMode::Continuous => draw::LinearBarMode::Continuous,
+        LineMode::Split => draw::LinearBarMode::Split {
+            center_gap: f64::from(config.visualizer.line_split_gap),
+        },
+    };
     let radial_inner_radius = f64::from(config.visualizer.radial_inner_radius.max(1));
     let radial_start_angle = f64::from(config.visualizer.radial_start_angle).to_radians();
     let radial_arc_radians = f64::from(config.visualizer.radial_arc_degrees).to_radians();
@@ -461,13 +468,16 @@ fn build_drawing_area(
 
             if let Some(colors) = theme_colors.as_ref() {
                 if is_horizontal {
-                    draw::for_each_horizontal_bar(
+                    draw::for_each_horizontal_bar_mode(
                         &values,
-                        f64::from(width),
-                        f64::from(height),
-                        bar_style.thickness,
-                        bar_style.gap,
-                        is_top,
+                        draw::HorizontalBarLayout {
+                            width: f64::from(width),
+                            height: f64::from(height),
+                            bar_thickness: bar_style.thickness,
+                            gap: bar_style.gap,
+                            from_top: is_top,
+                            mode: line_mode,
+                        },
                         |index, x, y, bar_width, bar_height| {
                             let color_idx =
                                 draw::bar_color_index(index, values.len(), colors.len());
@@ -496,13 +506,16 @@ fn build_drawing_area(
                         },
                     );
                 } else {
-                    draw::for_each_vertical_bar(
+                    draw::for_each_vertical_bar_mode(
                         &values,
-                        f64::from(width),
-                        f64::from(height),
-                        bar_style.thickness,
-                        bar_style.gap,
-                        is_left,
+                        draw::VerticalBarLayout {
+                            width: f64::from(width),
+                            height: f64::from(height),
+                            bar_thickness: bar_style.thickness,
+                            gap: bar_style.gap,
+                            from_left: is_left,
+                            mode: line_mode,
+                        },
                         |index, x, y, bar_width, bar_height| {
                             let color_idx =
                                 draw::bar_color_index(index, values.len(), colors.len());
@@ -584,22 +597,32 @@ fn build_drawing_area(
             }
 
             if is_horizontal {
-                draw::draw_horizontal_bars(
+                draw::draw_horizontal_bars_mode(
                     ctx,
                     &values,
-                    f64::from(width),
-                    f64::from(height),
+                    draw::HorizontalBarLayout {
+                        width: f64::from(width),
+                        height: f64::from(height),
+                        bar_thickness: bar_style.thickness,
+                        gap: bar_style.gap,
+                        from_top: is_top,
+                        mode: line_mode,
+                    },
                     bar_style,
-                    is_top,
                 );
             } else {
-                draw::draw_vertical_bars(
+                draw::draw_vertical_bars_mode(
                     ctx,
                     &values,
-                    f64::from(width),
-                    f64::from(height),
+                    draw::VerticalBarLayout {
+                        width: f64::from(width),
+                        height: f64::from(height),
+                        bar_thickness: bar_style.thickness,
+                        gap: bar_style.gap,
+                        from_left: is_left,
+                        mode: line_mode,
+                    },
                     bar_style,
-                    is_left,
                 );
             }
 
