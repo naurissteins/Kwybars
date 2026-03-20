@@ -82,6 +82,15 @@ impl OverlayProcess {
     }
 }
 
+impl Drop for OverlayProcess {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
 fn build_command(daemon: &DaemonConfig, config_path: &Path) -> Command {
     let command_name = if daemon.overlay_command.trim().is_empty() {
         "kwybars-overlay"
