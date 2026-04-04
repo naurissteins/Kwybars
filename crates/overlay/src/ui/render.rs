@@ -306,6 +306,13 @@ pub(super) fn build_drawing_area(
             }
 
             if is_wave {
+                let glow_stroke_width = (wave_stroke_width * 3.0).max(wave_stroke_width + 2.0);
+                let wave_padding_extra = 6.0;
+                let wave_edge_padding = if wave_glow {
+                    (glow_stroke_width * 0.5) + wave_padding_extra
+                } else {
+                    (wave_stroke_width * 0.5) + wave_padding_extra
+                };
                 let axis_start = (0.0, 0.0);
                 let axis_end = if is_horizontal {
                     (f64::from(width), 0.0)
@@ -325,6 +332,7 @@ pub(super) fn build_drawing_area(
                     width: f64::from(width),
                     height: f64::from(height),
                     stroke_width: wave_stroke_width,
+                    edge_padding: wave_edge_padding,
                     smoothing: wave_smoothing,
                     amplitude: wave_amplitude,
                     from_start: is_top || is_left,
@@ -341,7 +349,7 @@ pub(super) fn build_drawing_area(
                         ..wave_source
                     };
                     set_wave_source(ctx, glow_source);
-                    ctx.set_line_width((wave_stroke_width * 3.0).max(wave_stroke_width + 2.0));
+                    ctx.set_line_width(glow_stroke_width);
                     if is_horizontal {
                         draw::append_horizontal_wave_path(ctx, &values, wave_layout, 0.0, 0.0);
                     } else {

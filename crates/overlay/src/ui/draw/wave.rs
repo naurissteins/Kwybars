@@ -90,9 +90,9 @@ pub fn append_horizontal_wave_fill_path(
         curve_control_scale(layout.smoothing),
         |first, last| {
             let baseline_y = if layout.from_start {
-                layout.stroke_width * 0.5
+                layout.edge_padding
             } else {
-                layout.height - layout.stroke_width * 0.5
+                layout.height - layout.edge_padding
             };
             [
                 WavePoint {
@@ -126,9 +126,9 @@ pub fn append_vertical_wave_fill_path(
         curve_control_scale(layout.smoothing),
         |first, last| {
             let baseline_x = if layout.from_start {
-                layout.stroke_width * 0.5
+                layout.edge_padding
             } else {
-                layout.width - layout.stroke_width * 0.5
+                layout.width - layout.edge_padding
             };
             [
                 WavePoint {
@@ -155,14 +155,16 @@ fn wave_points(
         return Vec::new();
     }
 
-    let stroke_half = (layout.stroke_width * 0.5).max(0.5);
-    let secondary_min = stroke_half;
-    let secondary_max = (secondary_extent - stroke_half).max(secondary_min);
+    let edge_padding = layout
+        .edge_padding
+        .max((layout.stroke_width * 0.5).max(0.5));
+    let secondary_min = edge_padding;
+    let secondary_max = (secondary_extent - edge_padding).max(secondary_min);
     let secondary_span = (secondary_max - secondary_min).max(0.0);
 
     let center_secondary = secondary_min + (secondary_span * 0.5);
     let mean_value = mean_value(values);
-    let primary_positions = wave_positions(values.len(), primary_extent, stroke_half, layout.mode);
+    let primary_positions = wave_positions(values.len(), primary_extent, edge_padding, layout.mode);
 
     primary_positions
         .into_iter()

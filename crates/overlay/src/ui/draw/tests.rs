@@ -219,6 +219,7 @@ fn horizontal_wave_points_center_flat_input() {
             width: 300.0,
             height: 100.0,
             stroke_width: 4.0,
+            edge_padding: 5.0,
             smoothing: 1.0,
             amplitude: 1.0,
             from_start: false,
@@ -240,6 +241,7 @@ fn horizontal_wave_split_preserves_center_gap() {
             width: 400.0,
             height: 100.0,
             stroke_width: 4.0,
+            edge_padding: 5.0,
             smoothing: 1.0,
             amplitude: 1.0,
             from_start: false,
@@ -259,6 +261,7 @@ fn vertical_wave_points_span_width_from_relative_levels() {
             width: 100.0,
             height: 200.0,
             stroke_width: 4.0,
+            edge_padding: 5.0,
             smoothing: 1.0,
             amplitude: 1.0,
             from_start: false,
@@ -289,6 +292,7 @@ fn quiet_wave_variation_stays_close_to_center() {
             width: 300.0,
             height: 100.0,
             stroke_width: 4.0,
+            edge_padding: 5.0,
             smoothing: 1.0,
             amplitude: 1.0,
             from_start: false,
@@ -310,6 +314,7 @@ fn wave_amplitude_scales_height_without_reintroducing_full_range_expansion() {
             width: 200.0,
             height: 100.0,
             stroke_width: 4.0,
+            edge_padding: 5.0,
             smoothing: 1.0,
             amplitude: 0.5,
             from_start: false,
@@ -322,6 +327,7 @@ fn wave_amplitude_scales_height_without_reintroducing_full_range_expansion() {
             width: 200.0,
             height: 100.0,
             stroke_width: 4.0,
+            edge_padding: 5.0,
             smoothing: 1.0,
             amplitude: 1.5,
             from_start: false,
@@ -343,6 +349,7 @@ fn wave_from_start_inverts_horizontal_direction() {
             width: 200.0,
             height: 100.0,
             stroke_width: 4.0,
+            edge_padding: 5.0,
             smoothing: 1.0,
             amplitude: 1.0,
             from_start: false,
@@ -355,6 +362,7 @@ fn wave_from_start_inverts_horizontal_direction() {
             width: 200.0,
             height: 100.0,
             stroke_width: 4.0,
+            edge_padding: 5.0,
             smoothing: 1.0,
             amplitude: 1.0,
             from_start: true,
@@ -366,4 +374,25 @@ fn wave_from_start_inverts_horizontal_direction() {
     assert_eq!(top.len(), 2);
     assert!(top[0].y < bottom[0].y);
     assert!(top[1].y > bottom[1].y);
+}
+
+#[test]
+fn wave_edge_padding_keeps_strong_peaks_off_the_border() {
+    let points = horizontal_wave_points(
+        &[0.0, 1.0],
+        WaveLayout {
+            width: 200.0,
+            height: 100.0,
+            stroke_width: 10.0,
+            edge_padding: 8.0,
+            smoothing: 1.0,
+            amplitude: 1.0,
+            from_start: false,
+            mode: LinearBarMode::Continuous,
+        },
+    );
+
+    assert_eq!(points.len(), 2);
+    assert!(points[0].y <= 92.0);
+    assert!(points[1].y >= 8.0);
 }

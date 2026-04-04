@@ -135,6 +135,7 @@ pub struct WaveLayout {
     pub width: f64,
     pub height: f64,
     pub stroke_width: f64,
+    pub edge_padding: f64,
     pub smoothing: f64,
     pub amplitude: f64,
     pub from_start: bool,
