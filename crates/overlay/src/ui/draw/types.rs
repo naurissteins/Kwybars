@@ -130,6 +130,17 @@ pub struct MirrorVerticalLayout {
     pub mode: LinearBarMode,
 }
 
+#[derive(Clone, Copy)]
+pub struct WaveLayout {
+    pub width: f64,
+    pub height: f64,
+    pub stroke_width: f64,
+    pub smoothing: f64,
+    pub amplitude: f64,
+    pub from_start: bool,
+    pub mode: LinearBarMode,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RadialDistribution {
     pub(crate) first_angle: f64,

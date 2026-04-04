@@ -292,7 +292,7 @@ fn effective_mirror_gap(total_extent: f64, requested_gap: f64) -> f64 {
     requested_gap.clamp(0.0, (total_extent - 2.0).max(0.0))
 }
 
-fn for_each_linear_slot(
+pub(crate) fn for_each_linear_slot(
     count: usize,
     available_length: f64,
     item_thickness: f64,

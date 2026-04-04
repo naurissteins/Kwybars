@@ -162,6 +162,30 @@ pub fn doctor(path: &Path) -> Result<String, ControlError> {
             config.visualizer.mirror_gap
         ));
         lines.push(format!(
+            "visualizer.wave_stroke_width: {}",
+            config.visualizer.wave_stroke_width
+        ));
+        lines.push(format!(
+            "visualizer.wave_fill: {}",
+            config.visualizer.wave_fill
+        ));
+        lines.push(format!(
+            "visualizer.wave_glow: {}",
+            config.visualizer.wave_glow
+        ));
+        lines.push(format!(
+            "visualizer.wave_smoothing: {}",
+            config.visualizer.wave_smoothing
+        ));
+        lines.push(format!(
+            "visualizer.wave_motion_smoothing: {}",
+            config.visualizer.wave_motion_smoothing
+        ));
+        lines.push(format!(
+            "visualizer.wave_amplitude: {}",
+            config.visualizer.wave_amplitude
+        ));
+        lines.push(format!(
             "visualizer.color_mode: {}",
             config.visualizer.color_mode
         ));

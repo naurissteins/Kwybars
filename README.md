@@ -24,6 +24,7 @@ https://github.com/user-attachments/assets/5fe84372-86be-49a8-b9c0-6564e81f1eaa
 -   Solid or gradient bar colors
 -   Segmented bar style (oldschool split blocks)
 -   Mirror layout for centered horizontal or vertical mirrored lines
+-   Wave layout for continuous non-bar visualizers
 -   Radial layout (circular)
 -   Particle layout (pulsating dots)
 -   Frame layout for top+bottom, left+right, or all monitor edges at once
@@ -253,11 +254,17 @@ overlay_args = []
 - `monitors`: monitor selector list (connector names like `DP-1` or 1-based indices like `"1"`), used when `monitor_mode="list"`. (`monitors = ["DP-1", "HDMI-A-1"]`)
 
 `[visualizer]`
-- `layout`: layout mode: `line|mirror|frame|radial|polygon|particle|floating`.
+- `layout`: layout mode: `line|mirror|wave|frame|radial|polygon|particle|floating`.
 - `line_mode`: line layout variant: `continuous|split` (default: `continuous`).
 - `line_split_gap`: center gap size in pixels when `line_mode="split"` (default: `200`).
 - `mirror_orientation`: center-axis mirror direction for `layout="mirror"`: `horizontal|vertical` (default: `horizontal`).
 - `mirror_gap`: empty gap in pixels between the two mirrored halves for `layout="mirror"` (default: `0`).
+- `wave_stroke_width`: wave line thickness in pixels for `layout="wave"` (default: `10`).
+- `wave_fill`: draw a low-opacity fill under the wave for `layout="wave"` (default: `true`).
+- `wave_glow`: draw a soft glow stroke behind the wave line for `layout="wave"` (default: `false`).
+- `wave_smoothing`: curve smoothing factor for `layout="wave"` (`0` = sharper, `1` = default, higher = softer; default: `1.0`).
+- `wave_motion_smoothing`: temporal smoothing for wave movement (`0` = raw/fast, higher = softer/slower; default: `0.22`).
+- `wave_amplitude`: overall wave height multiplier (`0.8` default, lower = flatter, higher = taller).
 - `bars`: number of bars.
 - `bar_width`: base bar thickness in pixels.
 - `bar_corner_radius`: bar corner radius in pixels (`0` = square bars).
@@ -328,6 +335,19 @@ line_mode = "split"
 line_split_gap = 220
 center_offset_x = 0
 center_offset_y = 0
+```
+
+Example wave layout:
+
+```toml
+[visualizer]
+layout = "wave"
+wave_stroke_width = 10
+wave_fill = true
+wave_glow = false
+wave_smoothing = 1.0
+wave_motion_smoothing = 0.22
+wave_amplitude = 0.8
 ```
 
 Example frame layout on all sides:

@@ -31,6 +31,12 @@ fn parses_valid_config() {
         line_split_gap = 220
         mirror_orientation = "vertical"
         mirror_gap = 24
+        wave_stroke_width = 6
+        wave_fill = false
+        wave_glow = true
+        wave_smoothing = 1.4
+        wave_motion_smoothing = 0.3
+        wave_amplitude = 1.25
         frame_edges = ["top", "bottom"]
         frame_mirror_mode = "pairs"
         bars = 64
@@ -105,6 +111,12 @@ fn parses_valid_config() {
         MirrorOrientation::Vertical
     );
     assert_eq!(parsed.visualizer.mirror_gap, 24);
+    assert_eq!(parsed.visualizer.wave_stroke_width, 6);
+    assert!(!parsed.visualizer.wave_fill);
+    assert!(parsed.visualizer.wave_glow);
+    assert!((parsed.visualizer.wave_smoothing - 1.4).abs() < 1e-5);
+    assert!((parsed.visualizer.wave_motion_smoothing - 0.3).abs() < 1e-5);
+    assert!((parsed.visualizer.wave_amplitude - 1.25).abs() < 1e-5);
     assert_eq!(
         parsed.visualizer.frame_edges,
         vec![OverlayPosition::Top, OverlayPosition::Bottom]
@@ -196,6 +208,12 @@ fn built_in_defaults_match_expected_no_config_setup() {
         MirrorOrientation::Horizontal
     );
     assert_eq!(config.visualizer.mirror_gap, 0);
+    assert_eq!(config.visualizer.wave_stroke_width, 10);
+    assert!(config.visualizer.wave_fill);
+    assert!(!config.visualizer.wave_glow);
+    assert!((config.visualizer.wave_smoothing - 1.0).abs() < 1e-5);
+    assert!((config.visualizer.wave_motion_smoothing - 0.22).abs() < 1e-5);
+    assert!((config.visualizer.wave_amplitude - 0.8).abs() < 1e-5);
     assert_eq!(
         config.visualizer.frame_edges,
         vec![OverlayPosition::Top, OverlayPosition::Bottom]
@@ -310,7 +328,7 @@ fn display_tokens_round_trip_with_enum_parsers() {
     assert_round_trip!(OverlayMonitorMode [Primary, All, List]);
     assert_round_trip!(VisualizerBackend [Auto, Pipewire, Cava, Dummy]);
     assert_round_trip!(VisualizerColorMode [Solid, Gradient]);
-    assert_round_trip!(VisualizerLayout [Line, Mirror, Frame, Radial, Polygon, Particle, Floating]);
+    assert_round_trip!(VisualizerLayout [Line, Mirror, Wave, Frame, Radial, Polygon, Particle, Floating]);
     assert_round_trip!(LineMode [Continuous, Split]);
     assert_round_trip!(MirrorOrientation [Horizontal, Vertical]);
     assert_round_trip!(FrameMirrorMode [Off, All, Pairs]);

@@ -195,6 +195,14 @@ fn parse_visualizer_key(
         "line_split_gap" => visualizer.line_split_gap = parse_u32(key, value)?,
         "mirror_orientation" => visualizer.mirror_orientation = MirrorOrientation::parse(value)?,
         "mirror_gap" => visualizer.mirror_gap = parse_u32(key, value)?,
+        "wave_stroke_width" => visualizer.wave_stroke_width = parse_u32(key, value)?.max(1),
+        "wave_fill" => visualizer.wave_fill = parse_bool(key, value)?,
+        "wave_glow" => visualizer.wave_glow = parse_bool(key, value)?,
+        "wave_smoothing" => visualizer.wave_smoothing = parse_f32(key, value)?.max(0.0),
+        "wave_motion_smoothing" => {
+            visualizer.wave_motion_smoothing = parse_f32(key, value)?.max(0.0);
+        }
+        "wave_amplitude" => visualizer.wave_amplitude = parse_f32(key, value)?.max(0.0),
         "frame_edges" => visualizer.frame_edges = parse_overlay_position_list(value)?,
         "frame_mirror_mode" => visualizer.frame_mirror_mode = FrameMirrorMode::parse(value)?,
         "frame_mirror" => {

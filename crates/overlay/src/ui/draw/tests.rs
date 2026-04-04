@@ -2,9 +2,10 @@ use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
 use super::{
     BarStyle, HorizontalBarLayout, LinearBarMode, MirrorHorizontalLayout, MirrorVerticalLayout,
-    PolygonLayout, VerticalBarLayout, bar_color_index, for_each_horizontal_bar_mode,
-    for_each_horizontal_mirror_bar_mode, for_each_polygon_bar, for_each_segment_span,
-    for_each_vertical_bar_mode, for_each_vertical_mirror_bar_mode, radial_distribution,
+    PolygonLayout, VerticalBarLayout, WaveLayout, bar_color_index, curve_control_scale,
+    for_each_horizontal_bar_mode, for_each_horizontal_mirror_bar_mode, for_each_polygon_bar,
+    for_each_segment_span, for_each_vertical_bar_mode, for_each_vertical_mirror_bar_mode,
+    horizontal_wave_points, radial_distribution, vertical_wave_points,
 };
 
 #[test]
@@ -208,4 +209,161 @@ fn vertical_mirror_gap_offsets_both_halves_from_center() {
     );
 
     assert_eq!(measurements, vec![(40.0, 10.0)]);
+}
+
+#[test]
+fn horizontal_wave_points_center_flat_input() {
+    let points = horizontal_wave_points(
+        &[0.4, 0.4, 0.4],
+        WaveLayout {
+            width: 300.0,
+            height: 100.0,
+            stroke_width: 4.0,
+            smoothing: 1.0,
+            amplitude: 1.0,
+            from_start: false,
+            mode: LinearBarMode::Continuous,
+        },
+    );
+
+    assert_eq!(points.len(), 3);
+    for point in points {
+        assert!((point.y - 50.0).abs() < 1e-6);
+    }
+}
+
+#[test]
+fn horizontal_wave_split_preserves_center_gap() {
+    let points = horizontal_wave_points(
+        &[0.1, 0.9, 0.3, 0.7],
+        WaveLayout {
+            width: 400.0,
+            height: 100.0,
+            stroke_width: 4.0,
+            smoothing: 1.0,
+            amplitude: 1.0,
+            from_start: false,
+            mode: LinearBarMode::Split { center_gap: 80.0 },
+        },
+    );
+
+    assert_eq!(points.len(), 4);
+    assert!(points[2].x - points[1].x >= 80.0 - 1e-6);
+}
+
+#[test]
+fn vertical_wave_points_span_width_from_relative_levels() {
+    let points = vertical_wave_points(
+        &[0.0, 1.0],
+        WaveLayout {
+            width: 100.0,
+            height: 200.0,
+            stroke_width: 4.0,
+            smoothing: 1.0,
+            amplitude: 1.0,
+            from_start: false,
+            mode: LinearBarMode::Continuous,
+        },
+    );
+
+    assert_eq!(points.len(), 2);
+    assert!(points[0].x > points[1].x);
+    assert!(points[0].x < 98.0);
+    assert!(points[1].x > 2.0);
+    assert!(points[0].x > 50.0);
+    assert!(points[1].x < 50.0);
+}
+
+#[test]
+fn wave_smoothing_scale_is_clamped() {
+    assert!((curve_control_scale(0.0) - 0.0).abs() < 1e-9);
+    assert!((curve_control_scale(1.0) - (1.0 / 6.0)).abs() < 1e-9);
+    assert!((curve_control_scale(3.0) - (2.0 / 6.0)).abs() < 1e-9);
+}
+
+#[test]
+fn quiet_wave_variation_stays_close_to_center() {
+    let points = horizontal_wave_points(
+        &[0.10, 0.12, 0.11],
+        WaveLayout {
+            width: 300.0,
+            height: 100.0,
+            stroke_width: 4.0,
+            smoothing: 1.0,
+            amplitude: 1.0,
+            from_start: false,
+            mode: LinearBarMode::Continuous,
+        },
+    );
+
+    assert_eq!(points.len(), 3);
+    for point in points {
+        assert!((point.y - 50.0).abs() < 4.0);
+    }
+}
+
+#[test]
+fn wave_amplitude_scales_height_without_reintroducing_full_range_expansion() {
+    let low = horizontal_wave_points(
+        &[0.0, 1.0],
+        WaveLayout {
+            width: 200.0,
+            height: 100.0,
+            stroke_width: 4.0,
+            smoothing: 1.0,
+            amplitude: 0.5,
+            from_start: false,
+            mode: LinearBarMode::Continuous,
+        },
+    );
+    let high = horizontal_wave_points(
+        &[0.0, 1.0],
+        WaveLayout {
+            width: 200.0,
+            height: 100.0,
+            stroke_width: 4.0,
+            smoothing: 1.0,
+            amplitude: 1.5,
+            from_start: false,
+            mode: LinearBarMode::Continuous,
+        },
+    );
+
+    assert_eq!(low.len(), 2);
+    assert_eq!(high.len(), 2);
+    assert!(high[0].y > low[0].y);
+    assert!(high[1].y < low[1].y);
+}
+
+#[test]
+fn wave_from_start_inverts_horizontal_direction() {
+    let bottom = horizontal_wave_points(
+        &[0.0, 1.0],
+        WaveLayout {
+            width: 200.0,
+            height: 100.0,
+            stroke_width: 4.0,
+            smoothing: 1.0,
+            amplitude: 1.0,
+            from_start: false,
+            mode: LinearBarMode::Continuous,
+        },
+    );
+    let top = horizontal_wave_points(
+        &[0.0, 1.0],
+        WaveLayout {
+            width: 200.0,
+            height: 100.0,
+            stroke_width: 4.0,
+            smoothing: 1.0,
+            amplitude: 1.0,
+            from_start: true,
+            mode: LinearBarMode::Continuous,
+        },
+    );
+
+    assert_eq!(bottom.len(), 2);
+    assert_eq!(top.len(), 2);
+    assert!(top[0].y < bottom[0].y);
+    assert!(top[1].y > bottom[1].y);
 }

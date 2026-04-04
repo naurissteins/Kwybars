@@ -6,7 +6,8 @@ use std::time::Instant;
 use gtk::glib;
 use gtk::prelude::*;
 use kwybars_common::config::{
-    AppConfig, LineMode, MirrorOrientation, OverlayPosition, VisualizerColorMode, VisualizerLayout,
+    AppConfig, LineMode, MirrorOrientation, OverlayPosition, RgbaColor, VisualizerColorMode,
+    VisualizerLayout,
 };
 use kwybars_common::theme::ThemePalette;
 use kwybars_engine::live::LiveFrameStream;
@@ -26,6 +27,17 @@ struct FloatingParticle {
     velocity: f64,
 }
 
+#[derive(Clone, Copy)]
+struct WaveSource<'a> {
+    axis_start: (f64, f64),
+    axis_end: (f64, f64),
+    color_mode: VisualizerColorMode,
+    color: RgbaColor,
+    color2: RgbaColor,
+    theme_colors: Option<&'a [RgbaColor]>,
+    alpha_scale: f64,
+}
+
 pub(super) fn build_drawing_area(
     config: &AppConfig,
     stream: Rc<LiveFrameStream>,
@@ -37,6 +49,7 @@ pub(super) fn build_drawing_area(
     let is_top = matches!(position, OverlayPosition::Top);
     let is_radial = config.visualizer.layout == VisualizerLayout::Radial;
     let is_mirror = config.visualizer.layout == VisualizerLayout::Mirror;
+    let is_wave = config.visualizer.layout == VisualizerLayout::Wave;
     let is_frame = config.visualizer.layout == VisualizerLayout::Frame;
     let is_polygon = config.visualizer.layout == VisualizerLayout::Polygon;
     let is_particle = config.visualizer.layout == VisualizerLayout::Particle;
@@ -78,6 +91,12 @@ pub(super) fn build_drawing_area(
         },
     };
     let mirror_gap = f64::from(config.visualizer.mirror_gap);
+    let wave_stroke_width = f64::from(config.visualizer.wave_stroke_width.max(1));
+    let wave_fill = config.visualizer.wave_fill;
+    let wave_glow = config.visualizer.wave_glow;
+    let wave_smoothing = f64::from(config.visualizer.wave_smoothing);
+    let wave_motion_smoothing = f64::from(config.visualizer.wave_motion_smoothing.clamp(0.0, 1.0));
+    let wave_amplitude = f64::from(config.visualizer.wave_amplitude);
     let radial_inner_radius = f64::from(config.visualizer.radial_inner_radius.max(1));
     let radial_start_angle = f64::from(config.visualizer.radial_start_angle).to_radians();
     let radial_arc_radians = f64::from(config.visualizer.radial_arc_degrees).to_radians();
@@ -283,6 +302,84 @@ pub(super) fn build_drawing_area(
                         }
                     },
                 );
+                return;
+            }
+
+            if is_wave {
+                let axis_start = (0.0, 0.0);
+                let axis_end = if is_horizontal {
+                    (f64::from(width), 0.0)
+                } else {
+                    (0.0, f64::from(height))
+                };
+                let wave_source = WaveSource {
+                    axis_start,
+                    axis_end,
+                    color_mode: bar_color_mode,
+                    color: bar_color,
+                    color2: bar_color2,
+                    theme_colors: theme_colors.as_deref(),
+                    alpha_scale: 1.0,
+                };
+                let wave_layout = draw::WaveLayout {
+                    width: f64::from(width),
+                    height: f64::from(height),
+                    stroke_width: wave_stroke_width,
+                    smoothing: wave_smoothing,
+                    amplitude: wave_amplitude,
+                    from_start: is_top || is_left,
+                    mode: line_mode,
+                };
+
+                ctx.set_line_width(wave_stroke_width);
+                ctx.set_line_cap(gtk::cairo::LineCap::Round);
+                ctx.set_line_join(gtk::cairo::LineJoin::Round);
+
+                if wave_glow {
+                    let glow_source = WaveSource {
+                        alpha_scale: 0.18,
+                        ..wave_source
+                    };
+                    set_wave_source(ctx, glow_source);
+                    ctx.set_line_width((wave_stroke_width * 3.0).max(wave_stroke_width + 2.0));
+                    if is_horizontal {
+                        draw::append_horizontal_wave_path(ctx, &values, wave_layout, 0.0, 0.0);
+                    } else {
+                        draw::append_vertical_wave_path(ctx, &values, wave_layout, 0.0, 0.0);
+                    }
+                    if ctx.stroke().is_err() {
+                        error!("kwybars: cairo stroke failed");
+                    }
+                    ctx.set_line_width(wave_stroke_width);
+                }
+
+                if wave_fill {
+                    let fill_source = WaveSource {
+                        alpha_scale: 0.24,
+                        ..wave_source
+                    };
+                    set_wave_source(ctx, fill_source);
+                    if is_horizontal {
+                        draw::append_horizontal_wave_fill_path(ctx, &values, wave_layout, 0.0, 0.0);
+                    } else {
+                        draw::append_vertical_wave_fill_path(ctx, &values, wave_layout, 0.0, 0.0);
+                    }
+                    if ctx.fill().is_err() {
+                        error!("kwybars: cairo fill failed");
+                    }
+                }
+
+                set_wave_source(ctx, wave_source);
+
+                if is_horizontal {
+                    draw::append_horizontal_wave_path(ctx, &values, wave_layout, 0.0, 0.0);
+                } else {
+                    draw::append_vertical_wave_path(ctx, &values, wave_layout, 0.0, 0.0);
+                }
+
+                if ctx.stroke().is_err() {
+                    error!("kwybars: cairo stroke failed");
+                }
                 return;
             }
 
@@ -800,7 +897,16 @@ pub(super) fn build_drawing_area(
                 .zip(offsets.iter_mut())
             {
                 let val = f64::from(*value);
-                *slot = val;
+                if is_wave {
+                    let response = if val > *slot {
+                        (wave_motion_smoothing * 1.35).min(1.0)
+                    } else {
+                        (wave_motion_smoothing * 0.55).min(1.0)
+                    };
+                    *slot += (val - *slot) * response;
+                } else {
+                    *slot = val;
+                }
 
                 // Physics update: energy gives an upward impulse
                 if val > 0.05 {
@@ -829,4 +935,64 @@ pub(super) fn build_drawing_area(
 
 fn to_i32(value: u32) -> i32 {
     value.max(1).min(i32::MAX as u32) as i32
+}
+
+fn set_wave_source(ctx: &gtk::cairo::Context, source: WaveSource<'_>) {
+    if let Some(colors) = source.theme_colors {
+        if colors.len() == 1 {
+            let (r, g, b, a) = scaled_rgba(colors[0], source.alpha_scale);
+            ctx.set_source_rgba(r, g, b, a);
+            return;
+        }
+
+        let gradient = gtk::cairo::LinearGradient::new(
+            source.axis_start.0,
+            source.axis_start.1,
+            source.axis_end.0,
+            source.axis_end.1,
+        );
+        let stop_denom = (colors.len().saturating_sub(1)).max(1) as f64;
+        for (index, color) in colors.iter().enumerate() {
+            let (r, g, b, a) = scaled_rgba(*color, source.alpha_scale);
+            gradient.add_color_stop_rgba(index as f64 / stop_denom, r, g, b, a);
+        }
+        if ctx.set_source(&gradient).is_ok() {
+            return;
+        }
+
+        let (r, g, b, a) = scaled_rgba(colors[0], source.alpha_scale);
+        ctx.set_source_rgba(r, g, b, a);
+        return;
+    }
+
+    match source.color_mode {
+        VisualizerColorMode::Solid => {
+            let (r, g, b, a) = scaled_rgba(source.color, source.alpha_scale);
+            ctx.set_source_rgba(r, g, b, a);
+        }
+        VisualizerColorMode::Gradient => {
+            let gradient = gtk::cairo::LinearGradient::new(
+                source.axis_start.0,
+                source.axis_start.1,
+                source.axis_end.0,
+                source.axis_end.1,
+            );
+            let (r1, g1, b1, a1) = scaled_rgba(source.color, source.alpha_scale);
+            let (r2, g2, b2, a2) = scaled_rgba(source.color2, source.alpha_scale);
+            gradient.add_color_stop_rgba(0.0, r1, g1, b1, a1);
+            gradient.add_color_stop_rgba(1.0, r2, g2, b2, a2);
+            if ctx.set_source(&gradient).is_err() {
+                ctx.set_source_rgba(r1, g1, b1, a1);
+            }
+        }
+    }
+}
+
+fn scaled_rgba(color: RgbaColor, alpha_scale: f64) -> (f64, f64, f64, f64) {
+    (
+        f64::from(color.r),
+        f64::from(color.g),
+        f64::from(color.b),
+        (f64::from(color.a) * alpha_scale).clamp(0.0, 1.0),
+    )
 }
