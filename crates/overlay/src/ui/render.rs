@@ -60,8 +60,6 @@ pub(super) fn build_drawing_area(
             | VisualizerLayout::Frame
             | VisualizerLayout::Radial
             | VisualizerLayout::Polygon
-            | VisualizerLayout::Particle
-            | VisualizerLayout::Floating
     );
     let mirror_horizontal = matches!(
         config.visualizer.mirror_orientation,

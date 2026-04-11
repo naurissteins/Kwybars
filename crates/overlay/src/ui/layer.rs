@@ -294,8 +294,6 @@ fn uses_centered_layout(layout: VisualizerLayout) -> bool {
             | VisualizerLayout::Frame
             | VisualizerLayout::Radial
             | VisualizerLayout::Polygon
-            | VisualizerLayout::Particle
-            | VisualizerLayout::Floating
     )
 }
 
@@ -312,4 +310,25 @@ fn monitor_geometry(monitor: Option<&gdk::Monitor>) -> Option<gdk::Rectangle> {
 fn shrunk_extent(extent: i32, before: i32, after: i32) -> i32 {
     let total_margin = before.saturating_add(after);
     extent.saturating_sub(total_margin).max(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use kwybars_common::config::VisualizerLayout;
+
+    use super::uses_centered_layout;
+
+    #[test]
+    fn particle_layouts_follow_edge_positioning() {
+        assert!(!uses_centered_layout(VisualizerLayout::Particle));
+        assert!(!uses_centered_layout(VisualizerLayout::Floating));
+    }
+
+    #[test]
+    fn centered_shape_layouts_use_monitor_sized_window() {
+        assert!(uses_centered_layout(VisualizerLayout::Mirror));
+        assert!(uses_centered_layout(VisualizerLayout::Frame));
+        assert!(uses_centered_layout(VisualizerLayout::Radial));
+        assert!(uses_centered_layout(VisualizerLayout::Polygon));
+    }
 }
