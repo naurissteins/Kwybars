@@ -193,6 +193,10 @@ pub fn doctor(path: &Path) -> Result<String, ControlError> {
             "visualizer.frame_mirror_mode: {}",
             config.visualizer.frame_mirror_mode
         ));
+        lines.push(format!(
+            "visualizer.polygon_bar_length: {}",
+            config.visualizer.polygon_bar_length
+        ));
         if matches!(
             config.visualizer.backend,
             config::VisualizerBackend::Cava | config::VisualizerBackend::Auto

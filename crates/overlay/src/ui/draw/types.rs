@@ -44,6 +44,7 @@ pub struct PolygonLayout {
     pub width: f64,
     pub height: f64,
     pub radius: f64,
+    pub bar_length: f64,
     pub rotation_radians: f64,
     pub sides: usize,
 }

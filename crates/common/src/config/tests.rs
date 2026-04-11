@@ -53,6 +53,7 @@ fn parses_valid_config() {
         center_offset_y = -40
         polygon_sides = 3
         polygon_radius = 240
+        polygon_bar_length = 160
         polygon_rotation = -90
         polygon_rotation_speed = 12
         gap = 2
@@ -136,6 +137,7 @@ fn parses_valid_config() {
     assert!((parsed.visualizer.center_offset_y - (-40.0)).abs() < 1e-5);
     assert_eq!(parsed.visualizer.polygon_sides, 3);
     assert_eq!(parsed.visualizer.polygon_radius, 240);
+    assert_eq!(parsed.visualizer.polygon_bar_length, 160);
     assert!((parsed.visualizer.polygon_rotation - (-90.0)).abs() < 1e-5);
     assert!((parsed.visualizer.polygon_rotation_speed - 12.0).abs() < 1e-5);
     assert_eq!(parsed.visualizer.gap, 2);
@@ -230,6 +232,7 @@ fn built_in_defaults_match_expected_no_config_setup() {
     assert!(config.visualizer.center_offset_y.abs() < 1e-5);
     assert_eq!(config.visualizer.polygon_sides, 3);
     assert_eq!(config.visualizer.polygon_radius, 220);
+    assert_eq!(config.visualizer.polygon_bar_length, 0);
     assert!((config.visualizer.polygon_rotation - (-90.0)).abs() < 1e-5);
     assert!(config.visualizer.polygon_rotation_speed.abs() < 1e-5);
     assert_eq!(config.visualizer.gap, 20);

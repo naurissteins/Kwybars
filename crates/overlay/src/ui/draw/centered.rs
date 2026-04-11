@@ -67,7 +67,12 @@ pub fn for_each_polygon_bar(
         .max(10.0)
         .min((max_outer_radius - 10.0).max(10.0));
     let apothem = radius * (PI / layout.sides as f64).cos();
-    let max_length = (max_outer_radius - apothem).max(6.0);
+    let auto_max_length = (max_outer_radius - apothem).max(6.0);
+    let max_length = if layout.bar_length > 0.0 {
+        layout.bar_length.min(auto_max_length).max(2.0)
+    } else {
+        auto_max_length
+    };
     let vertices = regular_polygon_vertices(layout.sides, radius, layout.rotation_radians);
     let edge_length = polygon_edge_length(&vertices);
     if edge_length <= 0.0 {

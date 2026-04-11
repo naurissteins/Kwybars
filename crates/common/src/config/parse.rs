@@ -228,6 +228,7 @@ fn parse_visualizer_key(
         "center_offset_y" => visualizer.center_offset_y = parse_f32(key, value)?,
         "polygon_sides" => visualizer.polygon_sides = parse_u32(key, value)?.max(3),
         "polygon_radius" => visualizer.polygon_radius = parse_u32(key, value)?.max(1),
+        "polygon_bar_length" => visualizer.polygon_bar_length = parse_u32(key, value)?,
         "polygon_rotation" => visualizer.polygon_rotation = parse_f32(key, value)?,
         "polygon_rotation_speed" => visualizer.polygon_rotation_speed = parse_f32(key, value)?,
         "gap" => visualizer.gap = parse_u32(key, value)?,

@@ -106,6 +106,7 @@ pub(super) fn build_drawing_area(
     let center_offset_y = f64::from(config.visualizer.center_offset_y);
     let polygon_sides = config.visualizer.polygon_sides.max(3) as usize;
     let polygon_radius = f64::from(config.visualizer.polygon_radius.max(1));
+    let polygon_bar_length = f64::from(config.visualizer.polygon_bar_length);
     let polygon_rotation = f64::from(config.visualizer.polygon_rotation).to_radians();
     let polygon_rotation_radians_per_second =
         f64::from(config.visualizer.polygon_rotation_speed).to_radians();
@@ -672,6 +673,7 @@ pub(super) fn build_drawing_area(
                         width: f64::from(width),
                         height: f64::from(height),
                         radius: polygon_radius,
+                        bar_length: polygon_bar_length,
                         rotation_radians: animated_polygon_rotation,
                         sides: polygon_sides,
                     },

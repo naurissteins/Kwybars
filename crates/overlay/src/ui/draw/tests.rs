@@ -70,6 +70,7 @@ fn polygon_layout_distributes_bars_across_multiple_edges() {
             width: 800.0,
             height: 800.0,
             radius: 180.0,
+            bar_length: 0.0,
             rotation_radians: -FRAC_PI_2,
             sides: 3,
         },
@@ -87,6 +88,34 @@ fn polygon_layout_distributes_bars_across_multiple_edges() {
     angles.sort_unstable();
     angles.dedup();
     assert_eq!(angles.len(), 3);
+}
+
+#[test]
+fn polygon_bar_length_caps_outward_motion() {
+    let mut lengths = Vec::new();
+    for_each_polygon_bar(
+        &[1.0],
+        PolygonLayout {
+            width: 800.0,
+            height: 800.0,
+            radius: 180.0,
+            bar_length: 80.0,
+            rotation_radians: -FRAC_PI_2,
+            sides: 3,
+        },
+        BarStyle {
+            thickness: 8.0,
+            gap: 0.0,
+            corner_radius: 0.0,
+            segmented: false,
+            segment_length: 12.0,
+            segment_gap: 6.0,
+        },
+        |_, spec| lengths.push(spec.length),
+    );
+
+    assert_eq!(lengths.len(), 1);
+    assert!((lengths[0] - 80.0).abs() < 1e-6);
 }
 
 #[test]
