@@ -799,6 +799,7 @@ pub(super) fn build_drawing_area(
                         },
                     );
                 }
+                draw_image_overlay(ctx);
                 return;
             }
 
