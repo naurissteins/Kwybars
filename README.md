@@ -29,6 +29,7 @@ https://github.com/user-attachments/assets/5fe84372-86be-49a8-b9c0-6564e81f1eaa
 -   Particle layout (pulsating dots)
 -   Frame layout for top+bottom, left+right, or all monitor edges at once
 -   Polygon layout for triangle, square, hexagon, and similar shapes
+-   Optional transparent image overlay for Rainmeter-style compositions
 -   Hot reload config changes (no restart needed)
 -   Built-in themes and optional custom theme palettes (`~/.config/kwybars/themes/*.toml`)
 -   Optional but recommended `kwybars-daemon` that auto starts/stops overlay based on audio activity
@@ -80,7 +81,7 @@ systemctl --user enable --now kwybars-daemon.service
 Install dependencies:
 
 ``` bash
-sudo pacman -S --needed rust gtk4 gtk4-layer-shell pipewire cava
+sudo pacman -S --needed rust gdk-pixbuf2 gtk4 gtk4-layer-shell pipewire cava
 # optional: desktop error notifications
 sudo pacman -S --needed libnotify
 ```

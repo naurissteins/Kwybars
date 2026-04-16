@@ -17,6 +17,7 @@
             cargo
             rustc
             # Required system libraries
+            gdk-pixbuf
             gtk4
             gtk4-layer-shell
             pipewire

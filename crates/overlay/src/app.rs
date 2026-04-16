@@ -91,10 +91,11 @@ struct ConfigFilesStamp {
     config: ConfigStamp,
     colors: ConfigStamp,
     theme: ConfigStamp,
+    image: ConfigStamp,
 }
 
 impl ConfigFilesStamp {
-    fn read(config_path: &Path, theme_path: Option<&Path>) -> Self {
+    fn read(config_path: &Path, theme_path: Option<&Path>, image_path: Option<&Path>) -> Self {
         let resolved_config_path =
             resolve_runtime_config_path(config_path).unwrap_or_else(|| config_path.to_path_buf());
         let colors_path = config::default_colors_path(&resolved_config_path);
@@ -102,19 +103,37 @@ impl ConfigFilesStamp {
             config: ConfigStamp::read(config_path),
             colors: ConfigStamp::read(&colors_path),
             theme: theme_path.map(ConfigStamp::read).unwrap_or_default(),
+            image: image_path.map(ConfigStamp::read).unwrap_or_default(),
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
 struct RuntimeConfig {
     app_config: AppConfig,
     theme_palette: Option<ThemePalette>,
     theme_path: Option<PathBuf>,
+    image_overlay: Option<crate::ui::ImageOverlayLayer>,
+    image_path: Option<PathBuf>,
+    image_stamp: ConfigStamp,
     config_exists: bool,
     resolved_config_path: Option<PathBuf>,
     colors_path: PathBuf,
     colors_exists: bool,
+}
+
+impl PartialEq for RuntimeConfig {
+    fn eq(&self, other: &Self) -> bool {
+        self.app_config == other.app_config
+            && self.theme_palette == other.theme_palette
+            && self.theme_path == other.theme_path
+            && self.image_path == other.image_path
+            && self.image_stamp == other.image_stamp
+            && self.config_exists == other.config_exists
+            && self.resolved_config_path == other.resolved_config_path
+            && self.colors_path == other.colors_path
+            && self.colors_exists == other.colors_exists
+    }
 }
 
 pub fn run(config_path: PathBuf) -> Result<(), AppError> {
@@ -144,6 +163,9 @@ pub fn run(config_path: PathBuf) -> Result<(), AppError> {
     if let Some(theme_path) = runtime.theme_path.as_ref() {
         info!("theme path: {}", theme_path.display());
     }
+    if let Some(image_path) = runtime.image_path.as_ref() {
+        info!("image overlay path: {}", image_path.display());
+    }
 
     let app = gtk::Application::builder().application_id(APP_ID).build();
     app.connect_activate(move |app| {
@@ -153,8 +175,11 @@ pub fn run(config_path: PathBuf) -> Result<(), AppError> {
         let app_weak = app.downgrade();
         let config_path_for_reload = config_path.clone();
         let state_for_reload = Rc::clone(&state);
-        let mut last_processed_stamp =
-            ConfigFilesStamp::read(&config_path_for_reload, runtime.theme_path.as_deref());
+        let mut last_processed_stamp = ConfigFilesStamp::read(
+            &config_path_for_reload,
+            runtime.theme_path.as_deref(),
+            runtime.image_path.as_deref(),
+        );
         let mut pending_reload: Option<PendingReload> = None;
 
         glib::timeout_add_local(CONFIG_POLL_INTERVAL, move || {
@@ -166,8 +191,15 @@ pub fn run(config_path: PathBuf) -> Result<(), AppError> {
                 .borrow()
                 .as_ref()
                 .and_then(|running| running.runtime.theme_path.clone());
-            let next_stamp =
-                ConfigFilesStamp::read(&config_path_for_reload, current_theme_path.as_deref());
+            let current_image_path = state_for_reload
+                .borrow()
+                .as_ref()
+                .and_then(|running| running.runtime.image_path.clone());
+            let next_stamp = ConfigFilesStamp::read(
+                &config_path_for_reload,
+                current_theme_path.as_deref(),
+                current_image_path.as_deref(),
+            );
             let now = std::time::Instant::now();
 
             if next_stamp == last_processed_stamp {
@@ -260,6 +292,7 @@ fn apply_config(app: &gtk::Application, state: &OverlayState, next_runtime: Runt
         app,
         next_runtime.app_config.clone(),
         next_runtime.theme_palette.clone(),
+        next_runtime.image_overlay.clone(),
         Rc::clone(&next_stream),
     );
     let previous = state.borrow_mut().replace(RunningOverlay {
@@ -308,15 +341,59 @@ fn load_runtime_config(config_path: &Path) -> Result<RuntimeConfig, config::Conf
     }
 
     let (theme_palette, theme_path) = load_theme_for_config(&config, config_load_path);
+    let image_path = resolve_image_overlay_for_config(&config, config_load_path);
+    let image_stamp = image_path
+        .as_deref()
+        .map(ConfigStamp::read)
+        .unwrap_or_default();
+    let image_overlay = load_image_overlay_for_config(&config, image_path.as_deref());
     Ok(RuntimeConfig {
         app_config: config,
         theme_palette,
         theme_path,
+        image_overlay,
+        image_path,
+        image_stamp,
         resolved_config_path,
         config_exists,
         colors_path,
         colors_exists,
     })
+}
+
+fn resolve_image_overlay_for_config(config: &AppConfig, config_path: &Path) -> Option<PathBuf> {
+    if !config.image_overlay.enabled {
+        return None;
+    }
+
+    let raw_path = config.image_overlay.path.as_deref()?.trim();
+    if raw_path.is_empty() {
+        return None;
+    }
+
+    Some(config::resolve_image_overlay_path(config_path, raw_path))
+}
+
+fn load_image_overlay_for_config(
+    config: &AppConfig,
+    image_path: Option<&Path>,
+) -> Option<crate::ui::ImageOverlayLayer> {
+    let path = image_path?;
+
+    match crate::ui::ImageOverlayLayer::load(path, &config.image_overlay) {
+        Ok(image) => Some(image),
+        Err(err) => {
+            warn!("kwybars: image overlay load failed: {err}");
+            notify_error_with_cooldown(
+                "overlay.image_overlay_load_failed",
+                "Kwybars Image Overlay Error",
+                &format!("Image overlay load failed: {err}"),
+                config.daemon.notify_on_error,
+                Duration::from_secs(config.daemon.notify_cooldown_seconds),
+            );
+            None
+        }
+    }
 }
 
 fn resolve_runtime_config_path(path: &Path) -> Option<PathBuf> {

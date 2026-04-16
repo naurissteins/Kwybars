@@ -1,8 +1,8 @@
 use super::{
-    AppConfig, DaemonConfig, FrameMirrorMode, HorizontalAlignment, LineMode, MirrorOrientation,
-    OverlayLayer, OverlayMonitorMode, OverlayPosition, VerticalAlignment, VisualizerBackend,
-    VisualizerColorMode, VisualizerColorOverrides, VisualizerLayout, apply_color_overrides,
-    parse_color_overrides, parse_config,
+    AppConfig, DaemonConfig, FrameMirrorMode, HorizontalAlignment, ImageOverlayFit, LineMode,
+    MirrorOrientation, OverlayLayer, OverlayMonitorMode, OverlayPosition, VerticalAlignment,
+    VisualizerBackend, VisualizerColorMode, VisualizerColorOverrides, VisualizerLayout,
+    apply_color_overrides, parse_color_overrides, parse_config,
 };
 
 #[test]
@@ -68,6 +68,16 @@ fn parses_valid_config() {
         pipewire_gain = 1.5
         pipewire_curve = 0.8
         pipewire_neighbor_mix = 0.3
+
+        [image_overlay]
+        enabled = true
+        path = "~/Pictures/kwybars/mountain.png"
+        opacity = 0.82
+        fit = "cover"
+        width = 1200
+        height = 260
+        offset_x = 12
+        offset_y = -8
 
         [daemon]
         enabled = true
@@ -158,6 +168,17 @@ fn parses_valid_config() {
     assert_eq!(parsed.visualizer.pipewire_gain, 1.5);
     assert_eq!(parsed.visualizer.pipewire_curve, 0.8);
     assert_eq!(parsed.visualizer.pipewire_neighbor_mix, 0.3);
+    assert!(parsed.image_overlay.enabled);
+    assert_eq!(
+        parsed.image_overlay.path.as_deref(),
+        Some("~/Pictures/kwybars/mountain.png")
+    );
+    assert!((parsed.image_overlay.opacity - 0.82).abs() < 1e-5);
+    assert_eq!(parsed.image_overlay.fit, ImageOverlayFit::Cover);
+    assert_eq!(parsed.image_overlay.width, 1200);
+    assert_eq!(parsed.image_overlay.height, 260);
+    assert!((parsed.image_overlay.offset_x - 12.0).abs() < 1e-5);
+    assert!((parsed.image_overlay.offset_y - (-8.0)).abs() < 1e-5);
     assert_eq!(
         parsed.daemon,
         DaemonConfig {
@@ -246,6 +267,14 @@ fn built_in_defaults_match_expected_no_config_setup() {
     assert!((config.visualizer.color2_rgba.g - (198.0 / 255.0)).abs() < 1e-5);
     assert!((config.visualizer.color2_rgba.b - (220.0 / 255.0)).abs() < 1e-5);
     assert!((config.visualizer.color2_rgba.a - 0.7).abs() < 1e-5);
+    assert!(!config.image_overlay.enabled);
+    assert_eq!(config.image_overlay.path, None);
+    assert!((config.image_overlay.opacity - 1.0).abs() < 1e-5);
+    assert_eq!(config.image_overlay.fit, ImageOverlayFit::Contain);
+    assert_eq!(config.image_overlay.width, 0);
+    assert_eq!(config.image_overlay.height, 0);
+    assert!(config.image_overlay.offset_x.abs() < 1e-5);
+    assert!(config.image_overlay.offset_y.abs() < 1e-5);
 
     assert!(config.daemon.enabled);
     assert_eq!(config.daemon.poll_interval_ms, 90);
@@ -335,6 +364,7 @@ fn display_tokens_round_trip_with_enum_parsers() {
     assert_round_trip!(LineMode [Continuous, Split]);
     assert_round_trip!(MirrorOrientation [Horizontal, Vertical]);
     assert_round_trip!(FrameMirrorMode [Off, All, Pairs]);
+    assert_round_trip!(ImageOverlayFit [Contain, Cover, Stretch]);
 }
 
 #[test]

@@ -193,6 +193,63 @@ impl Default for OverlayConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImageOverlayFit {
+    Contain,
+    Cover,
+    Stretch,
+}
+
+impl ImageOverlayFit {
+    pub(crate) fn parse(value: &str) -> Result<Self, ConfigLoadError> {
+        match value {
+            "contain" => Ok(Self::Contain),
+            "cover" => Ok(Self::Cover),
+            "stretch" => Ok(Self::Stretch),
+            _ => Err(ConfigLoadError::Parse(format!(
+                "unknown image_overlay.fit value: {value}"
+            ))),
+        }
+    }
+}
+
+impl Display for ImageOverlayFit {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Contain => write!(f, "contain"),
+            Self::Cover => write!(f, "cover"),
+            Self::Stretch => write!(f, "stretch"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImageOverlayConfig {
+    pub enabled: bool,
+    pub path: Option<String>,
+    pub opacity: f32,
+    pub fit: ImageOverlayFit,
+    pub width: u32,
+    pub height: u32,
+    pub offset_x: f32,
+    pub offset_y: f32,
+}
+
+impl Default for ImageOverlayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            path: None,
+            opacity: 1.0,
+            fit: ImageOverlayFit::Contain,
+            width: 0,
+            height: 0,
+            offset_x: 0.0,
+            offset_y: 0.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VisualizerBackend {
     Auto,
@@ -547,6 +604,7 @@ impl Default for VisualizerConfig {
 pub struct AppConfig {
     pub overlay: OverlayConfig,
     pub visualizer: VisualizerConfig,
+    pub image_overlay: ImageOverlayConfig,
     pub daemon: DaemonConfig,
 }
 

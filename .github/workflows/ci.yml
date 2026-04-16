@@ -42,6 +42,7 @@ jobs:
             valac \
             gobject-introspection \
             libgirepository1.0-dev \
+            libgdk-pixbuf-2.0-dev \
             libgtk-4-dev \
             libcairo2-dev \
             libglib2.0-dev \
@@ -99,6 +100,7 @@ jobs:
             valac \
             gobject-introspection \
             libgirepository1.0-dev \
+            libgdk-pixbuf-2.0-dev \
             libgtk-4-dev \
             libcairo2-dev \
             libglib2.0-dev \

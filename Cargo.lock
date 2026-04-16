@@ -526,6 +526,7 @@ dependencies = [
 name = "kwybars-overlay"
 version = "0.1.6"
 dependencies = [
+ "gdk-pixbuf",
  "gtk4",
  "gtk4-layer-shell",
  "kwybars-common",

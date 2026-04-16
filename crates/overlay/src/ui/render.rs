@@ -19,6 +19,7 @@ use super::frame::{
     EdgePaint, FrameMetrics, frame_edge_rect, normalized_frame_edges, paint_line_edge,
     resolve_frame_edge_slice,
 };
+use super::image::ImageOverlayLayer;
 use super::style;
 
 #[derive(Clone, Copy, Default)]
@@ -42,6 +43,7 @@ pub(super) fn build_drawing_area(
     config: &AppConfig,
     stream: Rc<LiveFrameStream>,
     theme_palette: Option<ThemePalette>,
+    image_overlay: Option<ImageOverlayLayer>,
 ) -> gtk::DrawingArea {
     let position = config.overlay.position.clone();
     let is_horizontal = matches!(position, OverlayPosition::Bottom | OverlayPosition::Top);
@@ -163,6 +165,11 @@ pub(super) fn build_drawing_area(
             if values.is_empty() || width <= 0 || height <= 0 {
                 return;
             }
+            let draw_image_overlay = |ctx: &gtk::cairo::Context| {
+                if let Some(image) = image_overlay.as_ref() {
+                    image.draw(ctx, f64::from(width), f64::from(height));
+                }
+            };
 
             if is_floating {
                 let floating_orientation = if is_horizontal {
@@ -210,6 +217,7 @@ pub(super) fn build_drawing_area(
                         }
                     },
                 );
+                draw_image_overlay(ctx);
                 return;
             }
 
@@ -254,6 +262,7 @@ pub(super) fn build_drawing_area(
                         }
                     },
                 );
+                draw_image_overlay(ctx);
                 return;
             }
 
@@ -301,6 +310,7 @@ pub(super) fn build_drawing_area(
                         }
                     },
                 );
+                draw_image_overlay(ctx);
                 return;
             }
 
@@ -387,6 +397,7 @@ pub(super) fn build_drawing_area(
                 if ctx.stroke().is_err() {
                     error!("kwybars: cairo stroke failed");
                 }
+                draw_image_overlay(ctx);
                 return;
             }
 
@@ -527,6 +538,7 @@ pub(super) fn build_drawing_area(
                             },
                         );
                     }
+                    draw_image_overlay(ctx);
                     return;
                 }
 
@@ -608,6 +620,7 @@ pub(super) fn build_drawing_area(
                 if ctx.fill().is_err() {
                     error!("kwybars: cairo fill failed");
                 }
+                draw_image_overlay(ctx);
                 return;
             }
 
@@ -655,6 +668,7 @@ pub(super) fn build_drawing_area(
                     };
                     paint_line_edge(edge_slice.values, edge_rect, &edge_paint);
                 }
+                draw_image_overlay(ctx);
                 return;
             }
 
@@ -703,6 +717,7 @@ pub(super) fn build_drawing_area(
                         }
                     },
                 );
+                draw_image_overlay(ctx);
                 return;
             }
 
@@ -869,6 +884,7 @@ pub(super) fn build_drawing_area(
             if ctx.fill().is_err() {
                 error!("kwybars: cairo fill failed");
             }
+            draw_image_overlay(ctx);
         });
     }
 

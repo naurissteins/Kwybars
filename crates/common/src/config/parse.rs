@@ -3,10 +3,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::model::{
-    AppConfig, ConfigLoadError, DaemonConfig, FrameMirrorMode, HorizontalAlignment, LineMode,
-    MirrorOrientation, OverlayConfig, OverlayLayer, OverlayMonitorMode, OverlayPosition, RgbaColor,
-    VerticalAlignment, VisualizerBackend, VisualizerColorMode, VisualizerColorOverrides,
-    VisualizerConfig, VisualizerLayout,
+    AppConfig, ConfigLoadError, DaemonConfig, FrameMirrorMode, HorizontalAlignment,
+    ImageOverlayConfig, ImageOverlayFit, LineMode, MirrorOrientation, OverlayConfig, OverlayLayer,
+    OverlayMonitorMode, OverlayPosition, RgbaColor, VerticalAlignment, VisualizerBackend,
+    VisualizerColorMode, VisualizerColorOverrides, VisualizerConfig, VisualizerLayout,
 };
 
 pub fn default_config_path() -> PathBuf {
@@ -30,6 +30,26 @@ pub fn default_colors_path(config_path: &Path) -> PathBuf {
         Some(parent) => parent.join("colors.toml"),
         None => PathBuf::from("colors.toml"),
     }
+}
+
+pub fn resolve_image_overlay_path(config_path: &Path, image_path: &str) -> PathBuf {
+    let trimmed = image_path.trim();
+    let path = if let Some(rest) = trimmed.strip_prefix("~/") {
+        env::var("HOME")
+            .map(|home| PathBuf::from(home).join(rest))
+            .unwrap_or_else(|_| PathBuf::from(trimmed))
+    } else {
+        PathBuf::from(trimmed)
+    };
+
+    if path.is_absolute() {
+        return path;
+    }
+
+    config_path
+        .parent()
+        .map(|parent| parent.join(&path))
+        .unwrap_or(path)
 }
 
 pub fn load_or_default(path: &Path) -> Result<AppConfig, ConfigLoadError> {
@@ -85,6 +105,10 @@ pub(crate) fn parse_config(raw: &str) -> Result<AppConfig, ConfigLoadError> {
                 .map_err(|err| with_line_context(err, line_no))?,
             Some("visualizer") => parse_visualizer_key(&mut config.visualizer, key, &value)
                 .map_err(|err| with_line_context(err, line_no))?,
+            Some("image_overlay") => {
+                parse_image_overlay_key(&mut config.image_overlay, key, &value)
+                    .map_err(|err| with_line_context(err, line_no))?
+            }
             Some("daemon") => parse_daemon_key(&mut config.daemon, key, &value)
                 .map_err(|err| with_line_context(err, line_no))?,
             Some(other) => {
@@ -246,6 +270,29 @@ fn parse_visualizer_key(
         _ => {
             return Err(ConfigLoadError::Parse(format!(
                 "unknown visualizer key: {key}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn parse_image_overlay_key(
+    image_overlay: &mut ImageOverlayConfig,
+    key: &str,
+    value: &str,
+) -> Result<(), ConfigLoadError> {
+    match key {
+        "enabled" => image_overlay.enabled = parse_bool(key, value)?,
+        "path" => image_overlay.path = parse_optional_string(value),
+        "opacity" => image_overlay.opacity = parse_f32(key, value)?.clamp(0.0, 1.0),
+        "fit" => image_overlay.fit = ImageOverlayFit::parse(value)?,
+        "width" => image_overlay.width = parse_u32(key, value)?,
+        "height" => image_overlay.height = parse_u32(key, value)?,
+        "offset_x" => image_overlay.offset_x = parse_f32(key, value)?,
+        "offset_y" => image_overlay.offset_y = parse_f32(key, value)?,
+        _ => {
+            return Err(ConfigLoadError::Parse(format!(
+                "unknown image_overlay key: {key}"
             )));
         }
     }

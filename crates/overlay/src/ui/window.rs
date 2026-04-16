@@ -10,6 +10,7 @@ use tracing::info;
 use super::layer;
 use super::render::build_drawing_area;
 use super::style;
+use crate::ui::ImageOverlayLayer;
 
 pub fn spawn_frame_stream(config: &AppConfig) -> Rc<LiveFrameStream> {
     let stream = Rc::new(LiveFrameStream::spawn(config.visualizer.clone()));
@@ -21,6 +22,7 @@ pub fn build_overlay_windows(
     app: &gtk::Application,
     config: AppConfig,
     theme_palette: Option<ThemePalette>,
+    image_overlay: Option<ImageOverlayLayer>,
     stream: Rc<LiveFrameStream>,
 ) -> Vec<gtk::ApplicationWindow> {
     style::install_css();
@@ -31,6 +33,7 @@ pub fn build_overlay_windows(
             app,
             &config,
             theme_palette.clone(),
+            image_overlay.clone(),
             Rc::clone(&stream),
             None,
         )];
@@ -43,6 +46,7 @@ pub fn build_overlay_windows(
                 app,
                 &config,
                 theme_palette.clone(),
+                image_overlay.clone(),
                 Rc::clone(&stream),
                 Some(monitor),
             )
@@ -54,6 +58,7 @@ fn build_overlay_window(
     app: &gtk::Application,
     config: &AppConfig,
     theme_palette: Option<ThemePalette>,
+    image_overlay: Option<ImageOverlayLayer>,
     stream: Rc<LiveFrameStream>,
     monitor: Option<gdk::Monitor>,
 ) -> gtk::ApplicationWindow {
@@ -68,7 +73,7 @@ fn build_overlay_window(
     window.set_resizable(false);
     window.set_focusable(false);
 
-    let drawing_area = build_drawing_area(config, stream, theme_palette);
+    let drawing_area = build_drawing_area(config, stream, theme_palette, image_overlay);
     window.set_child(Some(&drawing_area));
 
     layer::apply_default_size(&window, config, monitor.as_ref());

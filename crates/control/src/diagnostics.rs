@@ -39,6 +39,7 @@ pub fn validate_config(path: &Path) -> Result<String, ControlError> {
             theme_summary = format!("theme: {} ({})", palette.name, theme_path.display());
         }
     }
+    let image_summary = validate_image_overlay_summary(config_load_path, &loaded)?;
 
     let config_summary = if path.exists() {
         format!("config: {} (ok)", path.display())
@@ -55,7 +56,7 @@ pub fn validate_config(path: &Path) -> Result<String, ControlError> {
     };
 
     Ok(format!(
-        "config validation passed\n{config_summary}\n{colors_summary}\n{theme_summary}"
+        "config validation passed\n{config_summary}\n{colors_summary}\n{theme_summary}\n{image_summary}"
     ))
 }
 
@@ -197,6 +198,7 @@ pub fn doctor(path: &Path) -> Result<String, ControlError> {
             "visualizer.polygon_bar_length: {}",
             config.visualizer.polygon_bar_length
         ));
+        report_image_overlay(config_load_path, config, &mut lines, &mut issues);
         if matches!(
             config.visualizer.backend,
             config::VisualizerBackend::Cava | config::VisualizerBackend::Auto
@@ -264,6 +266,85 @@ pub fn list_themes(path: &Path) -> String {
 
 fn resolve_runtime_config_path(path: &Path) -> Option<PathBuf> {
     fs::canonicalize(path).ok()
+}
+
+fn validate_image_overlay_summary(
+    config_path: &Path,
+    config: &kwybars_common::config::AppConfig,
+) -> Result<String, ControlError> {
+    if !config.image_overlay.enabled {
+        return Ok("image overlay: disabled".to_owned());
+    }
+
+    let Some(path) = resolve_image_overlay_path(config_path, config) else {
+        return Err(ControlError::usage_like(
+            "image overlay is enabled but image_overlay.path is empty",
+        ));
+    };
+
+    if path.is_file() {
+        Ok(format!("image overlay: {} (found)", path.display()))
+    } else {
+        Err(ControlError::usage_like(format!(
+            "image overlay path does not exist or is not a file: {}",
+            path.display()
+        )))
+    }
+}
+
+fn report_image_overlay(
+    config_path: &Path,
+    config: &kwybars_common::config::AppConfig,
+    lines: &mut Vec<String>,
+    issues: &mut Vec<String>,
+) {
+    if !config.image_overlay.enabled {
+        lines.push("image_overlay.enabled: false".to_owned());
+        return;
+    }
+
+    lines.push("image_overlay.enabled: true".to_owned());
+    lines.push(format!("image_overlay.fit: {}", config.image_overlay.fit));
+    lines.push(format!(
+        "image_overlay.opacity: {}",
+        config.image_overlay.opacity
+    ));
+
+    match resolve_image_overlay_path(config_path, config) {
+        Some(path) if path.is_file() => {
+            lines.push(format!("image_overlay.path: ok ({})", path.display()));
+        }
+        Some(path) => {
+            issues.push(format!(
+                "Image overlay path does not exist or is not a file: {}",
+                path.display()
+            ));
+            lines.push(format!("image_overlay.path: missing ({})", path.display()));
+        }
+        None => {
+            issues.push("Image overlay is enabled but image_overlay.path is empty".to_owned());
+            lines.push("image_overlay.path: empty".to_owned());
+        }
+    }
+}
+
+fn resolve_image_overlay_path(
+    config_path: &Path,
+    config: &kwybars_common::config::AppConfig,
+) -> Option<PathBuf> {
+    if !config.image_overlay.enabled {
+        return None;
+    }
+
+    let raw_path = config.image_overlay.path.as_deref()?.trim();
+    if raw_path.is_empty() {
+        return None;
+    }
+
+    Some(kwybars_common::config::resolve_image_overlay_path(
+        config_path,
+        raw_path,
+    ))
 }
 
 fn find_in_path(binary: &str) -> Option<PathBuf> {
