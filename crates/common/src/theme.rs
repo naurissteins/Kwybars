@@ -1,10 +1,13 @@
 use std::collections::BTreeMap;
+use std::env;
 use std::fmt::{Display, Formatter};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::RgbaColor;
 
+const SYSTEM_THEME_DIR: &str = "/usr/share/kwybars/themes";
+const THEME_DIR_ENV: &str = "KWYBARS_THEMES_DIR";
 const THEME_COLOR_KEYS: [&str; 6] = ["red", "green", "yellow", "blue", "magenta", "cyan"];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -65,9 +68,11 @@ pub fn resolve_theme_path(config_path: &Path, theme_name: &str) -> PathBuf {
         return config_path_candidate;
     }
 
-    let system_path = PathBuf::from("/usr/share/kwybars/themes").join(&theme_file);
-    if system_path.exists() {
-        return system_path;
+    for theme_dir in system_theme_dirs() {
+        let system_path = theme_dir.join(&theme_file);
+        if system_path.exists() {
+            return system_path;
+        }
     }
 
     let source_checkout_path = source_checkout_themes_dir().join(&theme_file);
@@ -95,11 +100,9 @@ pub fn list_available_themes(config_path: &Path) -> Vec<AvailableTheme> {
         .map(|parent| parent.join("themes"))
         .unwrap_or_else(|| PathBuf::from("themes"));
     collect_theme_dir(&user_dir, ThemeSource::User, &mut themes);
-    collect_theme_dir(
-        &PathBuf::from("/usr/share/kwybars/themes"),
-        ThemeSource::System,
-        &mut themes,
-    );
+    for theme_dir in system_theme_dirs() {
+        collect_theme_dir(&theme_dir, ThemeSource::System, &mut themes);
+    }
     let source_dir = source_checkout_themes_dir();
     collect_theme_dir(&source_dir, ThemeSource::SourceCheckout, &mut themes);
 
@@ -229,6 +232,15 @@ fn source_checkout_themes_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join("assets/themes")
+}
+
+fn system_theme_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(value) = env::var_os(THEME_DIR_ENV) {
+        dirs.extend(env::split_paths(&value).filter(|path| !path.as_os_str().is_empty()));
+    }
+    dirs.push(PathBuf::from(SYSTEM_THEME_DIR));
+    dirs
 }
 
 fn parse_hex_byte(value: &str) -> Result<u8, String> {

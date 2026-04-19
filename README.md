@@ -77,6 +77,13 @@ If you prefer `systemd` service:
 systemctl --user enable --now kwybars-daemon.service
 ```
 
+### Nix Flake
+
+```bash
+nix build github:naurissteins/Kwybars
+./result/bin/kwybars-daemon
+```
+
 ## Install from source
 Install dependencies:
 
