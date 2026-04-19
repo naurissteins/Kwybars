@@ -40,9 +40,30 @@
             installPhase = ''
               runHook preInstall
 
-              install -Dm755 target/release/kwybars-daemon $out/bin/kwybars-daemon
-              install -Dm755 target/release/kwybars-overlay $out/bin/kwybars-overlay
-              install -Dm755 target/release/kwybarsctl $out/bin/kwybarsctl
+              install_binary() {
+                name="$1"
+                binary=""
+
+                if [ -n "''${CARGO_BUILD_TARGET:-}" ] && [ -x "target/''${CARGO_BUILD_TARGET}/release/$name" ]; then
+                  binary="target/''${CARGO_BUILD_TARGET}/release/$name"
+                elif [ -x "target/release/$name" ]; then
+                  binary="target/release/$name"
+                else
+                  binary="$(find target -path "*/release/$name" -type f -perm -0100 -print -quit)"
+                fi
+
+                if [ -z "$binary" ]; then
+                  echo "could not find built binary: $name" >&2
+                  find target -maxdepth 4 -type f -name "$name" -print >&2
+                  exit 1
+                fi
+
+                install -Dm755 "$binary" "$out/bin/$name"
+              }
+
+              install_binary kwybars-daemon
+              install_binary kwybars-overlay
+              install_binary kwybarsctl
 
               install -Dm644 assets/examples/config.toml $out/share/kwybars/examples/config.toml
               install -Dm644 assets/systemd/kwybars-daemon.service \
