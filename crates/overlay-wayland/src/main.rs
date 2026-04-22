@@ -1,6 +1,8 @@
 use std::process::ExitCode;
 
-use tracing::info;
+mod app;
+
+use tracing::{error, info};
 
 fn main() -> ExitCode {
     if let Err(err) = kwybars_common::logging::init_logging("overlay-next") {
@@ -8,6 +10,12 @@ fn main() -> ExitCode {
     }
 
     info!("kwybars-overlay-next starting");
-    println!("kwybars-overlay-next starting");
-    ExitCode::SUCCESS
+    match app::run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            error!("kwybars-overlay-next failed: {err}");
+            eprintln!("kwybars-overlay-next failed: {err}");
+            ExitCode::FAILURE
+        }
+    }
 }
