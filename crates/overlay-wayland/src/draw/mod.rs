@@ -1,5 +1,6 @@
 mod geometry;
 mod paint;
+mod raster;
 
 use kwybars_common::config::OverlayPosition;
 use kwybars_common::spectrum::SpectrumFrame;
@@ -7,22 +8,32 @@ use kwybars_common::spectrum::SpectrumFrame;
 pub use geometry::BarGeometry;
 use geometry::BarSlots;
 pub use paint::BarPaint;
+use raster::{Rect, fill_rect};
 
 const HORIZONTAL_PADDING: u32 = 24;
 const VERTICAL_PADDING: u32 = 12;
 const MIN_BAR_HEIGHT: u32 = 10;
 
-struct Rect {
-    x: i32,
-    y: i32,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenderTarget {
     width: u32,
     height: u32,
+    scale: u32,
+}
+
+impl RenderTarget {
+    pub fn new(width: u32, height: u32, scale: u32) -> Self {
+        Self {
+            width,
+            height,
+            scale: scale.max(1),
+        }
+    }
 }
 
 pub fn render_bars(
     canvas: &mut [u8],
-    width: u32,
-    height: u32,
+    target: RenderTarget,
     frame: &SpectrumFrame,
     position: &OverlayPosition,
     paint: &BarPaint,
@@ -30,6 +41,8 @@ pub fn render_bars(
 ) {
     clear(canvas);
 
+    let width = target.width;
+    let height = target.height;
     if width == 0 || height == 0 {
         return;
     }
@@ -38,10 +51,13 @@ pub fn render_bars(
         return;
     }
 
+    let metrics = RenderMetrics::new(target.scale);
+    let scaled_geometry = geometry.scaled(f64::from(metrics.scale));
     let mut context = RenderContext {
         frame,
         paint,
-        geometry,
+        geometry: &scaled_geometry,
+        metrics,
         row_span: Vec::new(),
     };
 
@@ -59,7 +75,28 @@ struct RenderContext<'a> {
     frame: &'a SpectrumFrame,
     paint: &'a BarPaint,
     geometry: &'a BarGeometry,
+    metrics: RenderMetrics,
     row_span: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RenderMetrics {
+    scale: u32,
+    horizontal_padding: u32,
+    vertical_padding: u32,
+    min_bar_extent: u32,
+}
+
+impl RenderMetrics {
+    fn new(scale: u32) -> Self {
+        let scale = scale.max(1);
+        Self {
+            scale,
+            horizontal_padding: HORIZONTAL_PADDING.saturating_mul(scale),
+            vertical_padding: VERTICAL_PADDING.saturating_mul(scale),
+            min_bar_extent: MIN_BAR_HEIGHT.saturating_mul(scale),
+        }
+    }
 }
 
 fn render_horizontal_bars(
@@ -69,21 +106,27 @@ fn render_horizontal_bars(
     from_top: bool,
     context: &mut RenderContext<'_>,
 ) {
-    let drawable_width = width.saturating_sub(HORIZONTAL_PADDING * 2);
-    let drawable_height = height.saturating_sub(VERTICAL_PADDING * 2);
-    if drawable_width == 0 || drawable_height < MIN_BAR_HEIGHT {
+    let horizontal_padding = context.metrics.horizontal_padding;
+    let vertical_padding = context.metrics.vertical_padding;
+    let drawable_width = width.saturating_sub(horizontal_padding * 2);
+    let drawable_height = height.saturating_sub(vertical_padding * 2);
+    if drawable_width == 0 || drawable_height < context.metrics.min_bar_extent {
         return;
     }
 
     let bar_count = context.frame.bar_count();
     let slots = BarSlots::new(bar_count, f64::from(drawable_width), context.geometry);
-    let start_x = f64::from(HORIZONTAL_PADDING) + slots.start;
-    let top_y = VERTICAL_PADDING as i32;
-    let bottom_y = (height.saturating_sub(VERTICAL_PADDING)) as i32;
+    let start_x = f64::from(horizontal_padding) + slots.start;
+    let top_y = vertical_padding as i32;
+    let bottom_y = (height.saturating_sub(vertical_padding)) as i32;
 
     for index in 0..bar_count {
         let x = start_x + (index as f64 * slots.step);
-        let bar_height = frame_bar_extent(context.frame.bars[index], drawable_height);
+        let bar_height = frame_bar_extent(
+            context.frame.bars[index],
+            drawable_height,
+            context.metrics.min_bar_extent,
+        );
         let color = context.paint.color_for_bar(index, bar_count);
         let y = if from_top {
             top_y
@@ -101,6 +144,7 @@ fn render_horizontal_bars(
                 height: bar_height,
             },
             color,
+            context.geometry,
             &mut context.row_span,
         );
     }
@@ -113,21 +157,27 @@ fn render_vertical_bars(
     from_left: bool,
     context: &mut RenderContext<'_>,
 ) {
-    let drawable_width = width.saturating_sub(HORIZONTAL_PADDING * 2);
-    let drawable_height = height.saturating_sub(VERTICAL_PADDING * 2);
-    if drawable_width < MIN_BAR_HEIGHT || drawable_height == 0 {
+    let horizontal_padding = context.metrics.horizontal_padding;
+    let vertical_padding = context.metrics.vertical_padding;
+    let drawable_width = width.saturating_sub(horizontal_padding * 2);
+    let drawable_height = height.saturating_sub(vertical_padding * 2);
+    if drawable_width < context.metrics.min_bar_extent || drawable_height == 0 {
         return;
     }
 
     let bar_count = context.frame.bar_count();
     let slots = BarSlots::new(bar_count, f64::from(drawable_height), context.geometry);
-    let start_y = f64::from(VERTICAL_PADDING) + slots.start;
-    let left_x = HORIZONTAL_PADDING as i32;
-    let right_x = (width.saturating_sub(HORIZONTAL_PADDING)) as i32;
+    let start_y = f64::from(vertical_padding) + slots.start;
+    let left_x = horizontal_padding as i32;
+    let right_x = (width.saturating_sub(horizontal_padding)) as i32;
 
     for index in 0..bar_count {
         let y = start_y + (index as f64 * slots.step);
-        let bar_width = frame_bar_extent(context.frame.bars[index], drawable_width);
+        let bar_width = frame_bar_extent(
+            context.frame.bars[index],
+            drawable_width,
+            context.metrics.min_bar_extent,
+        );
         let color = context.paint.color_for_bar(index, bar_count);
         let x = if from_left {
             left_x
@@ -145,55 +195,20 @@ fn render_vertical_bars(
                 height: slots.thickness.round().max(1.0) as u32,
             },
             color,
+            context.geometry,
             &mut context.row_span,
         );
     }
 }
 
-fn frame_bar_extent(value: f32, drawable_extent: u32) -> u32 {
+fn frame_bar_extent(value: f32, drawable_extent: u32, min_extent: u32) -> u32 {
     let normalized = 0.16 + value.clamp(0.0, 1.0) as f64 * 0.76;
     let extent = (drawable_extent as f64 * normalized).round() as u32;
-    extent.max(MIN_BAR_HEIGHT).min(drawable_extent)
+    extent.max(min_extent).min(drawable_extent)
 }
 
 fn clear(canvas: &mut [u8]) {
     canvas.fill(0);
-}
-
-fn fill_rect(
-    canvas: &mut [u8],
-    width: u32,
-    height: u32,
-    rect: Rect,
-    color: u32,
-    row_span: &mut Vec<u8>,
-) {
-    let x0 = rect.x.max(0) as u32;
-    let y0 = rect.y.max(0) as u32;
-    let x1 = (rect.x + rect.width as i32).min(width as i32).max(0) as u32;
-    let y1 = (rect.y + rect.height as i32).min(height as i32).max(0) as u32;
-    if x0 >= x1 || y0 >= y1 {
-        return;
-    }
-
-    let row_bytes = ((x1 - x0) * 4) as usize;
-    fill_solid_span(row_span, row_bytes, color);
-    for row in y0..y1 {
-        let start = ((row * width + x0) * 4) as usize;
-        let end = start + row_bytes;
-        canvas[start..end].copy_from_slice(&row_span[..row_bytes]);
-    }
-}
-
-fn fill_solid_span(span: &mut Vec<u8>, row_bytes: usize, color: u32) {
-    if span.len() != row_bytes {
-        span.resize(row_bytes, 0);
-    }
-
-    let color_bytes = color.to_le_bytes();
-    for chunk in span.chunks_exact_mut(4) {
-        chunk.copy_from_slice(&color_bytes);
-    }
 }
 
 #[cfg(test)]

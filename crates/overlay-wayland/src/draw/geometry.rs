@@ -4,6 +4,7 @@ use kwybars_common::config::VisualizerConfig;
 pub struct BarGeometry {
     thickness: f64,
     gap: f64,
+    corner_radius: f64,
 }
 
 impl BarGeometry {
@@ -11,7 +12,24 @@ impl BarGeometry {
         Self {
             thickness: f64::from(visualizer.bar_width.max(1)),
             gap: f64::from(visualizer.gap),
+            corner_radius: f64::from(visualizer.bar_corner_radius.max(0.0)),
         }
+    }
+
+    pub fn scaled(self, scale: f64) -> Self {
+        let scale = scale.max(1.0);
+        Self {
+            thickness: self.thickness * scale,
+            gap: self.gap * scale,
+            corner_radius: self.corner_radius * scale,
+        }
+    }
+
+    pub fn rounded_radius(self, width: u32, height: u32) -> f64 {
+        self.corner_radius
+            .max(0.0)
+            .min(f64::from(width) * 0.5)
+            .min(f64::from(height) * 0.5)
     }
 }
 

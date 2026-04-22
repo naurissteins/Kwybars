@@ -1,7 +1,7 @@
 use kwybars_common::config::{OverlayPosition, RgbaColor, VisualizerColorMode, VisualizerConfig};
 use kwybars_common::spectrum::SpectrumFrame;
 
-use super::{BarGeometry, BarPaint, render_bars};
+use super::{BarGeometry, BarPaint, RenderTarget, render_bars};
 
 #[test]
 fn bars_leave_transparent_background() {
@@ -12,8 +12,7 @@ fn bars_leave_transparent_background() {
 
     render_bars(
         &mut canvas,
-        width,
-        height,
+        RenderTarget::new(width, height, 1),
         &frame,
         &OverlayPosition::Bottom,
         &default_paint(),
@@ -30,8 +29,7 @@ fn bars_handle_small_buffers() {
     let frame = SpectrumFrame::new(vec![0.25; 8], 0);
     render_bars(
         &mut canvas,
-        8,
-        8,
+        RenderTarget::new(8, 8, 1),
         &frame,
         &OverlayPosition::Bottom,
         &default_paint(),
@@ -51,8 +49,7 @@ fn different_frame_values_change_output() {
 
     render_bars(
         &mut first,
-        width,
-        height,
+        RenderTarget::new(width, height, 1),
         &low,
         &OverlayPosition::Bottom,
         &default_paint(),
@@ -60,8 +57,7 @@ fn different_frame_values_change_output() {
     );
     render_bars(
         &mut second,
-        width,
-        height,
+        RenderTarget::new(width, height, 1),
         &high,
         &OverlayPosition::Bottom,
         &default_paint(),
@@ -80,8 +76,7 @@ fn top_position_draws_near_top_edge() {
 
     render_bars(
         &mut canvas,
-        width,
-        height,
+        RenderTarget::new(width, height, 1),
         &frame,
         &OverlayPosition::Top,
         &default_paint(),
@@ -101,12 +96,11 @@ fn right_position_draws_near_right_edge() {
 
     render_bars(
         &mut canvas,
-        width,
-        height,
+        RenderTarget::new(width, height, 1),
         &frame,
         &OverlayPosition::Right,
         &default_paint(),
-        &default_geometry(),
+        &square_geometry(),
     );
 
     assert!(column_has_opaque_pixels(&canvas, width, width - 25));
@@ -141,8 +135,7 @@ fn gradient_paint_changes_bar_colors() {
 
     render_bars(
         &mut canvas,
-        width,
-        height,
+        RenderTarget::new(width, height, 1),
         &frame,
         &OverlayPosition::Bottom,
         &paint,
@@ -189,8 +182,7 @@ fn theme_paint_distributes_palette_across_bars() {
 
     render_bars(
         &mut canvas,
-        width,
-        height,
+        RenderTarget::new(width, height, 1),
         &frame,
         &OverlayPosition::Bottom,
         &paint,
@@ -214,13 +206,13 @@ fn horizontal_bars_use_configured_width_and_gap() {
     let geometry = BarGeometry::from_visualizer(&VisualizerConfig {
         bar_width: 12,
         gap: 7,
+        bar_corner_radius: 0.0,
         ..VisualizerConfig::default()
     });
 
     render_bars(
         &mut canvas,
-        width,
-        height,
+        RenderTarget::new(width, height, 1),
         &frame,
         &OverlayPosition::Bottom,
         &default_paint(),
@@ -246,8 +238,7 @@ fn vertical_bars_use_configured_thickness_and_gap() {
 
     render_bars(
         &mut canvas,
-        width,
-        height,
+        RenderTarget::new(width, height, 1),
         &frame,
         &OverlayPosition::Right,
         &default_paint(),
@@ -257,6 +248,125 @@ fn vertical_bars_use_configured_thickness_and_gap() {
     let runs = opaque_runs_in_column(&canvas, width, width - 30);
     assert_eq!(runs.len(), 3);
     assert!(runs.iter().all(|run| *run == 14));
+}
+
+#[test]
+fn rounded_bars_trim_corner_rows() {
+    let width = 160;
+    let height = 110;
+    let mut canvas = vec![0; (width * height * 4) as usize];
+    let frame = SpectrumFrame::new(vec![1.0], 0);
+    let geometry = BarGeometry::from_visualizer(&VisualizerConfig {
+        bar_width: 40,
+        bar_corner_radius: 12.0,
+        ..VisualizerConfig::default()
+    });
+
+    render_bars(
+        &mut canvas,
+        RenderTarget::new(width, height, 1),
+        &frame,
+        &OverlayPosition::Bottom,
+        &default_paint(),
+        &geometry,
+    );
+
+    let top_row = first_opaque_row(&canvas, width, height)
+        .unwrap_or_else(|| panic!("expected rounded bar pixels"));
+    let top_runs = opaque_runs_in_row(&canvas, width, top_row);
+    let middle_runs = opaque_runs_in_row(&canvas, width, top_row + 16);
+
+    assert_eq!(top_runs.len(), 1);
+    assert_eq!(middle_runs.len(), 1);
+    assert!(top_runs[0] < middle_runs[0]);
+    assert_eq!(middle_runs[0], 40);
+}
+
+#[test]
+fn rounded_bars_use_partial_alpha_edges() {
+    let width = 160;
+    let height = 110;
+    let mut canvas = vec![0; (width * height * 4) as usize];
+    let frame = SpectrumFrame::new(vec![1.0], 0);
+    let geometry = BarGeometry::from_visualizer(&VisualizerConfig {
+        bar_width: 40,
+        bar_corner_radius: 12.0,
+        ..VisualizerConfig::default()
+    });
+
+    render_bars(
+        &mut canvas,
+        RenderTarget::new(width, height, 1),
+        &frame,
+        &OverlayPosition::Bottom,
+        &default_paint(),
+        &geometry,
+    );
+
+    let alphas: Vec<u8> = canvas.chunks_exact(4).map(|pixel| pixel[3]).collect();
+    let max_alpha = alphas.iter().copied().max().unwrap_or(0);
+
+    assert!(max_alpha > 0);
+    assert!(alphas.iter().any(|alpha| *alpha > 0 && *alpha < max_alpha));
+}
+
+#[test]
+fn zero_corner_radius_keeps_square_rows() {
+    let width = 160;
+    let height = 110;
+    let mut canvas = vec![0; (width * height * 4) as usize];
+    let frame = SpectrumFrame::new(vec![1.0], 0);
+    let geometry = BarGeometry::from_visualizer(&VisualizerConfig {
+        bar_width: 40,
+        bar_corner_radius: 0.0,
+        ..VisualizerConfig::default()
+    });
+
+    render_bars(
+        &mut canvas,
+        RenderTarget::new(width, height, 1),
+        &frame,
+        &OverlayPosition::Bottom,
+        &default_paint(),
+        &geometry,
+    );
+
+    let top_row = first_opaque_row(&canvas, width, height)
+        .unwrap_or_else(|| panic!("expected square bar pixels"));
+    let top_runs = opaque_runs_in_row(&canvas, width, top_row);
+
+    assert_eq!(top_runs, vec![40]);
+}
+
+#[test]
+fn render_scale_applies_to_configured_bar_width() {
+    let logical_width = 160;
+    let logical_height = 110;
+    let scale = 2;
+    let width = logical_width * scale;
+    let height = logical_height * scale;
+    let mut canvas = vec![0; (width * height * 4) as usize];
+    let frame = SpectrumFrame::new(vec![1.0], 0);
+    let geometry = BarGeometry::from_visualizer(&VisualizerConfig {
+        bar_width: 40,
+        bar_corner_radius: 0.0,
+        ..VisualizerConfig::default()
+    });
+
+    render_bars(
+        &mut canvas,
+        RenderTarget::new(width, height, scale),
+        &frame,
+        &OverlayPosition::Bottom,
+        &default_paint(),
+        &geometry,
+    );
+
+    let top_row = first_opaque_row(&canvas, width, height)
+        .unwrap_or_else(|| panic!("expected scaled bar pixels"));
+    let top_runs = opaque_runs_in_row(&canvas, width, top_row);
+
+    assert_eq!(top_runs, vec![80]);
 }
 
 fn row_has_opaque_pixels(canvas: &[u8], width: u32, row: u32) -> bool {
@@ -291,6 +401,10 @@ fn opaque_runs_in_column(canvas: &[u8], width: u32, column: u32) -> Vec<usize> {
     )
 }
 
+fn first_opaque_row(canvas: &[u8], width: u32, height: u32) -> Option<u32> {
+    (0..height).find(|row| row_has_opaque_pixels(canvas, width, *row))
+}
+
 fn opaque_runs(items: impl Iterator<Item = bool>) -> Vec<usize> {
     let mut runs = Vec::new();
     let mut current = 0;
@@ -314,4 +428,11 @@ fn default_paint() -> BarPaint {
 
 fn default_geometry() -> BarGeometry {
     BarGeometry::from_visualizer(&VisualizerConfig::default())
+}
+
+fn square_geometry() -> BarGeometry {
+    BarGeometry::from_visualizer(&VisualizerConfig {
+        bar_corner_radius: 0.0,
+        ..VisualizerConfig::default()
+    })
 }

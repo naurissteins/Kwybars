@@ -23,7 +23,7 @@ use smithay_client_toolkit::shm::{Shm, ShmHandler};
 use tracing::{error, info};
 
 use crate::draw;
-use crate::draw::{BarGeometry, BarPaint};
+use crate::draw::{BarGeometry, BarPaint, RenderTarget};
 
 use super::AppError;
 use super::buffer::SurfaceBuffers;
@@ -47,6 +47,7 @@ struct SurfaceInstance {
     buffers: SurfaceBuffers,
     width: u32,
     height: u32,
+    scale_factor: u32,
     configured: bool,
 }
 
@@ -179,6 +180,7 @@ impl AppState {
             buffers,
             width: 0,
             height: 0,
+            scale_factor: 1,
             configured: false,
         })
     }
@@ -337,16 +339,19 @@ impl AppState {
             return Ok(());
         }
 
-        let (width, height) = self.current_dimensions(index);
+        let (logical_width, logical_height) = self.current_dimensions(index);
         let surface = &mut self.surfaces[index];
+        let scale = surface.scale_factor.max(1);
+        let width = scaled_dimension(logical_width, scale);
+        let height = scaled_dimension(logical_height, scale);
         let wl_surface = surface.layer_surface.wl_surface().clone();
+        wl_surface.set_buffer_scale(scale as i32);
         let attached = surface
             .buffers
             .render_and_attach(width, height, &wl_surface, |canvas| {
                 draw::render_bars(
                     canvas,
-                    width,
-                    height,
+                    RenderTarget::new(width, height, scale),
                     &self.latest_frame,
                     &self.position,
                     &self.paint,
@@ -383,6 +388,10 @@ impl AppState {
     }
 }
 
+fn scaled_dimension(value: u32, scale: u32) -> u32 {
+    value.saturating_mul(scale.max(1)).max(1)
+}
+
 delegate_compositor!(AppState);
 delegate_layer!(AppState);
 delegate_output!(AppState);
@@ -393,11 +402,30 @@ impl CompositorHandler for AppState {
     fn scale_factor_changed(
         &mut self,
         _conn: &Connection,
-        _qh: &QueueHandle<Self>,
-        _surface: &wl_surface::WlSurface,
+        qh: &QueueHandle<Self>,
+        surface: &wl_surface::WlSurface,
         new_factor: i32,
     ) {
-        info!("surface scale factor changed to {new_factor}");
+        let scale = new_factor.max(1) as u32;
+        let Some(index) = self
+            .surfaces
+            .iter()
+            .position(|instance| instance.layer_surface.wl_surface() == surface)
+        else {
+            info!("surface scale factor changed to {new_factor}");
+            return;
+        };
+
+        if self.surfaces[index].scale_factor == scale {
+            return;
+        }
+
+        self.surfaces[index].scale_factor = scale;
+        info!("surface scale factor changed to {scale}");
+        if let Err(err) = self.draw_surface(index, qh) {
+            error!("kwybars-overlay-next failed to redraw scaled surface: {err}");
+            self.exit = true;
+        }
     }
 
     fn transform_changed(
