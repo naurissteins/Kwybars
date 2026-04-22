@@ -28,6 +28,7 @@ const DEFAULT_WIDTH: u32 = 0;
 const DEFAULT_HEIGHT: u32 = 96;
 const FALLBACK_BUFFER_WIDTH: u32 = 512;
 const SURFACE_NAMESPACE: &str = "kwybars-overlay-next";
+const ANIMATION_SPEED_RADIANS_PER_SECOND: f64 = 2.8;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct AdvertisedGlobal {
@@ -48,6 +49,7 @@ pub struct AppState {
     pool: SlotPool,
     width: u32,
     height: u32,
+    animation_phase: f64,
     configured: bool,
     exit: bool,
 }
@@ -109,6 +111,7 @@ impl AppState {
             pool,
             width: DEFAULT_WIDTH,
             height: DEFAULT_HEIGHT,
+            animation_phase: 0.0,
             configured: false,
             exit: false,
         })
@@ -161,7 +164,7 @@ impl AppState {
         (width, height)
     }
 
-    fn draw_buffer(&mut self) -> Result<(), AppError> {
+    fn draw_buffer(&mut self, qh: &QueueHandle<Self>) -> Result<(), AppError> {
         let (width, height) = self.current_dimensions();
         let stride = width as i32 * 4;
 
@@ -175,20 +178,18 @@ impl AppState {
             )
             .map_err(|err| AppError::BufferSetup(err.to_string()))?;
 
-        draw::render_fake_bars(canvas, width, height);
+        draw::render_fake_bars(canvas, width, height, self.animation_phase);
 
         self.layer_surface
             .wl_surface()
             .damage_buffer(0, 0, width as i32, height as i32);
+        self.layer_surface
+            .wl_surface()
+            .frame(qh, self.layer_surface.wl_surface().clone());
         buffer
             .attach_to(self.layer_surface.wl_surface())
             .map_err(|err| AppError::BufferSetup(err.to_string()))?;
         self.layer_surface.commit();
-
-        info!(
-            "attached fake bar buffer: width={}, height={}",
-            width, height
-        );
         Ok(())
     }
 }
@@ -223,11 +224,15 @@ impl CompositorHandler for AppState {
     fn frame(
         &mut self,
         _conn: &Connection,
-        _qh: &QueueHandle<Self>,
+        qh: &QueueHandle<Self>,
         _surface: &wl_surface::WlSurface,
         time: u32,
     ) {
-        info!("frame callback received at {time}");
+        self.animation_phase = time as f64 / 1_000.0 * ANIMATION_SPEED_RADIANS_PER_SECOND;
+        if let Err(err) = self.draw_buffer(qh) {
+            error!("kwybars-overlay-next failed to draw animated frame: {err}");
+            self.exit = true;
+        }
     }
 
     fn surface_enter(
@@ -258,7 +263,7 @@ impl LayerShellHandler for AppState {
     fn configure(
         &mut self,
         _conn: &Connection,
-        _qh: &QueueHandle<Self>,
+        qh: &QueueHandle<Self>,
         _layer: &LayerSurface,
         configure: LayerSurfaceConfigure,
         _serial: u32,
@@ -289,7 +294,7 @@ impl LayerShellHandler for AppState {
         }
 
         self.configured = true;
-        if let Err(err) = self.draw_buffer() {
+        if let Err(err) = self.draw_buffer(qh) {
             error!("kwybars-overlay-next failed to draw fake bar buffer: {err}");
             self.exit = true;
         }
