@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
@@ -25,18 +26,21 @@ use smithay_client_toolkit::shell::{
         LayerSurfaceConfigure,
     },
 };
-use smithay_client_toolkit::shm::{Shm, ShmHandler};
-use tracing::info;
+use smithay_client_toolkit::shm::{Shm, ShmHandler, slot::SlotPool};
+use tracing::{error, info};
 
 const DEFAULT_WIDTH: u32 = 0;
 const DEFAULT_HEIGHT: u32 = 96;
+const FALLBACK_BUFFER_WIDTH: u32 = 512;
 const DISPATCH_TIMEOUT: Duration = Duration::from_millis(250);
+const DEBUG_SURFACE_COLOR: u32 = 0xFF2A9D8F;
 
 #[derive(Debug)]
 pub enum AppError {
     Connect(ConnectError),
     RegistryInit(GlobalError),
     BindGlobal { global: &'static str, err: String },
+    BufferSetup(String),
     EventLoop(calloop::Error),
     InsertSource(calloop::InsertError<WaylandSource<AppState>>),
     Dispatch(calloop::Error),
@@ -50,6 +54,7 @@ impl Display for AppError {
             Self::BindGlobal { global, err } => {
                 write!(f, "failed to bind required global {global}: {err}")
             }
+            Self::BufferSetup(err) => write!(f, "failed to set up shm buffer: {err}"),
             Self::EventLoop(err) => write!(f, "failed to create calloop event loop: {err}"),
             Self::InsertSource(err) => {
                 write!(f, "failed to attach Wayland source to event loop: {err}")
@@ -77,6 +82,7 @@ pub struct AppState {
     layer_shell: LayerShell,
     surface: wl_surface::WlSurface,
     layer_surface: LayerSurface,
+    pool: SlotPool,
     width: u32,
     height: u32,
     configured: bool,
@@ -121,6 +127,11 @@ impl AppState {
         layer_surface.set_size(DEFAULT_WIDTH, DEFAULT_HEIGHT);
         layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
         layer_surface.commit();
+        let pool = SlotPool::new(
+            (FALLBACK_BUFFER_WIDTH * DEFAULT_HEIGHT * 4) as usize,
+            &shm_state,
+        )
+        .map_err(|err| AppError::BufferSetup(err.to_string()))?;
 
         Ok(Self {
             registry_state: RegistryState::new(globals),
@@ -131,6 +142,7 @@ impl AppState {
             layer_shell,
             surface,
             layer_surface,
+            pool,
             width: DEFAULT_WIDTH,
             height: DEFAULT_HEIGHT,
             configured: false,
@@ -158,12 +170,58 @@ impl AppState {
         let _ = &self.layer_shell;
         let _ = &self.surface;
         let _ = &self.layer_surface;
+        let _ = &self.pool;
         info!("bound required global: wl_compositor");
         info!(
             "bound required global: wl_shm ({} advertised formats so far)",
             self.shm_state.formats().len()
         );
         info!("bound required global: zwlr_layer_shell_v1");
+    }
+
+    fn draw_initial_buffer(&mut self) -> Result<(), AppError> {
+        let width = if self.width == 0 {
+            FALLBACK_BUFFER_WIDTH
+        } else {
+            self.width
+        };
+        let height = if self.height == 0 {
+            DEFAULT_HEIGHT
+        } else {
+            self.height
+        };
+        let stride = width as i32 * 4;
+
+        let (buffer, canvas) = self
+            .pool
+            .create_buffer(
+                width as i32,
+                height as i32,
+                stride,
+                smithay_client_toolkit::reexports::client::protocol::wl_shm::Format::Argb8888,
+            )
+            .map_err(|err| AppError::BufferSetup(err.to_string()))?;
+
+        for chunk in canvas.chunks_exact_mut(4) {
+            let array: &mut [u8; 4] = chunk
+                .try_into()
+                .map_err(|_| AppError::BufferSetup("invalid canvas chunk size".to_owned()))?;
+            *array = DEBUG_SURFACE_COLOR.to_le_bytes();
+        }
+
+        self.layer_surface
+            .wl_surface()
+            .damage_buffer(0, 0, width as i32, height as i32);
+        buffer
+            .attach_to(self.layer_surface.wl_surface())
+            .map_err(|err| AppError::BufferSetup(err.to_string()))?;
+        self.layer_surface.commit();
+        info!(
+            "attached solid debug buffer: width={}, height={}",
+            width, height
+        );
+
+        Ok(())
     }
 }
 
@@ -254,6 +312,10 @@ impl LayerShellHandler for AppState {
                 self.width, self.height
             );
             self.configured = true;
+            if let Err(err) = self.draw_initial_buffer() {
+                error!("kwybars-overlay-next failed to draw initial buffer: {err}");
+                self.exit = true;
+            }
         }
     }
 }
