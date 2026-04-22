@@ -1,8 +1,7 @@
-
 use kwybars_common::config::{OverlayPosition, RgbaColor, VisualizerColorMode, VisualizerConfig};
 use kwybars_common::spectrum::SpectrumFrame;
 
-use super::{BarPaint, render_bars};
+use super::{BarGeometry, BarPaint, render_bars};
 
 #[test]
 fn bars_leave_transparent_background() {
@@ -18,6 +17,7 @@ fn bars_leave_transparent_background() {
         &frame,
         &OverlayPosition::Bottom,
         &default_paint(),
+        &default_geometry(),
     );
 
     assert_eq!(&canvas[0..4], &[0, 0, 0, 0]);
@@ -35,6 +35,7 @@ fn bars_handle_small_buffers() {
         &frame,
         &OverlayPosition::Bottom,
         &default_paint(),
+        &default_geometry(),
     );
     assert_eq!(canvas.len(), 256);
 }
@@ -55,6 +56,7 @@ fn different_frame_values_change_output() {
         &low,
         &OverlayPosition::Bottom,
         &default_paint(),
+        &default_geometry(),
     );
     render_bars(
         &mut second,
@@ -63,6 +65,7 @@ fn different_frame_values_change_output() {
         &high,
         &OverlayPosition::Bottom,
         &default_paint(),
+        &default_geometry(),
     );
 
     assert_ne!(first, second);
@@ -82,6 +85,7 @@ fn top_position_draws_near_top_edge() {
         &frame,
         &OverlayPosition::Top,
         &default_paint(),
+        &default_geometry(),
     );
 
     assert!(row_has_opaque_pixels(&canvas, width, 12));
@@ -102,6 +106,7 @@ fn right_position_draws_near_right_edge() {
         &frame,
         &OverlayPosition::Right,
         &default_paint(),
+        &default_geometry(),
     );
 
     assert!(column_has_opaque_pixels(&canvas, width, width - 25));
@@ -141,6 +146,7 @@ fn gradient_paint_changes_bar_colors() {
         &frame,
         &OverlayPosition::Bottom,
         &paint,
+        &default_geometry(),
     );
 
     let opaque_colors: std::collections::HashSet<[u8; 4]> = canvas
@@ -188,6 +194,7 @@ fn theme_paint_distributes_palette_across_bars() {
         &frame,
         &OverlayPosition::Bottom,
         &paint,
+        &default_geometry(),
     );
 
     let opaque_colors: std::collections::HashSet<[u8; 4]> = canvas
@@ -196,6 +203,60 @@ fn theme_paint_distributes_palette_across_bars() {
         .map(|pixel| [pixel[0], pixel[1], pixel[2], pixel[3]])
         .collect();
     assert!(opaque_colors.len() >= 3);
+}
+
+#[test]
+fn horizontal_bars_use_configured_width_and_gap() {
+    let width = 220;
+    let height = 96;
+    let mut canvas = vec![0; (width * height * 4) as usize];
+    let frame = SpectrumFrame::new(vec![0.8; 3], 0);
+    let geometry = BarGeometry::from_visualizer(&VisualizerConfig {
+        bar_width: 12,
+        gap: 7,
+        ..VisualizerConfig::default()
+    });
+
+    render_bars(
+        &mut canvas,
+        width,
+        height,
+        &frame,
+        &OverlayPosition::Bottom,
+        &default_paint(),
+        &geometry,
+    );
+
+    let runs = opaque_runs_in_row(&canvas, width, height - 16);
+    assert_eq!(runs.len(), 3);
+    assert!(runs.iter().all(|run| *run == 12));
+}
+
+#[test]
+fn vertical_bars_use_configured_thickness_and_gap() {
+    let width = 96;
+    let height = 220;
+    let mut canvas = vec![0; (width * height * 4) as usize];
+    let frame = SpectrumFrame::new(vec![0.8; 3], 0);
+    let geometry = BarGeometry::from_visualizer(&VisualizerConfig {
+        bar_width: 14,
+        gap: 9,
+        ..VisualizerConfig::default()
+    });
+
+    render_bars(
+        &mut canvas,
+        width,
+        height,
+        &frame,
+        &OverlayPosition::Right,
+        &default_paint(),
+        &geometry,
+    );
+
+    let runs = opaque_runs_in_column(&canvas, width, width - 30);
+    assert_eq!(runs.len(), 3);
+    assert!(runs.iter().all(|run| *run == 14));
 }
 
 fn row_has_opaque_pixels(canvas: &[u8], width: u32, row: u32) -> bool {
@@ -212,6 +273,45 @@ fn column_has_opaque_pixels(canvas: &[u8], width: u32, column: u32) -> bool {
         .any(|row| row[(column * 4) as usize + 3] != 0)
 }
 
+fn opaque_runs_in_row(canvas: &[u8], width: u32, row: u32) -> Vec<usize> {
+    let start = (row * width * 4) as usize;
+    let end = start + (width * 4) as usize;
+    opaque_runs(
+        canvas[start..end]
+            .chunks_exact(4)
+            .map(|pixel| pixel[3] != 0),
+    )
+}
+
+fn opaque_runs_in_column(canvas: &[u8], width: u32, column: u32) -> Vec<usize> {
+    opaque_runs(
+        canvas
+            .chunks_exact((width * 4) as usize)
+            .map(|row| row[(column * 4) as usize + 3] != 0),
+    )
+}
+
+fn opaque_runs(items: impl Iterator<Item = bool>) -> Vec<usize> {
+    let mut runs = Vec::new();
+    let mut current = 0;
+    for opaque in items {
+        if opaque {
+            current += 1;
+        } else if current > 0 {
+            runs.push(current);
+            current = 0;
+        }
+    }
+    if current > 0 {
+        runs.push(current);
+    }
+    runs
+}
+
 fn default_paint() -> BarPaint {
     BarPaint::from_visualizer(&VisualizerConfig::default(), None)
+}
+
+fn default_geometry() -> BarGeometry {
+    BarGeometry::from_visualizer(&VisualizerConfig::default())
 }

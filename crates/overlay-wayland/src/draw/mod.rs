@@ -1,13 +1,15 @@
+mod geometry;
 mod paint;
 
 use kwybars_common::config::OverlayPosition;
 use kwybars_common::spectrum::SpectrumFrame;
 
+pub use geometry::BarGeometry;
+use geometry::BarSlots;
 pub use paint::BarPaint;
 
 const HORIZONTAL_PADDING: u32 = 24;
 const VERTICAL_PADDING: u32 = 12;
-const MIN_BAR_WIDTH: u32 = 6;
 const MIN_BAR_HEIGHT: u32 = 10;
 
 struct Rect {
@@ -24,6 +26,7 @@ pub fn render_bars(
     frame: &SpectrumFrame,
     position: &OverlayPosition,
     paint: &BarPaint,
+    geometry: &BarGeometry,
 ) {
     clear(canvas);
 
@@ -35,32 +38,36 @@ pub fn render_bars(
         return;
     }
 
-    let mut row_span = Vec::new();
+    let mut context = RenderContext {
+        frame,
+        paint,
+        geometry,
+        row_span: Vec::new(),
+    };
 
     match position {
         OverlayPosition::Bottom => {
-            render_horizontal_bars(canvas, width, height, frame, false, paint, &mut row_span)
+            render_horizontal_bars(canvas, width, height, false, &mut context)
         }
-        OverlayPosition::Top => {
-            render_horizontal_bars(canvas, width, height, frame, true, paint, &mut row_span)
-        }
-        OverlayPosition::Left => {
-            render_vertical_bars(canvas, width, height, frame, true, paint, &mut row_span)
-        }
-        OverlayPosition::Right => {
-            render_vertical_bars(canvas, width, height, frame, false, paint, &mut row_span)
-        }
+        OverlayPosition::Top => render_horizontal_bars(canvas, width, height, true, &mut context),
+        OverlayPosition::Left => render_vertical_bars(canvas, width, height, true, &mut context),
+        OverlayPosition::Right => render_vertical_bars(canvas, width, height, false, &mut context),
     }
+}
+
+struct RenderContext<'a> {
+    frame: &'a SpectrumFrame,
+    paint: &'a BarPaint,
+    geometry: &'a BarGeometry,
+    row_span: Vec<u8>,
 }
 
 fn render_horizontal_bars(
     canvas: &mut [u8],
     width: u32,
     height: u32,
-    frame: &SpectrumFrame,
     from_top: bool,
-    paint: &BarPaint,
-    row_span: &mut Vec<u8>,
+    context: &mut RenderContext<'_>,
 ) {
     let drawable_width = width.saturating_sub(HORIZONTAL_PADDING * 2);
     let drawable_height = height.saturating_sub(VERTICAL_PADDING * 2);
@@ -68,20 +75,16 @@ fn render_horizontal_bars(
         return;
     }
 
-    let bar_count = frame.bar_count();
-    let gap = (drawable_width / 180).max(3);
-    let total_gap = gap.saturating_mul(bar_count.saturating_sub(1) as u32);
-    let bar_width =
-        ((drawable_width.saturating_sub(total_gap)) / bar_count as u32).max(MIN_BAR_WIDTH);
-    let occupied_width = bar_width * bar_count as u32 + total_gap;
-    let start_x = ((width.saturating_sub(occupied_width)) / 2) as i32;
+    let bar_count = context.frame.bar_count();
+    let slots = BarSlots::new(bar_count, f64::from(drawable_width), context.geometry);
+    let start_x = f64::from(HORIZONTAL_PADDING) + slots.start;
     let top_y = VERTICAL_PADDING as i32;
     let bottom_y = (height.saturating_sub(VERTICAL_PADDING)) as i32;
 
     for index in 0..bar_count {
-        let x = start_x + index as i32 * (bar_width + gap) as i32;
-        let bar_height = frame_bar_extent(frame.bars[index], drawable_height);
-        let color = paint.color_for_bar(index, bar_count);
+        let x = start_x + (index as f64 * slots.step);
+        let bar_height = frame_bar_extent(context.frame.bars[index], drawable_height);
+        let color = context.paint.color_for_bar(index, bar_count);
         let y = if from_top {
             top_y
         } else {
@@ -92,13 +95,13 @@ fn render_horizontal_bars(
             width,
             height,
             Rect {
-                x,
+                x: x.round() as i32,
                 y,
-                width: bar_width,
+                width: slots.thickness.round().max(1.0) as u32,
                 height: bar_height,
             },
             color,
-            row_span,
+            &mut context.row_span,
         );
     }
 }
@@ -107,10 +110,8 @@ fn render_vertical_bars(
     canvas: &mut [u8],
     width: u32,
     height: u32,
-    frame: &SpectrumFrame,
     from_left: bool,
-    paint: &BarPaint,
-    row_span: &mut Vec<u8>,
+    context: &mut RenderContext<'_>,
 ) {
     let drawable_width = width.saturating_sub(HORIZONTAL_PADDING * 2);
     let drawable_height = height.saturating_sub(VERTICAL_PADDING * 2);
@@ -118,21 +119,16 @@ fn render_vertical_bars(
         return;
     }
 
-    let bar_count = frame.bar_count();
-    let gap = (drawable_height / 180).max(3);
-    let bar_height = ((drawable_height
-        .saturating_sub(gap.saturating_mul(bar_count.saturating_sub(1) as u32)))
-        / bar_count as u32)
-        .max(MIN_BAR_WIDTH);
-    let occupied_height = bar_height * bar_count as u32 + gap * bar_count.saturating_sub(1) as u32;
-    let start_y = ((height.saturating_sub(occupied_height)) / 2) as i32;
+    let bar_count = context.frame.bar_count();
+    let slots = BarSlots::new(bar_count, f64::from(drawable_height), context.geometry);
+    let start_y = f64::from(VERTICAL_PADDING) + slots.start;
     let left_x = HORIZONTAL_PADDING as i32;
     let right_x = (width.saturating_sub(HORIZONTAL_PADDING)) as i32;
 
     for index in 0..bar_count {
-        let y = start_y + index as i32 * (bar_height + gap) as i32;
-        let bar_width = frame_bar_extent(frame.bars[index], drawable_width);
-        let color = paint.color_for_bar(index, bar_count);
+        let y = start_y + (index as f64 * slots.step);
+        let bar_width = frame_bar_extent(context.frame.bars[index], drawable_width);
+        let color = context.paint.color_for_bar(index, bar_count);
         let x = if from_left {
             left_x
         } else {
@@ -144,12 +140,12 @@ fn render_vertical_bars(
             height,
             Rect {
                 x,
-                y,
+                y: y.round() as i32,
                 width: bar_width,
-                height: bar_height,
+                height: slots.thickness.round().max(1.0) as u32,
             },
             color,
-            row_span,
+            &mut context.row_span,
         );
     }
 }

@@ -23,7 +23,7 @@ use smithay_client_toolkit::shm::{Shm, ShmHandler};
 use tracing::{error, info};
 
 use crate::draw;
-use crate::draw::BarPaint;
+use crate::draw::{BarGeometry, BarPaint};
 
 use super::AppError;
 use super::buffer::SurfaceBuffers;
@@ -61,6 +61,7 @@ pub struct AppState {
     surface_config: SurfaceConfig,
     position: OverlayPosition,
     paint: BarPaint,
+    geometry: BarGeometry,
     frame_source: AppFrameSource,
     latest_frame: SpectrumFrame,
     surfaces: Vec<SurfaceInstance>,
@@ -107,6 +108,7 @@ impl AppState {
             &app_config.visualizer,
             theme_palette.map(|palette| palette.colors),
         );
+        let geometry = BarGeometry::from_visualizer(&app_config.visualizer);
 
         let mut frame_source = AppFrameSource::from_visualizer_config(&app_config.visualizer);
         let latest_frame = frame_source.frame_at(0);
@@ -122,6 +124,7 @@ impl AppState {
             surface_config,
             position: app_config.overlay.position,
             paint,
+            geometry,
             frame_source,
             latest_frame,
             surfaces: Vec::new(),
@@ -347,6 +350,7 @@ impl AppState {
                     &self.latest_frame,
                     &self.position,
                     &self.paint,
+                    &self.geometry,
                 )
             })?;
 
