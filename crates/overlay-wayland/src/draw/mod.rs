@@ -116,12 +116,12 @@ fn render_horizontal_bars(
 
     let bar_count = context.frame.bar_count();
     let slots = BarSlots::new(bar_count, f64::from(drawable_width), context.geometry);
-    let start_x = f64::from(horizontal_padding) + slots.start;
     let top_y = vertical_padding as i32;
     let bottom_y = (height.saturating_sub(vertical_padding)) as i32;
 
-    for index in 0..bar_count {
-        let x = start_x + (index as f64 * slots.step);
+    for slot in slots {
+        let index = slot.index;
+        let x = f64::from(horizontal_padding) + slot.start;
         let bar_height = frame_bar_extent(
             context.frame.bars[index],
             drawable_height,
@@ -139,7 +139,7 @@ fn render_horizontal_bars(
             Rect {
                 x: x.round() as i32,
                 y,
-                width: slots.thickness.round().max(1.0) as u32,
+                width: slot.thickness.round().max(1.0) as u32,
                 height: bar_height,
             },
             color,
@@ -169,12 +169,12 @@ fn render_vertical_bars(
 
     let bar_count = context.frame.bar_count();
     let slots = BarSlots::new(bar_count, f64::from(drawable_height), context.geometry);
-    let start_y = f64::from(vertical_padding) + slots.start;
     let left_x = horizontal_padding as i32;
     let right_x = (width.saturating_sub(horizontal_padding)) as i32;
 
-    for index in 0..bar_count {
-        let y = start_y + (index as f64 * slots.step);
+    for slot in slots {
+        let index = slot.index;
+        let y = f64::from(vertical_padding) + slot.start;
         let bar_width = frame_bar_extent(
             context.frame.bars[index],
             drawable_width,
@@ -193,7 +193,7 @@ fn render_vertical_bars(
                 x,
                 y: y.round() as i32,
                 width: bar_width,
-                height: slots.thickness.round().max(1.0) as u32,
+                height: slot.thickness.round().max(1.0) as u32,
             },
             color,
             context.geometry,

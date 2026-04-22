@@ -1,4 +1,6 @@
-use kwybars_common::config::{OverlayPosition, RgbaColor, VisualizerColorMode, VisualizerConfig};
+use kwybars_common::config::{
+    LineMode, OverlayPosition, RgbaColor, VisualizerColorMode, VisualizerConfig,
+};
 use kwybars_common::spectrum::SpectrumFrame;
 
 use super::{BarGeometry, BarPaint, RenderTarget, render_bars};
@@ -411,6 +413,50 @@ fn segmented_top_bars_anchor_segments_to_top_edge() {
     assert!(!pixel_is_opaque(&canvas, width, width / 2, 24));
 }
 
+#[test]
+fn split_horizontal_mode_leaves_center_gap() {
+    let width = 320;
+    let height = 96;
+    let mut canvas = vec![0; (width * height * 4) as usize];
+    let frame = SpectrumFrame::new(vec![1.0; 4], 0);
+    let geometry = split_geometry();
+
+    render_bars(
+        &mut canvas,
+        RenderTarget::new(width, height, 1),
+        &frame,
+        &OverlayPosition::Bottom,
+        &default_paint(),
+        &geometry,
+    );
+
+    assert!(pixel_is_opaque(&canvas, width, 60, height - 16));
+    assert!(pixel_is_opaque(&canvas, width, width - 60, height - 16));
+    assert!(!pixel_is_opaque(&canvas, width, width / 2, height - 16));
+}
+
+#[test]
+fn split_vertical_mode_leaves_center_gap() {
+    let width = 96;
+    let height = 320;
+    let mut canvas = vec![0; (width * height * 4) as usize];
+    let frame = SpectrumFrame::new(vec![1.0; 4], 0);
+    let geometry = split_geometry();
+
+    render_bars(
+        &mut canvas,
+        RenderTarget::new(width, height, 1),
+        &frame,
+        &OverlayPosition::Right,
+        &default_paint(),
+        &geometry,
+    );
+
+    assert!(pixel_is_opaque(&canvas, width, width - 30, 50));
+    assert!(pixel_is_opaque(&canvas, width, width - 30, height - 82));
+    assert!(!pixel_is_opaque(&canvas, width, width - 30, height / 2));
+}
+
 fn row_has_opaque_pixels(canvas: &[u8], width: u32, row: u32) -> bool {
     let start = (row * width * 4) as usize;
     let end = start + (width * 4) as usize;
@@ -490,6 +536,17 @@ fn segmented_geometry() -> BarGeometry {
         segmented_bars: true,
         segment_length: 10,
         segment_gap: 6,
+        ..VisualizerConfig::default()
+    })
+}
+
+fn split_geometry() -> BarGeometry {
+    BarGeometry::from_visualizer(&VisualizerConfig {
+        bar_width: 20,
+        gap: 0,
+        bar_corner_radius: 0.0,
+        line_mode: LineMode::Split,
+        line_split_gap: 80,
         ..VisualizerConfig::default()
     })
 }
