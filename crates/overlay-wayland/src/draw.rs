@@ -1,4 +1,4 @@
-use std::f64::consts::TAU;
+use kwybars_common::spectrum::SpectrumFrame;
 
 const TRANSPARENT: u32 = 0x00000000;
 const BAR_COLOR: u32 = 0xFFF1F5F9;
@@ -14,7 +14,7 @@ struct Rect {
     height: u32,
 }
 
-pub fn render_fake_bars(canvas: &mut [u8], width: u32, height: u32, phase: f64) {
+pub fn render_bars(canvas: &mut [u8], width: u32, height: u32, frame: &SpectrumFrame) {
     clear(canvas);
 
     if width == 0 || height == 0 {
@@ -23,11 +23,11 @@ pub fn render_fake_bars(canvas: &mut [u8], width: u32, height: u32, phase: f64) 
 
     let drawable_width = width.saturating_sub(HORIZONTAL_PADDING * 2);
     let drawable_height = height.saturating_sub(VERTICAL_PADDING * 2);
-    if drawable_width == 0 || drawable_height < MIN_BAR_HEIGHT {
+    if drawable_width == 0 || drawable_height < MIN_BAR_HEIGHT || frame.bars.is_empty() {
         return;
     }
 
-    let bar_count = ((drawable_width / 28).clamp(12, 48)) as usize;
+    let bar_count = frame.bar_count();
     let gap = (drawable_width / 180).max(3);
     let total_gap = gap.saturating_mul(bar_count.saturating_sub(1) as u32);
     let bar_width =
@@ -38,7 +38,7 @@ pub fn render_fake_bars(canvas: &mut [u8], width: u32, height: u32, phase: f64) 
 
     for index in 0..bar_count {
         let x = start_x + index as i32 * (bar_width + gap) as i32;
-        let bar_height = fake_bar_height(index, bar_count, drawable_height, phase);
+        let bar_height = frame_bar_height(frame.bars[index], drawable_height);
         fill_rect(
             canvas,
             width,
@@ -54,18 +54,8 @@ pub fn render_fake_bars(canvas: &mut [u8], width: u32, height: u32, phase: f64) 
     }
 }
 
-fn fake_bar_height(index: usize, bar_count: usize, drawable_height: u32, phase: f64) -> u32 {
-    let relative = if bar_count <= 1 {
-        0.0
-    } else {
-        index as f64 / (bar_count - 1) as f64
-    };
-    let wave_phase = relative * TAU;
-    let primary = (wave_phase * 1.15 + phase).sin() * 0.5 + 0.5;
-    let secondary = (wave_phase * 0.55 - phase * 1.4 + 0.8).cos() * 0.5 + 0.5;
-    let tertiary = (wave_phase * 2.1 + phase * 0.7).sin() * 0.5 + 0.5;
-    let amplitude = primary * 0.55 + secondary * 0.3 + tertiary * 0.15;
-    let normalized = 0.16 + amplitude * 0.76;
+fn frame_bar_height(value: f32, drawable_height: u32) -> u32 {
+    let normalized = 0.16 + value.clamp(0.0, 1.0) as f64 * 0.76;
     let height = (drawable_height as f64 * normalized).round() as u32;
     height.max(MIN_BAR_HEIGHT).min(drawable_height)
 }
@@ -96,36 +86,42 @@ fn fill_rect(canvas: &mut [u8], width: u32, height: u32, rect: Rect, color: u32)
 
 #[cfg(test)]
 mod tests {
-    use super::render_fake_bars;
+    use kwybars_common::spectrum::SpectrumFrame;
+
+    use super::render_bars;
 
     #[test]
-    fn fake_bars_leave_transparent_background() {
+    fn bars_leave_transparent_background() {
         let width = 320;
         let height = 96;
         let mut canvas = vec![0xAA; (width * height * 4) as usize];
+        let frame = SpectrumFrame::new(vec![0.25; 20], 0);
 
-        render_fake_bars(&mut canvas, width, height, 0.0);
+        render_bars(&mut canvas, width, height, &frame);
 
         assert_eq!(&canvas[0..4], &[0, 0, 0, 0]);
         assert!(canvas.chunks_exact(4).any(|pixel| pixel[3] != 0));
     }
 
     #[test]
-    fn fake_bars_handle_small_buffers() {
+    fn bars_handle_small_buffers() {
         let mut canvas = vec![0; 4 * 8 * 8];
-        render_fake_bars(&mut canvas, 8, 8, 0.0);
+        let frame = SpectrumFrame::new(vec![0.25; 8], 0);
+        render_bars(&mut canvas, 8, 8, &frame);
         assert_eq!(canvas.len(), 256);
     }
 
     #[test]
-    fn fake_bars_change_across_animation_phases() {
+    fn different_frame_values_change_output() {
         let width = 320;
         let height = 96;
         let mut first = vec![0; (width * height * 4) as usize];
         let mut second = vec![0; (width * height * 4) as usize];
+        let low = SpectrumFrame::new(vec![0.15; 20], 0);
+        let high = SpectrumFrame::new(vec![0.85; 20], 16);
 
-        render_fake_bars(&mut first, width, height, 0.0);
-        render_fake_bars(&mut second, width, height, 1.7);
+        render_bars(&mut first, width, height, &low);
+        render_bars(&mut second, width, height, &high);
 
         assert_ne!(first, second);
     }
