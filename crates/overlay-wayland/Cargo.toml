@@ -1,0 +1,12 @@
+[package]
+name = "kwybars-overlay-next"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+kwybars-common = { path = "../common" }
+tracing = "0.1"
+
+[lints]
+workspace = true

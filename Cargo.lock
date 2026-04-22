@@ -535,6 +535,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "kwybars-overlay-next"
+version = "0.1.7"
+dependencies = [
+ "kwybars-common",
+ "tracing",
+]
+
+[[package]]
 name = "kwybarsctl"
 version = "0.1.7"
 dependencies = [
