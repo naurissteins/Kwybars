@@ -1,6 +1,8 @@
 use std::f32::consts::TAU;
 
+use kwybars_common::config::{VisualizerBackend, VisualizerConfig};
 use kwybars_common::spectrum::SpectrumFrame;
+use kwybars_engine::live::{LiveFrameStream, SourceKind};
 
 const DEFAULT_SPREAD: f32 = 0.35;
 
@@ -36,9 +38,68 @@ impl SyntheticFrameSource {
     }
 }
 
+pub enum AppFrameSource {
+    Synthetic(SyntheticFrameSource),
+    Live(LiveFrameSource),
+}
+
+impl AppFrameSource {
+    pub fn from_visualizer_config(config: &VisualizerConfig) -> Self {
+        if matches!(config.backend, VisualizerBackend::Dummy) {
+            Self::Synthetic(SyntheticFrameSource::new(config.bars.max(1)))
+        } else {
+            Self::Live(LiveFrameSource::new(config.clone()))
+        }
+    }
+
+    pub fn frame_at(&mut self, timestamp_millis: u64) -> SpectrumFrame {
+        match self {
+            Self::Synthetic(source) => source.frame_at(timestamp_millis),
+            Self::Live(source) => source.frame_at(timestamp_millis),
+        }
+    }
+
+    pub fn description(&self) -> String {
+        match self {
+            Self::Synthetic(_) => "synthetic".to_owned(),
+            Self::Live(source) => source.description(),
+        }
+    }
+}
+
+pub struct LiveFrameSource {
+    stream: LiveFrameStream,
+}
+
+impl LiveFrameSource {
+    fn new(config: VisualizerConfig) -> Self {
+        Self {
+            stream: LiveFrameStream::spawn(config),
+        }
+    }
+
+    fn frame_at(&self, _timestamp_millis: u64) -> SpectrumFrame {
+        self.stream.latest_frame()
+    }
+
+    fn description(&self) -> String {
+        format!("live ({})", source_kind_name(self.stream.source_kind()))
+    }
+}
+
+fn source_kind_name(kind: SourceKind) -> &'static str {
+    match kind {
+        SourceKind::Pipewire => "pipewire",
+        SourceKind::Cava => "cava",
+        SourceKind::Dummy => "dummy",
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::SyntheticFrameSource;
+    use kwybars_common::config::{VisualizerBackend, VisualizerConfig};
+
+    use super::{AppFrameSource, SyntheticFrameSource};
 
     #[test]
     fn synthetic_source_produces_requested_bar_count() {
@@ -53,5 +114,16 @@ mod tests {
         let first = source.frame_at(0);
         let second = source.frame_at(400);
         assert_ne!(first.bars, second.bars);
+    }
+
+    #[test]
+    fn dummy_backend_selects_synthetic_source() {
+        let config = VisualizerConfig {
+            backend: VisualizerBackend::Dummy,
+            ..VisualizerConfig::default()
+        };
+
+        let source = AppFrameSource::from_visualizer_config(&config);
+        assert_eq!(source.description(), "synthetic");
     }
 }

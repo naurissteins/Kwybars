@@ -637,6 +637,7 @@ name = "kwybars-overlay-next"
 version = "0.1.7"
 dependencies = [
  "kwybars-common",
+ "kwybars-engine",
  "smithay-client-toolkit",
  "tracing",
 ]

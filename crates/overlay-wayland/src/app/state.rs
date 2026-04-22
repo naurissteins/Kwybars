@@ -1,3 +1,4 @@
+use kwybars_common::config::VisualizerConfig;
 use kwybars_common::spectrum::SpectrumFrame;
 use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState};
 use smithay_client_toolkit::delegate_compositor;
@@ -24,13 +25,12 @@ use tracing::{error, info};
 use crate::draw;
 
 use super::AppError;
-use super::source::SyntheticFrameSource;
+use super::source::AppFrameSource;
 
 const DEFAULT_WIDTH: u32 = 0;
 const DEFAULT_HEIGHT: u32 = 96;
 const FALLBACK_BUFFER_WIDTH: u32 = 512;
 const SURFACE_NAMESPACE: &str = "kwybars-overlay-next";
-const SYNTHETIC_BAR_COUNT: usize = 40;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct AdvertisedGlobal {
@@ -51,14 +51,18 @@ pub struct AppState {
     pool: SlotPool,
     width: u32,
     height: u32,
-    frame_source: SyntheticFrameSource,
+    frame_source: AppFrameSource,
     latest_frame: SpectrumFrame,
     configured: bool,
     exit: bool,
 }
 
 impl AppState {
-    pub fn new(globals: &GlobalList, qh: &QueueHandle<Self>) -> Result<Self, AppError> {
+    pub fn new(
+        globals: &GlobalList,
+        qh: &QueueHandle<Self>,
+        visualizer: VisualizerConfig,
+    ) -> Result<Self, AppError> {
         let initial_globals = globals
             .contents()
             .clone_list()
@@ -101,6 +105,8 @@ impl AppState {
             &shm_state,
         )
         .map_err(|err| AppError::BufferSetup(err.to_string()))?;
+        let mut frame_source = AppFrameSource::from_visualizer_config(&visualizer);
+        let latest_frame = frame_source.frame_at(0);
 
         Ok(Self {
             registry_state: RegistryState::new(globals),
@@ -114,8 +120,8 @@ impl AppState {
             pool,
             width: DEFAULT_WIDTH,
             height: DEFAULT_HEIGHT,
-            frame_source: SyntheticFrameSource::new(SYNTHETIC_BAR_COUNT),
-            latest_frame: SpectrumFrame::new(vec![0.0; SYNTHETIC_BAR_COUNT], 0),
+            frame_source,
+            latest_frame,
             configured: false,
             exit: false,
         })
@@ -123,6 +129,10 @@ impl AppState {
 
     pub fn should_exit(&self) -> bool {
         self.exit
+    }
+
+    pub fn frame_source_description(&self) -> String {
+        self.frame_source.description()
     }
 
     pub fn log_initial_globals(&self) {

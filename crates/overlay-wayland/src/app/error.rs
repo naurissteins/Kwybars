@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use kwybars_common::config::ConfigLoadError;
 use smithay_client_toolkit::reexports::calloop;
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::reexports::client::ConnectError;
@@ -10,6 +11,7 @@ use super::state::AppState;
 
 #[derive(Debug)]
 pub enum AppError {
+    Config(ConfigLoadError),
     Connect(ConnectError),
     RegistryInit(GlobalError),
     BindGlobal { global: &'static str, err: String },
@@ -22,6 +24,7 @@ pub enum AppError {
 impl Display for AppError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Config(err) => write!(f, "could not load config: {err}"),
             Self::Connect(err) => write!(f, "failed to connect to Wayland compositor: {err}"),
             Self::RegistryInit(err) => write!(f, "failed to initialize Wayland registry: {err}"),
             Self::BindGlobal { global, err } => {
