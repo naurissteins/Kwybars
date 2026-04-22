@@ -5,6 +5,9 @@ pub struct BarGeometry {
     thickness: f64,
     gap: f64,
     corner_radius: f64,
+    segmented: bool,
+    segment_length: f64,
+    segment_gap: f64,
 }
 
 impl BarGeometry {
@@ -13,6 +16,9 @@ impl BarGeometry {
             thickness: f64::from(visualizer.bar_width.max(1)),
             gap: f64::from(visualizer.gap),
             corner_radius: f64::from(visualizer.bar_corner_radius.max(0.0)),
+            segmented: visualizer.segmented_bars,
+            segment_length: f64::from(visualizer.segment_length.max(1)),
+            segment_gap: f64::from(visualizer.segment_gap),
         }
     }
 
@@ -22,6 +28,9 @@ impl BarGeometry {
             thickness: self.thickness * scale,
             gap: self.gap * scale,
             corner_radius: self.corner_radius * scale,
+            segmented: self.segmented,
+            segment_length: self.segment_length * scale,
+            segment_gap: self.segment_gap * scale,
         }
     }
 
@@ -30,6 +39,18 @@ impl BarGeometry {
             .max(0.0)
             .min(f64::from(width) * 0.5)
             .min(f64::from(height) * 0.5)
+    }
+
+    pub fn segmented(self) -> bool {
+        self.segmented
+    }
+
+    pub fn segment_length(self) -> f64 {
+        self.segment_length.max(1.0)
+    }
+
+    pub fn segment_gap(self) -> f64 {
+        self.segment_gap.max(0.0)
     }
 }
 

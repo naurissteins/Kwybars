@@ -369,6 +369,48 @@ fn render_scale_applies_to_configured_bar_width() {
     assert_eq!(top_runs, vec![80]);
 }
 
+#[test]
+fn segmented_bottom_bars_anchor_segments_to_bottom_edge() {
+    let width = 160;
+    let height = 120;
+    let mut canvas = vec![0; (width * height * 4) as usize];
+    let frame = SpectrumFrame::new(vec![1.0], 0);
+    let geometry = segmented_geometry();
+
+    render_bars(
+        &mut canvas,
+        RenderTarget::new(width, height, 1),
+        &frame,
+        &OverlayPosition::Bottom,
+        &default_paint(),
+        &geometry,
+    );
+
+    assert!(pixel_is_opaque(&canvas, width, width / 2, height - 13));
+    assert!(!pixel_is_opaque(&canvas, width, width / 2, height - 24));
+}
+
+#[test]
+fn segmented_top_bars_anchor_segments_to_top_edge() {
+    let width = 160;
+    let height = 120;
+    let mut canvas = vec![0; (width * height * 4) as usize];
+    let frame = SpectrumFrame::new(vec![1.0], 0);
+    let geometry = segmented_geometry();
+
+    render_bars(
+        &mut canvas,
+        RenderTarget::new(width, height, 1),
+        &frame,
+        &OverlayPosition::Top,
+        &default_paint(),
+        &geometry,
+    );
+
+    assert!(pixel_is_opaque(&canvas, width, width / 2, 12));
+    assert!(!pixel_is_opaque(&canvas, width, width / 2, 24));
+}
+
 fn row_has_opaque_pixels(canvas: &[u8], width: u32, row: u32) -> bool {
     let start = (row * width * 4) as usize;
     let end = start + (width * 4) as usize;
@@ -381,6 +423,10 @@ fn column_has_opaque_pixels(canvas: &[u8], width: u32, column: u32) -> bool {
     canvas
         .chunks_exact((width * 4) as usize)
         .any(|row| row[(column * 4) as usize + 3] != 0)
+}
+
+fn pixel_is_opaque(canvas: &[u8], width: u32, x: u32, y: u32) -> bool {
+    canvas[((y * width + x) * 4) as usize + 3] != 0
 }
 
 fn opaque_runs_in_row(canvas: &[u8], width: u32, row: u32) -> Vec<usize> {
@@ -433,6 +479,17 @@ fn default_geometry() -> BarGeometry {
 fn square_geometry() -> BarGeometry {
     BarGeometry::from_visualizer(&VisualizerConfig {
         bar_corner_radius: 0.0,
+        ..VisualizerConfig::default()
+    })
+}
+
+fn segmented_geometry() -> BarGeometry {
+    BarGeometry::from_visualizer(&VisualizerConfig {
+        bar_width: 40,
+        bar_corner_radius: 0.0,
+        segmented_bars: true,
+        segment_length: 10,
+        segment_gap: 6,
         ..VisualizerConfig::default()
     })
 }

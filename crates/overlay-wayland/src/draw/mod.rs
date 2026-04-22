@@ -133,10 +133,9 @@ fn render_horizontal_bars(
         } else {
             bottom_y - bar_height as i32
         };
-        fill_rect(
+        fill_bar(
             canvas,
-            width,
-            height,
+            CanvasSize { width, height },
             Rect {
                 x: x.round() as i32,
                 y,
@@ -145,6 +144,9 @@ fn render_horizontal_bars(
             },
             color,
             context.geometry,
+            SegmentAxis::Vertical {
+                from_start: from_top,
+            },
             &mut context.row_span,
         );
     }
@@ -184,10 +186,9 @@ fn render_vertical_bars(
         } else {
             right_x - bar_width as i32
         };
-        fill_rect(
+        fill_bar(
             canvas,
-            width,
-            height,
+            CanvasSize { width, height },
             Rect {
                 x,
                 y: y.round() as i32,
@@ -196,8 +197,133 @@ fn render_vertical_bars(
             },
             color,
             context.geometry,
+            SegmentAxis::Horizontal {
+                from_start: from_left,
+            },
             &mut context.row_span,
         );
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SegmentAxis {
+    Horizontal { from_start: bool },
+    Vertical { from_start: bool },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CanvasSize {
+    width: u32,
+    height: u32,
+}
+
+fn fill_bar(
+    canvas: &mut [u8],
+    canvas_size: CanvasSize,
+    rect: Rect,
+    color: u32,
+    geometry: &BarGeometry,
+    segment_axis: SegmentAxis,
+    row_span: &mut Vec<u8>,
+) {
+    if !geometry.segmented() {
+        fill_rect(
+            canvas,
+            canvas_size.width,
+            canvas_size.height,
+            rect,
+            color,
+            geometry,
+            row_span,
+        );
+        return;
+    }
+
+    let total_length = match segment_axis {
+        SegmentAxis::Horizontal { .. } => rect.width,
+        SegmentAxis::Vertical { .. } => rect.height,
+    };
+    let from_start = match segment_axis {
+        SegmentAxis::Horizontal { from_start } | SegmentAxis::Vertical { from_start } => from_start,
+    };
+
+    for_each_segment_span(
+        f64::from(total_length),
+        geometry.segment_length(),
+        geometry.segment_gap(),
+        from_start,
+        |offset, length| {
+            let start = offset.round() as i32;
+            let end = (offset + length).round() as i32;
+            let length = (end - start).max(1) as u32;
+            let segment_rect = match segment_axis {
+                SegmentAxis::Horizontal { .. } => Rect {
+                    x: rect.x + start,
+                    y: rect.y,
+                    width: length,
+                    height: rect.height,
+                },
+                SegmentAxis::Vertical { .. } => Rect {
+                    x: rect.x,
+                    y: rect.y + start,
+                    width: rect.width,
+                    height: length,
+                },
+            };
+            fill_rect(
+                canvas,
+                canvas_size.width,
+                canvas_size.height,
+                segment_rect,
+                color,
+                geometry,
+                row_span,
+            );
+        },
+    );
+}
+
+fn for_each_segment_span(
+    total_length: f64,
+    segment_length: f64,
+    segment_gap: f64,
+    from_start: bool,
+    mut segment: impl FnMut(f64, f64),
+) {
+    let total_length = total_length.max(0.0);
+    if total_length <= 0.0 {
+        return;
+    }
+
+    let segment_length = segment_length.max(1.0);
+    let segment_gap = segment_gap.max(0.0);
+    let step = segment_length + segment_gap;
+
+    if from_start {
+        let mut cursor = 0.0;
+        while cursor < total_length {
+            let length = (total_length - cursor).min(segment_length);
+            if length <= 0.0 {
+                break;
+            }
+            segment(cursor, length);
+            cursor += step;
+        }
+        return;
+    }
+
+    let mut cursor = total_length;
+    while cursor > 0.0 {
+        let start = (cursor - segment_length).max(0.0);
+        let length = cursor - start;
+        if length <= 0.0 {
+            break;
+        }
+        segment(start, length);
+        if start <= 0.0 {
+            break;
+        }
+        cursor = (start - segment_gap).max(0.0);
     }
 }
 
