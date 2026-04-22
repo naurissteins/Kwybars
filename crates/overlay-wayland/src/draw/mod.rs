@@ -1,7 +1,10 @@
+mod paint;
+
 use kwybars_common::config::OverlayPosition;
 use kwybars_common::spectrum::SpectrumFrame;
 
-const BAR_COLOR: u32 = 0xFFF1F5F9;
+pub use paint::BarPaint;
+
 const HORIZONTAL_PADDING: u32 = 24;
 const VERTICAL_PADDING: u32 = 12;
 const MIN_BAR_WIDTH: u32 = 6;
@@ -20,6 +23,7 @@ pub fn render_bars(
     height: u32,
     frame: &SpectrumFrame,
     position: &OverlayPosition,
+    paint: &BarPaint,
 ) {
     clear(canvas);
 
@@ -31,20 +35,20 @@ pub fn render_bars(
         return;
     }
 
-    let solid_span = build_solid_span(width.max(height) as usize, BAR_COLOR);
+    let mut row_span = Vec::new();
 
     match position {
         OverlayPosition::Bottom => {
-            render_horizontal_bars(canvas, width, height, frame, false, &solid_span)
+            render_horizontal_bars(canvas, width, height, frame, false, paint, &mut row_span)
         }
         OverlayPosition::Top => {
-            render_horizontal_bars(canvas, width, height, frame, true, &solid_span)
+            render_horizontal_bars(canvas, width, height, frame, true, paint, &mut row_span)
         }
         OverlayPosition::Left => {
-            render_vertical_bars(canvas, width, height, frame, true, &solid_span)
+            render_vertical_bars(canvas, width, height, frame, true, paint, &mut row_span)
         }
         OverlayPosition::Right => {
-            render_vertical_bars(canvas, width, height, frame, false, &solid_span)
+            render_vertical_bars(canvas, width, height, frame, false, paint, &mut row_span)
         }
     }
 }
@@ -55,7 +59,8 @@ fn render_horizontal_bars(
     height: u32,
     frame: &SpectrumFrame,
     from_top: bool,
-    solid_span: &[u8],
+    paint: &BarPaint,
+    row_span: &mut Vec<u8>,
 ) {
     let drawable_width = width.saturating_sub(HORIZONTAL_PADDING * 2);
     let drawable_height = height.saturating_sub(VERTICAL_PADDING * 2);
@@ -76,6 +81,7 @@ fn render_horizontal_bars(
     for index in 0..bar_count {
         let x = start_x + index as i32 * (bar_width + gap) as i32;
         let bar_height = frame_bar_extent(frame.bars[index], drawable_height);
+        let color = paint.color_for_bar(index, bar_count);
         let y = if from_top {
             top_y
         } else {
@@ -91,7 +97,8 @@ fn render_horizontal_bars(
                 width: bar_width,
                 height: bar_height,
             },
-            solid_span,
+            color,
+            row_span,
         );
     }
 }
@@ -102,7 +109,8 @@ fn render_vertical_bars(
     height: u32,
     frame: &SpectrumFrame,
     from_left: bool,
-    solid_span: &[u8],
+    paint: &BarPaint,
+    row_span: &mut Vec<u8>,
 ) {
     let drawable_width = width.saturating_sub(HORIZONTAL_PADDING * 2);
     let drawable_height = height.saturating_sub(VERTICAL_PADDING * 2);
@@ -124,6 +132,7 @@ fn render_vertical_bars(
     for index in 0..bar_count {
         let y = start_y + index as i32 * (bar_height + gap) as i32;
         let bar_width = frame_bar_extent(frame.bars[index], drawable_width);
+        let color = paint.color_for_bar(index, bar_count);
         let x = if from_left {
             left_x
         } else {
@@ -139,7 +148,8 @@ fn render_vertical_bars(
                 width: bar_width,
                 height: bar_height,
             },
-            solid_span,
+            color,
+            row_span,
         );
     }
 }
@@ -154,16 +164,14 @@ fn clear(canvas: &mut [u8]) {
     canvas.fill(0);
 }
 
-fn build_solid_span(pixel_count: usize, color: u32) -> Vec<u8> {
-    let mut span = vec![0_u8; pixel_count.saturating_mul(4)];
-    let color_bytes = color.to_le_bytes();
-    for chunk in span.chunks_exact_mut(4) {
-        chunk.copy_from_slice(&color_bytes);
-    }
-    span
-}
-
-fn fill_rect(canvas: &mut [u8], width: u32, height: u32, rect: Rect, solid_span: &[u8]) {
+fn fill_rect(
+    canvas: &mut [u8],
+    width: u32,
+    height: u32,
+    rect: Rect,
+    color: u32,
+    row_span: &mut Vec<u8>,
+) {
     let x0 = rect.x.max(0) as u32;
     let y0 = rect.y.max(0) as u32;
     let x1 = (rect.x + rect.width as i32).min(width as i32).max(0) as u32;
@@ -173,93 +181,24 @@ fn fill_rect(canvas: &mut [u8], width: u32, height: u32, rect: Rect, solid_span:
     }
 
     let row_bytes = ((x1 - x0) * 4) as usize;
+    fill_solid_span(row_span, row_bytes, color);
     for row in y0..y1 {
         let start = ((row * width + x0) * 4) as usize;
         let end = start + row_bytes;
-        canvas[start..end].copy_from_slice(&solid_span[..row_bytes]);
+        canvas[start..end].copy_from_slice(&row_span[..row_bytes]);
+    }
+}
+
+fn fill_solid_span(span: &mut Vec<u8>, row_bytes: usize, color: u32) {
+    if span.len() != row_bytes {
+        span.resize(row_bytes, 0);
+    }
+
+    let color_bytes = color.to_le_bytes();
+    for chunk in span.chunks_exact_mut(4) {
+        chunk.copy_from_slice(&color_bytes);
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use kwybars_common::config::OverlayPosition;
-    use kwybars_common::spectrum::SpectrumFrame;
-
-    use super::render_bars;
-
-    #[test]
-    fn bars_leave_transparent_background() {
-        let width = 320;
-        let height = 96;
-        let mut canvas = vec![0xAA; (width * height * 4) as usize];
-        let frame = SpectrumFrame::new(vec![0.25; 20], 0);
-
-        render_bars(&mut canvas, width, height, &frame, &OverlayPosition::Bottom);
-
-        assert_eq!(&canvas[0..4], &[0, 0, 0, 0]);
-        assert!(canvas.chunks_exact(4).any(|pixel| pixel[3] != 0));
-    }
-
-    #[test]
-    fn bars_handle_small_buffers() {
-        let mut canvas = vec![0; 4 * 8 * 8];
-        let frame = SpectrumFrame::new(vec![0.25; 8], 0);
-        render_bars(&mut canvas, 8, 8, &frame, &OverlayPosition::Bottom);
-        assert_eq!(canvas.len(), 256);
-    }
-
-    #[test]
-    fn different_frame_values_change_output() {
-        let width = 320;
-        let height = 96;
-        let mut first = vec![0; (width * height * 4) as usize];
-        let mut second = vec![0; (width * height * 4) as usize];
-        let low = SpectrumFrame::new(vec![0.15; 20], 0);
-        let high = SpectrumFrame::new(vec![0.85; 20], 16);
-
-        render_bars(&mut first, width, height, &low, &OverlayPosition::Bottom);
-        render_bars(&mut second, width, height, &high, &OverlayPosition::Bottom);
-
-        assert_ne!(first, second);
-    }
-
-    #[test]
-    fn top_position_draws_near_top_edge() {
-        let width = 320;
-        let height = 96;
-        let mut canvas = vec![0; (width * height * 4) as usize];
-        let frame = SpectrumFrame::new(vec![0.9; 20], 0);
-
-        render_bars(&mut canvas, width, height, &frame, &OverlayPosition::Top);
-
-        assert!(row_has_opaque_pixels(&canvas, width, 12));
-        assert!(!row_has_opaque_pixels(&canvas, width, height - 4));
-    }
-
-    #[test]
-    fn right_position_draws_near_right_edge() {
-        let width = 96;
-        let height = 320;
-        let mut canvas = vec![0; (width * height * 4) as usize];
-        let frame = SpectrumFrame::new(vec![0.9; 20], 0);
-
-        render_bars(&mut canvas, width, height, &frame, &OverlayPosition::Right);
-
-        assert!(column_has_opaque_pixels(&canvas, width, width - 25));
-        assert!(!column_has_opaque_pixels(&canvas, width, 4));
-    }
-
-    fn row_has_opaque_pixels(canvas: &[u8], width: u32, row: u32) -> bool {
-        let start = (row * width * 4) as usize;
-        let end = start + (width * 4) as usize;
-        canvas[start..end]
-            .chunks_exact(4)
-            .any(|pixel| pixel[3] != 0)
-    }
-
-    fn column_has_opaque_pixels(canvas: &[u8], width: u32, column: u32) -> bool {
-        canvas
-            .chunks_exact((width * 4) as usize)
-            .any(|row| row[(column * 4) as usize + 3] != 0)
-    }
-}
+mod tests;

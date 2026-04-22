@@ -1,5 +1,7 @@
+mod buffer;
 mod error;
 mod monitor;
+mod runtime;
 mod source;
 mod state;
 mod surface;
@@ -7,7 +9,6 @@ mod surface;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use kwybars_common::config;
 use smithay_client_toolkit::reexports::calloop::EventLoop;
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::reexports::client::Connection;
@@ -21,11 +22,11 @@ const DISPATCH_TIMEOUT: Duration = Duration::from_millis(250);
 
 pub fn run(config_path: PathBuf) -> Result<(), AppError> {
     let config_exists = config_path.exists();
-    let app_config = config::load_or_default(&config_path).map_err(AppError::Config)?;
+    let runtime = runtime::load(&config_path)?;
     let conn = Connection::connect_to_env().map_err(AppError::Connect)?;
     let (globals, event_queue) = registry_queue_init(&conn).map_err(AppError::RegistryInit)?;
     let qh = event_queue.handle();
-    let mut state = AppState::new(&globals, &qh, app_config)?;
+    let mut state = AppState::new(&globals, &qh, runtime.app_config, runtime.theme_palette)?;
 
     info!("connected to Wayland compositor");
     if config_exists {
@@ -35,6 +36,16 @@ pub fn run(config_path: PathBuf) -> Result<(), AppError> {
             "config path: {} (not found, using built-in defaults)",
             config_path.display()
         );
+    }
+    if runtime.config_load_path != config_path {
+        info!(
+            "resolved config path: {}",
+            runtime.config_load_path.display()
+        );
+    }
+    info!("colors path: {}", runtime.colors_path.display());
+    if let Some(theme_path) = runtime.theme_path.as_ref() {
+        info!("theme path: {}", theme_path.display());
     }
     info!("frame source: {}", state.frame_source_description());
     state.log_initial_globals();

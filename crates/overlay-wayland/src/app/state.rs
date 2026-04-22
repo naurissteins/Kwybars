@@ -1,5 +1,6 @@
 use kwybars_common::config::{AppConfig, OverlayConfig, OverlayPosition};
 use kwybars_common::spectrum::SpectrumFrame;
+use kwybars_common::theme::ThemePalette;
 use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState};
 use smithay_client_toolkit::delegate_compositor;
 use smithay_client_toolkit::delegate_layer;
@@ -8,7 +9,7 @@ use smithay_client_toolkit::delegate_registry;
 use smithay_client_toolkit::delegate_shm;
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
 use smithay_client_toolkit::reexports::client::globals::GlobalList;
-use smithay_client_toolkit::reexports::client::protocol::{wl_output, wl_shm, wl_surface};
+use smithay_client_toolkit::reexports::client::protocol::{wl_output, wl_surface};
 use smithay_client_toolkit::reexports::client::{Connection, Proxy, QueueHandle};
 use smithay_client_toolkit::registry::{ProvidesRegistryState, RegistryState};
 use smithay_client_toolkit::registry_handlers;
@@ -18,12 +19,14 @@ use smithay_client_toolkit::shell::{
         KeyboardInteractivity, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
     },
 };
-use smithay_client_toolkit::shm::{Shm, ShmHandler, slot::SlotPool};
+use smithay_client_toolkit::shm::{Shm, ShmHandler};
 use tracing::{error, info};
 
 use crate::draw;
+use crate::draw::BarPaint;
 
 use super::AppError;
+use super::buffer::SurfaceBuffers;
 use super::monitor::{OutputSelection, select_outputs};
 use super::source::AppFrameSource;
 use super::surface::SurfaceConfig;
@@ -41,7 +44,7 @@ struct SurfaceInstance {
     output: Option<wl_output::WlOutput>,
     wl_surface: wl_surface::WlSurface,
     layer_surface: LayerSurface,
-    pool: SlotPool,
+    buffers: SurfaceBuffers,
     width: u32,
     height: u32,
     configured: bool,
@@ -57,6 +60,7 @@ pub struct AppState {
     overlay_config: OverlayConfig,
     surface_config: SurfaceConfig,
     position: OverlayPosition,
+    paint: BarPaint,
     frame_source: AppFrameSource,
     latest_frame: SpectrumFrame,
     surfaces: Vec<SurfaceInstance>,
@@ -70,6 +74,7 @@ impl AppState {
         globals: &GlobalList,
         qh: &QueueHandle<Self>,
         app_config: AppConfig,
+        theme_palette: Option<ThemePalette>,
     ) -> Result<Self, AppError> {
         let initial_globals = globals
             .contents()
@@ -98,6 +103,10 @@ impl AppState {
         let output_state = OutputState::new(globals, qh);
 
         let surface_config = SurfaceConfig::from_app_config(&app_config);
+        let paint = BarPaint::from_visualizer(
+            &app_config.visualizer,
+            theme_palette.map(|palette| palette.colors),
+        );
 
         let mut frame_source = AppFrameSource::from_visualizer_config(&app_config.visualizer);
         let latest_frame = frame_source.frame_at(0);
@@ -112,6 +121,7 @@ impl AppState {
             overlay_config: app_config.overlay.clone(),
             surface_config,
             position: app_config.overlay.position,
+            paint,
             frame_source,
             latest_frame,
             surfaces: Vec::new(),
@@ -153,17 +163,17 @@ impl AppState {
         layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
         layer_surface.commit();
 
-        let pool = SlotPool::new(
-            (surface_config.fallback_width * surface_config.fallback_height * 4) as usize,
+        let buffers = SurfaceBuffers::new(
+            surface_config.fallback_width,
+            surface_config.fallback_height,
             shm_state,
-        )
-        .map_err(|err| AppError::BufferSetup(err.to_string()))?;
+        )?;
 
         Ok(SurfaceInstance {
             output,
             wl_surface,
             layer_surface,
-            pool,
+            buffers,
             width: 0,
             height: 0,
             configured: false,
@@ -325,32 +335,25 @@ impl AppState {
         }
 
         let (width, height) = self.current_dimensions(index);
-        let stride = width as i32 * 4;
         let surface = &mut self.surfaces[index];
+        let wl_surface = surface.layer_surface.wl_surface().clone();
+        let attached = surface
+            .buffers
+            .render_and_attach(width, height, &wl_surface, |canvas| {
+                draw::render_bars(
+                    canvas,
+                    width,
+                    height,
+                    &self.latest_frame,
+                    &self.position,
+                    &self.paint,
+                )
+            })?;
 
-        let (buffer, canvas) = surface
-            .pool
-            .create_buffer(
-                width as i32,
-                height as i32,
-                stride,
-                wl_shm::Format::Argb8888,
-            )
-            .map_err(|err| AppError::BufferSetup(err.to_string()))?;
-
-        draw::render_bars(canvas, width, height, &self.latest_frame, &self.position);
-
-        surface
-            .layer_surface
-            .wl_surface()
-            .damage_buffer(0, 0, width as i32, height as i32);
-        surface
-            .layer_surface
-            .wl_surface()
-            .frame(qh, surface.layer_surface.wl_surface().clone());
-        buffer
-            .attach_to(surface.layer_surface.wl_surface())
-            .map_err(|err| AppError::BufferSetup(err.to_string()))?;
+        if attached {
+            wl_surface.damage_buffer(0, 0, width as i32, height as i32);
+        }
+        wl_surface.frame(qh, wl_surface.clone());
         surface.layer_surface.commit();
         Ok(())
     }
