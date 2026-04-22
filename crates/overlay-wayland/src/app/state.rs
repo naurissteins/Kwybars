@@ -1,4 +1,5 @@
-use kwybars_common::config::VisualizerConfig;
+use kwybars_common::config::AppConfig;
+use kwybars_common::config::OverlayPosition;
 use kwybars_common::spectrum::SpectrumFrame;
 use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState};
 use smithay_client_toolkit::delegate_compositor;
@@ -15,8 +16,7 @@ use smithay_client_toolkit::registry_handlers;
 use smithay_client_toolkit::shell::{
     WaylandSurface,
     wlr_layer::{
-        Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface,
-        LayerSurfaceConfigure,
+        KeyboardInteractivity, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
     },
 };
 use smithay_client_toolkit::shm::{Shm, ShmHandler, slot::SlotPool};
@@ -26,10 +26,7 @@ use crate::draw;
 
 use super::AppError;
 use super::source::AppFrameSource;
-
-const DEFAULT_WIDTH: u32 = 0;
-const DEFAULT_HEIGHT: u32 = 96;
-const FALLBACK_BUFFER_WIDTH: u32 = 512;
+use super::surface::SurfaceConfig;
 const SURFACE_NAMESPACE: &str = "kwybars-overlay-next";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,6 +46,8 @@ pub struct AppState {
     surface: wl_surface::WlSurface,
     layer_surface: LayerSurface,
     pool: SlotPool,
+    surface_config: SurfaceConfig,
+    position: OverlayPosition,
     width: u32,
     height: u32,
     frame_source: AppFrameSource,
@@ -61,8 +60,9 @@ impl AppState {
     pub fn new(
         globals: &GlobalList,
         qh: &QueueHandle<Self>,
-        visualizer: VisualizerConfig,
+        app_config: AppConfig,
     ) -> Result<Self, AppError> {
+        let surface_config = SurfaceConfig::from_app_config(&app_config);
         let initial_globals = globals
             .contents()
             .clone_list()
@@ -91,21 +91,30 @@ impl AppState {
         let layer_surface = layer_shell.create_layer_surface(
             qh,
             surface.clone(),
-            Layer::Bottom,
+            surface_config.layer,
             Some(SURFACE_NAMESPACE),
             None,
         );
-        layer_surface.set_anchor(Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM);
-        layer_surface.set_size(DEFAULT_WIDTH, DEFAULT_HEIGHT);
+        layer_surface.set_anchor(surface_config.anchor);
+        layer_surface.set_margin(
+            surface_config.margins.top,
+            surface_config.margins.right,
+            surface_config.margins.bottom,
+            surface_config.margins.left,
+        );
+        layer_surface.set_size(
+            surface_config.requested_width,
+            surface_config.requested_height,
+        );
         layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
         layer_surface.commit();
 
         let pool = SlotPool::new(
-            (FALLBACK_BUFFER_WIDTH * DEFAULT_HEIGHT * 4) as usize,
+            (surface_config.fallback_width * surface_config.fallback_height * 4) as usize,
             &shm_state,
         )
         .map_err(|err| AppError::BufferSetup(err.to_string()))?;
-        let mut frame_source = AppFrameSource::from_visualizer_config(&visualizer);
+        let mut frame_source = AppFrameSource::from_visualizer_config(&app_config.visualizer);
         let latest_frame = frame_source.frame_at(0);
 
         Ok(Self {
@@ -118,8 +127,10 @@ impl AppState {
             surface,
             layer_surface,
             pool,
-            width: DEFAULT_WIDTH,
-            height: DEFAULT_HEIGHT,
+            surface_config,
+            position: app_config.overlay.position,
+            width: 0,
+            height: 0,
             frame_source,
             latest_frame,
             configured: false,
@@ -164,18 +175,31 @@ impl AppState {
         info!("bound required global: zwlr_layer_shell_v1");
     }
 
+    fn preferred_output_size(&self) -> Option<(i32, i32)> {
+        self.output_state.outputs().find_map(|output| {
+            let info = self.output_state.info(&output)?;
+            if let Some(logical_size) = info.logical_size
+                && logical_size.0 > 0
+                && logical_size.1 > 0
+            {
+                return Some(logical_size);
+            }
+
+            info.modes
+                .iter()
+                .find(|mode| mode.current)
+                .or_else(|| info.modes.iter().find(|mode| mode.preferred))
+                .map(|mode| mode.dimensions)
+                .filter(|(width, height)| *width > 0 && *height > 0)
+        })
+    }
+
     fn current_dimensions(&self) -> (u32, u32) {
-        let width = if self.width == 0 {
-            FALLBACK_BUFFER_WIDTH
-        } else {
-            self.width
-        };
-        let height = if self.height == 0 {
-            DEFAULT_HEIGHT
-        } else {
-            self.height
-        };
-        (width, height)
+        self.surface_config.resolved_dimensions(
+            self.width,
+            self.height,
+            self.preferred_output_size(),
+        )
     }
 
     fn update_frame(&mut self, timestamp_millis: u64) {
@@ -196,7 +220,7 @@ impl AppState {
             )
             .map_err(|err| AppError::BufferSetup(err.to_string()))?;
 
-        draw::render_bars(canvas, width, height, &self.latest_frame);
+        draw::render_bars(canvas, width, height, &self.latest_frame, &self.position);
 
         self.layer_surface
             .wl_surface()
@@ -287,16 +311,8 @@ impl LayerShellHandler for AppState {
         _serial: u32,
     ) {
         let previous_dimensions = self.current_dimensions();
-        self.width = if configure.new_size.0 == 0 {
-            DEFAULT_WIDTH
-        } else {
-            configure.new_size.0
-        };
-        self.height = if configure.new_size.1 == 0 {
-            DEFAULT_HEIGHT
-        } else {
-            configure.new_size.1
-        };
+        self.width = configure.new_size.0;
+        self.height = configure.new_size.1;
 
         let current_dimensions = self.current_dimensions();
         if !self.configured {

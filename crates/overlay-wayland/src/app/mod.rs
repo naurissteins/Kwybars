@@ -1,6 +1,7 @@
 mod error;
 mod source;
 mod state;
+mod surface;
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -23,7 +24,7 @@ pub fn run(config_path: PathBuf) -> Result<(), AppError> {
     let conn = Connection::connect_to_env().map_err(AppError::Connect)?;
     let (globals, event_queue) = registry_queue_init(&conn).map_err(AppError::RegistryInit)?;
     let qh = event_queue.handle();
-    let mut state = AppState::new(&globals, &qh, app_config.visualizer)?;
+    let mut state = AppState::new(&globals, &qh, app_config)?;
 
     info!("connected to Wayland compositor");
     if config_exists {
@@ -37,7 +38,7 @@ pub fn run(config_path: PathBuf) -> Result<(), AppError> {
     info!("frame source: {}", state.frame_source_description());
     state.log_initial_globals();
     state.log_bound_globals();
-    info!("created bottom-anchored layer-shell surface and committed initial empty state");
+    info!("created layer-shell surface from overlay config and committed initial empty state");
 
     let mut event_loop = EventLoop::<AppState>::try_new().map_err(AppError::EventLoop)?;
     let loop_handle = event_loop.handle();
