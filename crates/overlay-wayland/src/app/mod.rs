@@ -1,4 +1,5 @@
 mod error;
+mod monitor;
 mod source;
 mod state;
 mod surface;
@@ -38,7 +39,17 @@ pub fn run(config_path: PathBuf) -> Result<(), AppError> {
     info!("frame source: {}", state.frame_source_description());
     state.log_initial_globals();
     state.log_bound_globals();
-    info!("created layer-shell surface from overlay config and committed initial empty state");
+    state.log_selected_outputs();
+    if state.surface_count() > 0 {
+        info!(
+            "created {} layer-shell surface(s) from overlay config and committed initial empty state",
+            state.surface_count()
+        );
+    } else if state.is_waiting_for_named_outputs() {
+        info!("deferring layer-surface creation until output names are available");
+    } else {
+        info!("waiting for output advertisement before creating layer surfaces");
+    }
 
     let mut event_loop = EventLoop::<AppState>::try_new().map_err(AppError::EventLoop)?;
     let loop_handle = event_loop.handle();

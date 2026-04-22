@@ -1,5 +1,4 @@
-use kwybars_common::config::AppConfig;
-use kwybars_common::config::OverlayPosition;
+use kwybars_common::config::{AppConfig, OverlayConfig, OverlayPosition};
 use kwybars_common::spectrum::SpectrumFrame;
 use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState};
 use smithay_client_toolkit::delegate_compositor;
@@ -25,8 +24,10 @@ use tracing::{error, info};
 use crate::draw;
 
 use super::AppError;
+use super::monitor::{OutputSelection, select_outputs};
 use super::source::AppFrameSource;
 use super::surface::SurfaceConfig;
+
 const SURFACE_NAMESPACE: &str = "kwybars-overlay-next";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,6 +37,16 @@ struct AdvertisedGlobal {
     version: u32,
 }
 
+struct SurfaceInstance {
+    output: Option<wl_output::WlOutput>,
+    wl_surface: wl_surface::WlSurface,
+    layer_surface: LayerSurface,
+    pool: SlotPool,
+    width: u32,
+    height: u32,
+    configured: bool,
+}
+
 pub struct AppState {
     registry_state: RegistryState,
     output_state: OutputState,
@@ -43,16 +54,14 @@ pub struct AppState {
     compositor_state: CompositorState,
     shm_state: Shm,
     layer_shell: LayerShell,
-    surface: wl_surface::WlSurface,
-    layer_surface: LayerSurface,
-    pool: SlotPool,
+    overlay_config: OverlayConfig,
     surface_config: SurfaceConfig,
     position: OverlayPosition,
-    width: u32,
-    height: u32,
     frame_source: AppFrameSource,
     latest_frame: SpectrumFrame,
-    configured: bool,
+    surfaces: Vec<SurfaceInstance>,
+    waiting_for_named_outputs: bool,
+    last_frame_time: Option<u32>,
     exit: bool,
 }
 
@@ -62,7 +71,6 @@ impl AppState {
         qh: &QueueHandle<Self>,
         app_config: AppConfig,
     ) -> Result<Self, AppError> {
-        let surface_config = SurfaceConfig::from_app_config(&app_config);
         let initial_globals = globals
             .contents()
             .clone_list()
@@ -87,13 +95,49 @@ impl AppState {
             global: "zwlr_layer_shell_v1",
             err: err.to_string(),
         })?;
-        let surface = compositor_state.create_surface(qh);
+        let output_state = OutputState::new(globals, qh);
+
+        let surface_config = SurfaceConfig::from_app_config(&app_config);
+
+        let mut frame_source = AppFrameSource::from_visualizer_config(&app_config.visualizer);
+        let latest_frame = frame_source.frame_at(0);
+
+        let mut state = Self {
+            registry_state: RegistryState::new(globals),
+            output_state,
+            initial_globals,
+            compositor_state,
+            shm_state,
+            layer_shell,
+            overlay_config: app_config.overlay.clone(),
+            surface_config,
+            position: app_config.overlay.position,
+            frame_source,
+            latest_frame,
+            surfaces: Vec::new(),
+            waiting_for_named_outputs: false,
+            last_frame_time: None,
+            exit: false,
+        };
+        state.ensure_surfaces(qh)?;
+        Ok(state)
+    }
+
+    fn create_surface_instance(
+        qh: &QueueHandle<Self>,
+        compositor_state: &CompositorState,
+        layer_shell: &LayerShell,
+        shm_state: &Shm,
+        surface_config: &SurfaceConfig,
+        output: Option<wl_output::WlOutput>,
+    ) -> Result<SurfaceInstance, AppError> {
+        let wl_surface = compositor_state.create_surface(qh);
         let layer_surface = layer_shell.create_layer_surface(
             qh,
-            surface.clone(),
+            wl_surface.clone(),
             surface_config.layer,
             Some(SURFACE_NAMESPACE),
-            None,
+            output.as_ref(),
         );
         layer_surface.set_anchor(surface_config.anchor);
         layer_surface.set_margin(
@@ -111,30 +155,18 @@ impl AppState {
 
         let pool = SlotPool::new(
             (surface_config.fallback_width * surface_config.fallback_height * 4) as usize,
-            &shm_state,
+            shm_state,
         )
         .map_err(|err| AppError::BufferSetup(err.to_string()))?;
-        let mut frame_source = AppFrameSource::from_visualizer_config(&app_config.visualizer);
-        let latest_frame = frame_source.frame_at(0);
 
-        Ok(Self {
-            registry_state: RegistryState::new(globals),
-            output_state: OutputState::new(globals, qh),
-            initial_globals,
-            compositor_state,
-            shm_state,
-            layer_shell,
-            surface,
+        Ok(SurfaceInstance {
+            output,
+            wl_surface,
             layer_surface,
             pool,
-            surface_config,
-            position: app_config.overlay.position,
             width: 0,
             height: 0,
-            frame_source,
-            latest_frame,
             configured: false,
-            exit: false,
         })
     }
 
@@ -144,6 +176,14 @@ impl AppState {
 
     pub fn frame_source_description(&self) -> String {
         self.frame_source.description()
+    }
+
+    pub fn surface_count(&self) -> usize {
+        self.surfaces.len()
+    }
+
+    pub fn is_waiting_for_named_outputs(&self) -> bool {
+        self.waiting_for_named_outputs
     }
 
     pub fn log_initial_globals(&self) {
@@ -164,9 +204,7 @@ impl AppState {
     pub fn log_bound_globals(&self) {
         let _ = &self.compositor_state;
         let _ = &self.layer_shell;
-        let _ = &self.surface;
-        let _ = &self.layer_surface;
-        let _ = &self.pool;
+        let _ = &self.shm_state;
         info!("bound required global: wl_compositor");
         info!(
             "bound required global: wl_shm ({} advertised formats so far)",
@@ -175,30 +213,105 @@ impl AppState {
         info!("bound required global: zwlr_layer_shell_v1");
     }
 
-    fn preferred_output_size(&self) -> Option<(i32, i32)> {
-        self.output_state.outputs().find_map(|output| {
-            let info = self.output_state.info(&output)?;
-            if let Some(logical_size) = info.logical_size
-                && logical_size.0 > 0
-                && logical_size.1 > 0
-            {
-                return Some(logical_size);
-            }
+    pub fn log_selected_outputs(&self) {
+        if self.waiting_for_named_outputs {
+            info!("waiting for output names before resolving target monitors");
+            return;
+        }
+        if self.surfaces.is_empty() {
+            info!("no target outputs resolved yet");
+            return;
+        }
 
-            info.modes
-                .iter()
-                .find(|mode| mode.current)
-                .or_else(|| info.modes.iter().find(|mode| mode.preferred))
-                .map(|mode| mode.dimensions)
-                .filter(|(width, height)| *width > 0 && *height > 0)
-        })
+        for (index, surface) in self.surfaces.iter().enumerate() {
+            let label = self
+                .output_label(surface.output.as_ref())
+                .unwrap_or_else(|| "compositor-default".to_owned());
+            info!("overlay surface {} target output: {}", index + 1, label);
+        }
     }
 
-    fn current_dimensions(&self) -> (u32, u32) {
+    fn output_label(&self, output: Option<&wl_output::WlOutput>) -> Option<String> {
+        let output = output?;
+        let info = self.output_state.info(output)?;
+        if let Some(name) = info.name
+            && !name.is_empty()
+        {
+            return Some(name);
+        }
+        if !info.model.is_empty() || !info.make.is_empty() {
+            return Some(format!("{} {}", info.make, info.model).trim().to_owned());
+        }
+        Some(format!("output-{}", info.id))
+    }
+
+    fn output_size_for(&self, output: Option<&wl_output::WlOutput>) -> Option<(i32, i32)> {
+        let candidate = output
+            .and_then(|selected| self.output_state.info(selected))
+            .or_else(|| {
+                self.output_state
+                    .outputs()
+                    .find_map(|known| self.output_state.info(&known))
+            })?;
+
+        if let Some(logical_size) = candidate.logical_size
+            && logical_size.0 > 0
+            && logical_size.1 > 0
+        {
+            return Some(logical_size);
+        }
+
+        candidate
+            .modes
+            .iter()
+            .find(|mode| mode.current)
+            .or_else(|| candidate.modes.iter().find(|mode| mode.preferred))
+            .map(|mode| mode.dimensions)
+            .filter(|(width, height)| *width > 0 && *height > 0)
+    }
+
+    fn ensure_surfaces(&mut self, qh: &QueueHandle<Self>) -> Result<(), AppError> {
+        if !self.surfaces.is_empty() {
+            return Ok(());
+        }
+
+        match select_outputs(&self.output_state, &self.overlay_config) {
+            OutputSelection::PendingNames => {
+                self.waiting_for_named_outputs = true;
+                Ok(())
+            }
+            OutputSelection::Ready(outputs) => {
+                self.waiting_for_named_outputs = false;
+                if outputs.is_empty() {
+                    return Ok(());
+                }
+
+                for output in outputs {
+                    self.surfaces.push(Self::create_surface_instance(
+                        qh,
+                        &self.compositor_state,
+                        &self.layer_shell,
+                        &self.shm_state,
+                        &self.surface_config,
+                        Some(output),
+                    )?);
+                }
+                self.log_selected_outputs();
+                info!(
+                    "created {} layer-shell surface(s) after output selection",
+                    self.surface_count()
+                );
+                Ok(())
+            }
+        }
+    }
+
+    fn current_dimensions(&self, index: usize) -> (u32, u32) {
+        let surface = &self.surfaces[index];
         self.surface_config.resolved_dimensions(
-            self.width,
-            self.height,
-            self.preferred_output_size(),
+            surface.width,
+            surface.height,
+            self.output_size_for(surface.output.as_ref()),
         )
     }
 
@@ -206,11 +319,16 @@ impl AppState {
         self.latest_frame = self.frame_source.frame_at(timestamp_millis);
     }
 
-    fn draw_buffer(&mut self, qh: &QueueHandle<Self>) -> Result<(), AppError> {
-        let (width, height) = self.current_dimensions();
-        let stride = width as i32 * 4;
+    fn draw_surface(&mut self, index: usize, qh: &QueueHandle<Self>) -> Result<(), AppError> {
+        if !self.surfaces[index].configured {
+            return Ok(());
+        }
 
-        let (buffer, canvas) = self
+        let (width, height) = self.current_dimensions(index);
+        let stride = width as i32 * 4;
+        let surface = &mut self.surfaces[index];
+
+        let (buffer, canvas) = surface
             .pool
             .create_buffer(
                 width as i32,
@@ -222,17 +340,39 @@ impl AppState {
 
         draw::render_bars(canvas, width, height, &self.latest_frame, &self.position);
 
-        self.layer_surface
+        surface
+            .layer_surface
             .wl_surface()
             .damage_buffer(0, 0, width as i32, height as i32);
-        self.layer_surface
+        surface
+            .layer_surface
             .wl_surface()
-            .frame(qh, self.layer_surface.wl_surface().clone());
+            .frame(qh, surface.layer_surface.wl_surface().clone());
         buffer
-            .attach_to(self.layer_surface.wl_surface())
+            .attach_to(surface.layer_surface.wl_surface())
             .map_err(|err| AppError::BufferSetup(err.to_string()))?;
-        self.layer_surface.commit();
+        surface.layer_surface.commit();
         Ok(())
+    }
+
+    fn draw_all_surfaces(&mut self, qh: &QueueHandle<Self>) -> Result<(), AppError> {
+        for index in 0..self.surfaces.len() {
+            self.draw_surface(index, qh)?;
+        }
+        Ok(())
+    }
+
+    fn frame_driver_surface(&self) -> Option<&wl_surface::WlSurface> {
+        self.surfaces
+            .iter()
+            .find(|surface| surface.configured)
+            .map(|surface| &surface.wl_surface)
+    }
+
+    fn surface_index_for_layer(&self, layer: &LayerSurface) -> Option<usize> {
+        self.surfaces
+            .iter()
+            .position(|surface| surface.layer_surface == *layer)
     }
 }
 
@@ -267,11 +407,22 @@ impl CompositorHandler for AppState {
         &mut self,
         _conn: &Connection,
         qh: &QueueHandle<Self>,
-        _surface: &wl_surface::WlSurface,
+        surface: &wl_surface::WlSurface,
         time: u32,
     ) {
+        let Some(driver_surface) = self.frame_driver_surface() else {
+            return;
+        };
+        if driver_surface != surface {
+            return;
+        }
+        if self.last_frame_time == Some(time) {
+            return;
+        }
+        self.last_frame_time = Some(time);
+
         self.update_frame(u64::from(time));
-        if let Err(err) = self.draw_buffer(qh) {
+        if let Err(err) = self.draw_all_surfaces(qh) {
             error!("kwybars-overlay-next failed to draw animated frame: {err}");
             self.exit = true;
         }
@@ -297,40 +448,61 @@ impl CompositorHandler for AppState {
 }
 
 impl LayerShellHandler for AppState {
-    fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _layer: &LayerSurface) {
-        info!("layer surface closed by compositor");
-        self.exit = true;
+    fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, layer: &LayerSurface) {
+        if let Some(index) = self.surface_index_for_layer(layer) {
+            let label = self
+                .output_label(self.surfaces[index].output.as_ref())
+                .unwrap_or_else(|| "compositor-default".to_owned());
+            info!("layer surface closed by compositor: {}", label);
+            self.surfaces.remove(index);
+        }
+
+        if self.surfaces.is_empty() {
+            self.exit = true;
+        }
     }
 
     fn configure(
         &mut self,
         _conn: &Connection,
         qh: &QueueHandle<Self>,
-        _layer: &LayerSurface,
+        layer: &LayerSurface,
         configure: LayerSurfaceConfigure,
         _serial: u32,
     ) {
-        let previous_dimensions = self.current_dimensions();
-        self.width = configure.new_size.0;
-        self.height = configure.new_size.1;
+        let Some(index) = self.surface_index_for_layer(layer) else {
+            return;
+        };
 
-        let current_dimensions = self.current_dimensions();
-        if !self.configured {
+        let previous_dimensions = self.current_dimensions(index);
+        let output_label = self
+            .output_label(self.surfaces[index].output.as_ref())
+            .unwrap_or_else(|| "compositor-default".to_owned());
+
+        {
+            let surface = &mut self.surfaces[index];
+            surface.width = configure.new_size.0;
+            surface.height = configure.new_size.1;
+        }
+
+        let current_dimensions = self.current_dimensions(index);
+        let surface = &mut self.surfaces[index];
+        if !surface.configured {
             info!(
-                "layer surface configured: width={}, height={}",
-                self.width, self.height
+                "layer surface configured for {}: width={}, height={}",
+                output_label, surface.width, surface.height
             );
         } else if current_dimensions != previous_dimensions {
             info!(
-                "layer surface resized: width={}, height={}",
-                self.width, self.height
+                "layer surface resized for {}: width={}, height={}",
+                output_label, surface.width, surface.height
             );
         }
 
-        self.configured = true;
+        surface.configured = true;
         self.update_frame(self.latest_frame.timestamp_millis);
-        if let Err(err) = self.draw_buffer(qh) {
-            error!("kwybars-overlay-next failed to draw fake bar buffer: {err}");
+        if let Err(err) = self.draw_all_surfaces(qh) {
+            error!("kwybars-overlay-next failed to draw surface: {err}");
             self.exit = true;
         }
     }
@@ -344,19 +516,27 @@ impl OutputHandler for AppState {
     fn new_output(
         &mut self,
         _conn: &Connection,
-        _qh: &QueueHandle<Self>,
+        qh: &QueueHandle<Self>,
         output: wl_output::WlOutput,
     ) {
         info!("new output advertised: {:?}", output.id());
+        if let Err(err) = self.ensure_surfaces(qh) {
+            error!("kwybars-overlay-next failed to initialize output surfaces: {err}");
+            self.exit = true;
+        }
     }
 
     fn update_output(
         &mut self,
         _conn: &Connection,
-        _qh: &QueueHandle<Self>,
+        qh: &QueueHandle<Self>,
         output: wl_output::WlOutput,
     ) {
         info!("output updated: {:?}", output.id());
+        if let Err(err) = self.ensure_surfaces(qh) {
+            error!("kwybars-overlay-next failed to initialize output surfaces: {err}");
+            self.exit = true;
+        }
     }
 
     fn output_destroyed(

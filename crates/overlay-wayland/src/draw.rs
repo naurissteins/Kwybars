@@ -1,7 +1,6 @@
 use kwybars_common::config::OverlayPosition;
 use kwybars_common::spectrum::SpectrumFrame;
 
-const TRANSPARENT: u32 = 0x00000000;
 const BAR_COLOR: u32 = 0xFFF1F5F9;
 const HORIZONTAL_PADDING: u32 = 24;
 const VERTICAL_PADDING: u32 = 12;
@@ -32,11 +31,21 @@ pub fn render_bars(
         return;
     }
 
+    let solid_span = build_solid_span(width.max(height) as usize, BAR_COLOR);
+
     match position {
-        OverlayPosition::Bottom => render_horizontal_bars(canvas, width, height, frame, false),
-        OverlayPosition::Top => render_horizontal_bars(canvas, width, height, frame, true),
-        OverlayPosition::Left => render_vertical_bars(canvas, width, height, frame, true),
-        OverlayPosition::Right => render_vertical_bars(canvas, width, height, frame, false),
+        OverlayPosition::Bottom => {
+            render_horizontal_bars(canvas, width, height, frame, false, &solid_span)
+        }
+        OverlayPosition::Top => {
+            render_horizontal_bars(canvas, width, height, frame, true, &solid_span)
+        }
+        OverlayPosition::Left => {
+            render_vertical_bars(canvas, width, height, frame, true, &solid_span)
+        }
+        OverlayPosition::Right => {
+            render_vertical_bars(canvas, width, height, frame, false, &solid_span)
+        }
     }
 }
 
@@ -46,6 +55,7 @@ fn render_horizontal_bars(
     height: u32,
     frame: &SpectrumFrame,
     from_top: bool,
+    solid_span: &[u8],
 ) {
     let drawable_width = width.saturating_sub(HORIZONTAL_PADDING * 2);
     let drawable_height = height.saturating_sub(VERTICAL_PADDING * 2);
@@ -81,7 +91,7 @@ fn render_horizontal_bars(
                 width: bar_width,
                 height: bar_height,
             },
-            BAR_COLOR,
+            solid_span,
         );
     }
 }
@@ -92,6 +102,7 @@ fn render_vertical_bars(
     height: u32,
     frame: &SpectrumFrame,
     from_left: bool,
+    solid_span: &[u8],
 ) {
     let drawable_width = width.saturating_sub(HORIZONTAL_PADDING * 2);
     let drawable_height = height.saturating_sub(VERTICAL_PADDING * 2);
@@ -128,7 +139,7 @@ fn render_vertical_bars(
                 width: bar_width,
                 height: bar_height,
             },
-            BAR_COLOR,
+            solid_span,
         );
     }
 }
@@ -140,12 +151,19 @@ fn frame_bar_extent(value: f32, drawable_extent: u32) -> u32 {
 }
 
 fn clear(canvas: &mut [u8]) {
-    for chunk in canvas.chunks_exact_mut(4) {
-        chunk.copy_from_slice(&TRANSPARENT.to_le_bytes());
-    }
+    canvas.fill(0);
 }
 
-fn fill_rect(canvas: &mut [u8], width: u32, height: u32, rect: Rect, color: u32) {
+fn build_solid_span(pixel_count: usize, color: u32) -> Vec<u8> {
+    let mut span = vec![0_u8; pixel_count.saturating_mul(4)];
+    let color_bytes = color.to_le_bytes();
+    for chunk in span.chunks_exact_mut(4) {
+        chunk.copy_from_slice(&color_bytes);
+    }
+    span
+}
+
+fn fill_rect(canvas: &mut [u8], width: u32, height: u32, rect: Rect, solid_span: &[u8]) {
     let x0 = rect.x.max(0) as u32;
     let y0 = rect.y.max(0) as u32;
     let x1 = (rect.x + rect.width as i32).min(width as i32).max(0) as u32;
@@ -154,12 +172,11 @@ fn fill_rect(canvas: &mut [u8], width: u32, height: u32, rect: Rect, color: u32)
         return;
     }
 
-    let bytes = color.to_le_bytes();
+    let row_bytes = ((x1 - x0) * 4) as usize;
     for row in y0..y1 {
-        for column in x0..x1 {
-            let offset = ((row * width + column) * 4) as usize;
-            canvas[offset..offset + 4].copy_from_slice(&bytes);
-        }
+        let start = ((row * width + x0) * 4) as usize;
+        let end = start + row_bytes;
+        canvas[start..end].copy_from_slice(&solid_span[..row_bytes]);
     }
 }
 
