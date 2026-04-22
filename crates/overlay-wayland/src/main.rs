@@ -1,6 +1,7 @@
 use std::process::ExitCode;
 
 mod app;
+mod draw;
 
 use tracing::{error, info};
 

@@ -1,8 +1,3 @@
-use std::convert::TryInto;
-use std::error::Error;
-use std::fmt::{Display, Formatter};
-use std::time::Duration;
-
 use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState};
 use smithay_client_toolkit::delegate_compositor;
 use smithay_client_toolkit::delegate_layer;
@@ -10,13 +5,9 @@ use smithay_client_toolkit::delegate_output;
 use smithay_client_toolkit::delegate_registry;
 use smithay_client_toolkit::delegate_shm;
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
-use smithay_client_toolkit::reexports::calloop::{self, EventLoop};
-use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
-use smithay_client_toolkit::reexports::client::globals::{
-    GlobalError, GlobalList, registry_queue_init,
-};
-use smithay_client_toolkit::reexports::client::protocol::{wl_output, wl_surface};
-use smithay_client_toolkit::reexports::client::{ConnectError, Connection, Proxy, QueueHandle};
+use smithay_client_toolkit::reexports::client::globals::GlobalList;
+use smithay_client_toolkit::reexports::client::protocol::{wl_output, wl_shm, wl_surface};
+use smithay_client_toolkit::reexports::client::{Connection, Proxy, QueueHandle};
 use smithay_client_toolkit::registry::{ProvidesRegistryState, RegistryState};
 use smithay_client_toolkit::registry_handlers;
 use smithay_client_toolkit::shell::{
@@ -29,42 +20,14 @@ use smithay_client_toolkit::shell::{
 use smithay_client_toolkit::shm::{Shm, ShmHandler, slot::SlotPool};
 use tracing::{error, info};
 
+use crate::draw;
+
+use super::AppError;
+
 const DEFAULT_WIDTH: u32 = 0;
 const DEFAULT_HEIGHT: u32 = 96;
 const FALLBACK_BUFFER_WIDTH: u32 = 512;
-const DISPATCH_TIMEOUT: Duration = Duration::from_millis(250);
-const DEBUG_SURFACE_COLOR: u32 = 0xFF2A9D8F;
-
-#[derive(Debug)]
-pub enum AppError {
-    Connect(ConnectError),
-    RegistryInit(GlobalError),
-    BindGlobal { global: &'static str, err: String },
-    BufferSetup(String),
-    EventLoop(calloop::Error),
-    InsertSource(calloop::InsertError<WaylandSource<AppState>>),
-    Dispatch(calloop::Error),
-}
-
-impl Display for AppError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Connect(err) => write!(f, "failed to connect to Wayland compositor: {err}"),
-            Self::RegistryInit(err) => write!(f, "failed to initialize Wayland registry: {err}"),
-            Self::BindGlobal { global, err } => {
-                write!(f, "failed to bind required global {global}: {err}")
-            }
-            Self::BufferSetup(err) => write!(f, "failed to set up shm buffer: {err}"),
-            Self::EventLoop(err) => write!(f, "failed to create calloop event loop: {err}"),
-            Self::InsertSource(err) => {
-                write!(f, "failed to attach Wayland source to event loop: {err}")
-            }
-            Self::Dispatch(err) => write!(f, "Wayland event loop dispatch failed: {err}"),
-        }
-    }
-}
-
-impl Error for AppError {}
+const SURFACE_NAMESPACE: &str = "kwybars-overlay-next";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct AdvertisedGlobal {
@@ -90,7 +53,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    fn new(globals: &GlobalList, qh: &QueueHandle<Self>) -> Result<Self, AppError> {
+    pub fn new(globals: &GlobalList, qh: &QueueHandle<Self>) -> Result<Self, AppError> {
         let initial_globals = globals
             .contents()
             .clone_list()
@@ -120,13 +83,14 @@ impl AppState {
             qh,
             surface.clone(),
             Layer::Bottom,
-            Some("kwybars-overlay-next"),
+            Some(SURFACE_NAMESPACE),
             None,
         );
         layer_surface.set_anchor(Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM);
         layer_surface.set_size(DEFAULT_WIDTH, DEFAULT_HEIGHT);
         layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
         layer_surface.commit();
+
         let pool = SlotPool::new(
             (FALLBACK_BUFFER_WIDTH * DEFAULT_HEIGHT * 4) as usize,
             &shm_state,
@@ -150,7 +114,11 @@ impl AppState {
         })
     }
 
-    fn log_initial_globals(&self) {
+    pub fn should_exit(&self) -> bool {
+        self.exit
+    }
+
+    pub fn log_initial_globals(&self) {
         if self.initial_globals.is_empty() {
             info!("no Wayland globals advertised");
             return;
@@ -165,7 +133,7 @@ impl AppState {
         }
     }
 
-    fn log_bound_globals(&self) {
+    pub fn log_bound_globals(&self) {
         let _ = &self.compositor_state;
         let _ = &self.layer_shell;
         let _ = &self.surface;
@@ -179,7 +147,7 @@ impl AppState {
         info!("bound required global: zwlr_layer_shell_v1");
     }
 
-    fn draw_initial_buffer(&mut self) -> Result<(), AppError> {
+    fn current_dimensions(&self) -> (u32, u32) {
         let width = if self.width == 0 {
             FALLBACK_BUFFER_WIDTH
         } else {
@@ -190,6 +158,11 @@ impl AppState {
         } else {
             self.height
         };
+        (width, height)
+    }
+
+    fn draw_buffer(&mut self) -> Result<(), AppError> {
+        let (width, height) = self.current_dimensions();
         let stride = width as i32 * 4;
 
         let (buffer, canvas) = self
@@ -198,16 +171,11 @@ impl AppState {
                 width as i32,
                 height as i32,
                 stride,
-                smithay_client_toolkit::reexports::client::protocol::wl_shm::Format::Argb8888,
+                wl_shm::Format::Argb8888,
             )
             .map_err(|err| AppError::BufferSetup(err.to_string()))?;
 
-        for chunk in canvas.chunks_exact_mut(4) {
-            let array: &mut [u8; 4] = chunk
-                .try_into()
-                .map_err(|_| AppError::BufferSetup("invalid canvas chunk size".to_owned()))?;
-            *array = DEBUG_SURFACE_COLOR.to_le_bytes();
-        }
+        draw::render_fake_bars(canvas, width, height);
 
         self.layer_surface
             .wl_surface()
@@ -216,11 +184,11 @@ impl AppState {
             .attach_to(self.layer_surface.wl_surface())
             .map_err(|err| AppError::BufferSetup(err.to_string()))?;
         self.layer_surface.commit();
+
         info!(
-            "attached solid debug buffer: width={}, height={}",
+            "attached fake bar buffer: width={}, height={}",
             width, height
         );
-
         Ok(())
     }
 }
@@ -295,6 +263,7 @@ impl LayerShellHandler for AppState {
         configure: LayerSurfaceConfigure,
         _serial: u32,
     ) {
+        let previous_dimensions = self.current_dimensions();
         self.width = if configure.new_size.0 == 0 {
             DEFAULT_WIDTH
         } else {
@@ -306,16 +275,23 @@ impl LayerShellHandler for AppState {
             configure.new_size.1
         };
 
+        let current_dimensions = self.current_dimensions();
         if !self.configured {
             info!(
                 "layer surface configured: width={}, height={}",
                 self.width, self.height
             );
-            self.configured = true;
-            if let Err(err) = self.draw_initial_buffer() {
-                error!("kwybars-overlay-next failed to draw initial buffer: {err}");
-                self.exit = true;
-            }
+        } else if current_dimensions != previous_dimensions {
+            info!(
+                "layer surface resized: width={}, height={}",
+                self.width, self.height
+            );
+        }
+
+        self.configured = true;
+        if let Err(err) = self.draw_buffer() {
+            error!("kwybars-overlay-next failed to draw fake bar buffer: {err}");
+            self.exit = true;
         }
     }
 }
@@ -365,31 +341,4 @@ impl ShmHandler for AppState {
     fn shm_state(&mut self) -> &mut Shm {
         &mut self.shm_state
     }
-}
-
-pub fn run() -> Result<(), AppError> {
-    let conn = Connection::connect_to_env().map_err(AppError::Connect)?;
-    let (globals, event_queue) = registry_queue_init(&conn).map_err(AppError::RegistryInit)?;
-    let qh = event_queue.handle();
-    let mut state = AppState::new(&globals, &qh)?;
-
-    info!("connected to Wayland compositor");
-    state.log_initial_globals();
-    state.log_bound_globals();
-    info!("created bottom-anchored layer-shell surface and committed initial empty state");
-
-    let mut event_loop = EventLoop::<AppState>::try_new().map_err(AppError::EventLoop)?;
-    let loop_handle = event_loop.handle();
-    WaylandSource::new(conn, event_queue)
-        .insert(loop_handle)
-        .map_err(AppError::InsertSource)?;
-
-    while !state.exit {
-        event_loop
-            .dispatch(DISPATCH_TIMEOUT, &mut state)
-            .map_err(AppError::Dispatch)?;
-    }
-
-    info!("Wayland event loop exiting");
-    Ok(())
 }
