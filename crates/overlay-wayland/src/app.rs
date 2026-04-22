@@ -4,18 +4,33 @@ use std::time::Duration;
 
 use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState};
 use smithay_client_toolkit::delegate_compositor;
+use smithay_client_toolkit::delegate_layer;
+use smithay_client_toolkit::delegate_output;
 use smithay_client_toolkit::delegate_registry;
 use smithay_client_toolkit::delegate_shm;
+use smithay_client_toolkit::output::{OutputHandler, OutputState};
 use smithay_client_toolkit::reexports::calloop::{self, EventLoop};
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::reexports::client::globals::{
     GlobalError, GlobalList, registry_queue_init,
 };
 use smithay_client_toolkit::reexports::client::protocol::{wl_output, wl_surface};
-use smithay_client_toolkit::reexports::client::{ConnectError, Connection, QueueHandle};
+use smithay_client_toolkit::reexports::client::{ConnectError, Connection, Proxy, QueueHandle};
 use smithay_client_toolkit::registry::{ProvidesRegistryState, RegistryState};
+use smithay_client_toolkit::registry_handlers;
+use smithay_client_toolkit::shell::{
+    WaylandSurface,
+    wlr_layer::{
+        Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface,
+        LayerSurfaceConfigure,
+    },
+};
 use smithay_client_toolkit::shm::{Shm, ShmHandler};
 use tracing::info;
+
+const DEFAULT_WIDTH: u32 = 0;
+const DEFAULT_HEIGHT: u32 = 96;
+const DISPATCH_TIMEOUT: Duration = Duration::from_millis(250);
 
 #[derive(Debug)]
 pub enum AppError {
@@ -55,9 +70,17 @@ struct AdvertisedGlobal {
 
 pub struct AppState {
     registry_state: RegistryState,
+    output_state: OutputState,
     initial_globals: Vec<AdvertisedGlobal>,
     compositor_state: CompositorState,
     shm_state: Shm,
+    layer_shell: LayerShell,
+    surface: wl_surface::WlSurface,
+    layer_surface: LayerSurface,
+    width: u32,
+    height: u32,
+    configured: bool,
+    exit: bool,
 }
 
 impl AppState {
@@ -82,12 +105,36 @@ impl AppState {
             global: "wl_shm",
             err: err.to_string(),
         })?;
+        let layer_shell = LayerShell::bind(globals, qh).map_err(|err| AppError::BindGlobal {
+            global: "zwlr_layer_shell_v1",
+            err: err.to_string(),
+        })?;
+        let surface = compositor_state.create_surface(qh);
+        let layer_surface = layer_shell.create_layer_surface(
+            qh,
+            surface.clone(),
+            Layer::Bottom,
+            Some("kwybars-overlay-next"),
+            None,
+        );
+        layer_surface.set_anchor(Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM);
+        layer_surface.set_size(DEFAULT_WIDTH, DEFAULT_HEIGHT);
+        layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
+        layer_surface.commit();
 
         Ok(Self {
             registry_state: RegistryState::new(globals),
+            output_state: OutputState::new(globals, qh),
             initial_globals,
             compositor_state,
             shm_state,
+            layer_shell,
+            surface,
+            layer_surface,
+            width: DEFAULT_WIDTH,
+            height: DEFAULT_HEIGHT,
+            configured: false,
+            exit: false,
         })
     }
 
@@ -108,15 +155,21 @@ impl AppState {
 
     fn log_bound_globals(&self) {
         let _ = &self.compositor_state;
+        let _ = &self.layer_shell;
+        let _ = &self.surface;
+        let _ = &self.layer_surface;
         info!("bound required global: wl_compositor");
         info!(
             "bound required global: wl_shm ({} advertised formats so far)",
             self.shm_state.formats().len()
         );
+        info!("bound required global: zwlr_layer_shell_v1");
     }
 }
 
-delegate_compositor!(AppState, surface: []);
+delegate_compositor!(AppState);
+delegate_layer!(AppState);
+delegate_output!(AppState);
 delegate_registry!(AppState);
 delegate_shm!(AppState);
 
@@ -170,31 +223,80 @@ impl CompositorHandler for AppState {
     }
 }
 
+impl LayerShellHandler for AppState {
+    fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _layer: &LayerSurface) {
+        info!("layer surface closed by compositor");
+        self.exit = true;
+    }
+
+    fn configure(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _layer: &LayerSurface,
+        configure: LayerSurfaceConfigure,
+        _serial: u32,
+    ) {
+        self.width = if configure.new_size.0 == 0 {
+            DEFAULT_WIDTH
+        } else {
+            configure.new_size.0
+        };
+        self.height = if configure.new_size.1 == 0 {
+            DEFAULT_HEIGHT
+        } else {
+            configure.new_size.1
+        };
+
+        if !self.configured {
+            info!(
+                "layer surface configured: width={}, height={}",
+                self.width, self.height
+            );
+            self.configured = true;
+        }
+    }
+}
+
+impl OutputHandler for AppState {
+    fn output_state(&mut self) -> &mut OutputState {
+        &mut self.output_state
+    }
+
+    fn new_output(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        output: wl_output::WlOutput,
+    ) {
+        info!("new output advertised: {:?}", output.id());
+    }
+
+    fn update_output(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        output: wl_output::WlOutput,
+    ) {
+        info!("output updated: {:?}", output.id());
+    }
+
+    fn output_destroyed(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        output: wl_output::WlOutput,
+    ) {
+        info!("output destroyed: {:?}", output.id());
+    }
+}
+
 impl ProvidesRegistryState for AppState {
     fn registry(&mut self) -> &mut RegistryState {
         &mut self.registry_state
     }
 
-    fn runtime_add_global(
-        &mut self,
-        _conn: &Connection,
-        _qh: &QueueHandle<Self>,
-        name: u32,
-        interface: &str,
-        version: u32,
-    ) {
-        info!("runtime global added: {name} => {interface} v{version}");
-    }
-
-    fn runtime_remove_global(
-        &mut self,
-        _conn: &Connection,
-        _qh: &QueueHandle<Self>,
-        name: u32,
-        interface: &str,
-    ) {
-        info!("runtime global removed: {name} => {interface}");
-    }
+    registry_handlers![OutputState];
 }
 
 impl ShmHandler for AppState {
@@ -212,6 +314,7 @@ pub fn run() -> Result<(), AppError> {
     info!("connected to Wayland compositor");
     state.log_initial_globals();
     state.log_bound_globals();
+    info!("created bottom-anchored layer-shell surface and committed initial empty state");
 
     let mut event_loop = EventLoop::<AppState>::try_new().map_err(AppError::EventLoop)?;
     let loop_handle = event_loop.handle();
@@ -219,13 +322,12 @@ pub fn run() -> Result<(), AppError> {
         .insert(loop_handle)
         .map_err(AppError::InsertSource)?;
 
-    // Bind compositor and SHM, then process their initial events before moving on to
-    // later milestones like layer-shell and SHM-backed drawing.
-    event_loop
-        .dispatch(Duration::ZERO, &mut state)
-        .map_err(AppError::Dispatch)?;
-    state.log_bound_globals();
-    info!("Wayland event loop bootstrap completed");
+    while !state.exit {
+        event_loop
+            .dispatch(DISPATCH_TIMEOUT, &mut state)
+            .map_err(AppError::Dispatch)?;
+    }
 
+    info!("Wayland event loop exiting");
     Ok(())
 }
