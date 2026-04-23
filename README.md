@@ -29,17 +29,14 @@ https://github.com/user-attachments/assets/5fe84372-86be-49a8-b9c0-6564e81f1eaa
 -   Particle layout (pulsating dots)
 -   Frame layout for top+bottom, left+right, or all monitor edges at once
 -   Polygon layout for triangle, square, hexagon, and similar shapes
--   Optional transparent image overlay for Rainmeter-style compositions
+-   Transparent image overlay for Rainmeter-style compositions
 -   Hot reload config changes (no restart needed)
 -   Built-in themes and optional custom theme palettes (`~/.config/kwybars/themes/*.toml`)
 -   Optional but recommended `kwybars-daemon` that auto starts/stops overlay based on audio activity
 
-> [!NOTE]
-> Kwybars are not heavily tested on all Wayland compositors yet. If you encounter issues, please open an issue and provide details what distro and Wayland compositor you are using.
-
 <div align=center>
 
-  [Documentation](https://https://naurissteins.com/veila)
+  [Documentation](https://https://naurissteins.com/kwybars)
   
 </div>
 
@@ -56,11 +53,6 @@ yay -S kwybars-git
 Start the daemon after install:
 ``` bash
 kwybars-daemon
-```
-
-(Optional) Run with a specific config file:
-```bash
-kwybars-daemon --config ~/.config/kwybars/custom/my_config.toml
 ```
 
 Start the daemon on boot (Hyprland):
@@ -100,7 +92,7 @@ Import module:
 ```
 
 The module installs `kwybars-daemon`, `kwybars-overlay`, and `kwybarsctl`. 
-Start deamon from your compositor config `exec = kwybars-daemon` or in terminal `./kwybars-daemon`
+Start deamon from your compositor config `exec = kwybars-daemon` or in terminal `kwybars-daemon`
 
 Or enable the user daemon service (this is optional):
 
@@ -142,36 +134,8 @@ nix build github:naurissteins/Kwybars
 nix run github:naurissteins/Kwybars
 ```
 
-## Install from source
-Install dependencies:
-
-``` bash
-sudo pacman -S --needed rust gdk-pixbuf2 gtk4 gtk4-layer-shell pipewire cava
-# optional: desktop error notifications
-sudo pacman -S --needed libnotify
-```
-
-### Build and run
-
-``` bash
-cargo build --workspace
-cargo run -p kwybars-overlay
-```
-
-Run daemon mode (auto launch on audio):
-
-``` bash
-cargo run -p kwybars-daemon
-```
-
-Run with a specific config path:
-
-```bash
-cargo run -p kwybars-daemon -- --config ~/.config/kwybars/custom/my_config.toml
-```
-
 ## Docs
 
-For full installation, configuration, theming, and usage docs, visit:
+Full installation, configuration, preset configs and usage docs:
 
 https://naurissteins.com/kwybars
