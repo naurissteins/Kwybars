@@ -77,11 +77,69 @@ If you prefer `systemd` service:
 systemctl --user enable --now kwybars-daemon.service
 ```
 
+### NixOS
+
+Import module:
+
+```nix
+{
+  inputs.kwybars.url = "github:naurissteins/Kwybars";
+
+  outputs = { nixpkgs, kwybars, ... }: {
+    nixosConfigurations.my-host = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        kwybars.nixosModules.default
+        {
+          programs.kwybars.enable = true;
+        }
+      ];
+    };
+  };
+}
+```
+
+The module installs `kwybars-daemon`, `kwybars-overlay`, and `kwybarsctl`. 
+Start deamon from your compositor config `exec = kwybars-daemon` or in terminal `./kwybars-daemon`
+
+Or enable the user daemon service (this is optional):
+
+```nix
+{
+  programs.kwybars = {
+    enable = true;
+    systemd.enable = true;
+
+    # Optional. Useful with `kwybarsctl switch-config --active ...`.
+    # configPath = "/home/your-user/.config/kwybars/current.toml";
+  };
+}
+```
+
+Install the package directly:
+
+```bash
+nix profile install github:naurissteins/Kwybars#kwybars
+```
+
+Or install it directly in a NixOS system config:
+
+```nix
+{
+  environment.systemPackages = [
+    inputs.kwybars.packages.${pkgs.system}.default
+  ];
+}
+```
+
 ### Nix Flake
 
 ```bash
 nix build github:naurissteins/Kwybars
 ./result/bin/kwybars-daemon
+
+# or run a flake app directly
+nix run github:naurissteins/Kwybars
 ```
 
 ## Install from source
