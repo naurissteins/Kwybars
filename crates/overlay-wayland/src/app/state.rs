@@ -23,7 +23,7 @@ use smithay_client_toolkit::shm::{Shm, ShmHandler};
 use tracing::{error, info};
 
 use crate::draw;
-use crate::draw::{BarGeometry, BarPaint, RenderTarget};
+use crate::draw::{BarGeometry, BarPaint, RenderDamage, RenderTarget};
 
 use super::AppError;
 use super::buffer::SurfaceBuffers;
@@ -68,6 +68,8 @@ pub struct AppState {
     surfaces: Vec<SurfaceInstance>,
     waiting_for_named_outputs: bool,
     last_frame_time: Option<u32>,
+    last_render_time: Option<u32>,
+    frame_interval_millis: u32,
     exit: bool,
 }
 
@@ -109,10 +111,11 @@ impl AppState {
             &app_config.visualizer,
             theme_palette.map(|palette| palette.colors),
         );
-        let geometry = BarGeometry::from_visualizer(&app_config.visualizer);
+        let geometry = BarGeometry::from_app_config(&app_config);
 
         let mut frame_source = AppFrameSource::from_visualizer_config(&app_config.visualizer);
         let latest_frame = frame_source.frame_at(0);
+        let frame_interval_millis = frame_interval_millis(app_config.visualizer.framerate);
 
         let mut state = Self {
             registry_state: RegistryState::new(globals),
@@ -131,6 +134,8 @@ impl AppState {
             surfaces: Vec::new(),
             waiting_for_named_outputs: false,
             last_frame_time: None,
+            last_render_time: None,
+            frame_interval_millis,
             exit: false,
         };
         state.ensure_surfaces(qh)?;
@@ -334,7 +339,12 @@ impl AppState {
         self.latest_frame = self.frame_source.frame_at(timestamp_millis);
     }
 
-    fn draw_surface(&mut self, index: usize, qh: &QueueHandle<Self>) -> Result<(), AppError> {
+    fn draw_surface(
+        &mut self,
+        index: usize,
+        qh: &QueueHandle<Self>,
+        request_frame: bool,
+    ) -> Result<(), AppError> {
         if !self.surfaces[index].configured {
             return Ok(());
         }
@@ -346,10 +356,11 @@ impl AppState {
         let height = scaled_dimension(logical_height, scale);
         let wl_surface = surface.layer_surface.wl_surface().clone();
         wl_surface.set_buffer_scale(scale as i32);
+        let mut damage = RenderDamage::None;
         let attached = surface
             .buffers
             .render_and_attach(width, height, &wl_surface, |canvas| {
-                draw::render_bars(
+                damage = draw::render_bars(
                     canvas,
                     RenderTarget::new(width, height, scale),
                     &self.latest_frame,
@@ -360,18 +371,29 @@ impl AppState {
             })?;
 
         if attached {
-            wl_surface.damage_buffer(0, 0, width as i32, height as i32);
+            damage_buffer(&wl_surface, width, height, &damage);
         }
-        wl_surface.frame(qh, wl_surface.clone());
+        if request_frame {
+            wl_surface.frame(qh, wl_surface.clone());
+        }
         surface.layer_surface.commit();
         Ok(())
     }
 
     fn draw_all_surfaces(&mut self, qh: &QueueHandle<Self>) -> Result<(), AppError> {
+        let driver_index = self.surfaces.iter().position(|surface| surface.configured);
         for index in 0..self.surfaces.len() {
-            self.draw_surface(index, qh)?;
+            self.draw_surface(index, qh, Some(index) == driver_index)?;
         }
         Ok(())
+    }
+
+    fn request_next_driver_frame(&self, qh: &QueueHandle<Self>) {
+        let Some(surface) = self.frame_driver_surface() else {
+            return;
+        };
+        surface.frame(qh, surface.clone());
+        surface.commit();
     }
 
     fn frame_driver_surface(&self) -> Option<&wl_surface::WlSurface> {
@@ -390,6 +412,41 @@ impl AppState {
 
 fn scaled_dimension(value: u32, scale: u32) -> u32 {
     value.saturating_mul(scale.max(1)).max(1)
+}
+
+fn frame_interval_millis(framerate: u32) -> u32 {
+    (1_000_u32 / framerate.max(1)).max(1)
+}
+
+fn should_render_frame(
+    last_render_time: Option<u32>,
+    current_time: u32,
+    interval_millis: u32,
+) -> bool {
+    let Some(last_render_time) = last_render_time else {
+        return true;
+    };
+
+    current_time.wrapping_sub(last_render_time) >= interval_millis.max(1)
+}
+
+fn damage_buffer(
+    wl_surface: &wl_surface::WlSurface,
+    fallback_width: u32,
+    fallback_height: u32,
+    damage: &RenderDamage,
+) {
+    match damage {
+        RenderDamage::None => {}
+        RenderDamage::Full => {
+            wl_surface.damage_buffer(0, 0, fallback_width as i32, fallback_height as i32);
+        }
+        RenderDamage::Rects(rects) => {
+            for rect in rects {
+                wl_surface.damage_buffer(rect.x, rect.y, rect.width as i32, rect.height as i32);
+            }
+        }
+    }
 }
 
 delegate_compositor!(AppState);
@@ -422,7 +479,9 @@ impl CompositorHandler for AppState {
 
         self.surfaces[index].scale_factor = scale;
         info!("surface scale factor changed to {scale}");
-        if let Err(err) = self.draw_surface(index, qh) {
+        let request_frame =
+            self.surfaces.iter().position(|surface| surface.configured) == Some(index);
+        if let Err(err) = self.draw_surface(index, qh, request_frame) {
             error!("kwybars-overlay-next failed to redraw scaled surface: {err}");
             self.exit = true;
         }
@@ -455,6 +514,12 @@ impl CompositorHandler for AppState {
             return;
         }
         self.last_frame_time = Some(time);
+
+        if !should_render_frame(self.last_render_time, time, self.frame_interval_millis) {
+            self.request_next_driver_frame(qh);
+            return;
+        }
+        self.last_render_time = Some(time);
 
         self.update_frame(u64::from(time));
         if let Err(err) = self.draw_all_surfaces(qh) {
@@ -595,5 +660,25 @@ impl ProvidesRegistryState for AppState {
 impl ShmHandler for AppState {
     fn shm_state(&mut self) -> &mut Shm {
         &mut self.shm_state
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{frame_interval_millis, should_render_frame};
+
+    #[test]
+    fn frame_interval_uses_configured_framerate() {
+        assert_eq!(frame_interval_millis(60), 16);
+        assert_eq!(frame_interval_millis(144), 6);
+        assert_eq!(frame_interval_millis(0), 1000);
+    }
+
+    #[test]
+    fn frame_pacing_skips_until_interval_elapsed() {
+        assert!(should_render_frame(None, 0, 16));
+        assert!(!should_render_frame(Some(100), 110, 16));
+        assert!(should_render_frame(Some(100), 116, 16));
+        assert!(should_render_frame(Some(u32::MAX - 4), 12, 16));
     }
 }

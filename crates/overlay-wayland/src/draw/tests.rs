@@ -1,9 +1,10 @@
 use kwybars_common::config::{
-    LineMode, OverlayPosition, RgbaColor, VisualizerColorMode, VisualizerConfig,
+    AppConfig, FrameMirrorMode, LineMode, OverlayPosition, RgbaColor, VisualizerColorMode,
+    VisualizerConfig, VisualizerLayout,
 };
 use kwybars_common::spectrum::SpectrumFrame;
 
-use super::{BarGeometry, BarPaint, RenderTarget, render_bars};
+use super::{BarGeometry, BarPaint, RenderDamage, RenderTarget, render_bars};
 
 #[test]
 fn bars_leave_transparent_background() {
@@ -457,6 +458,82 @@ fn split_vertical_mode_leaves_center_gap() {
     assert!(!pixel_is_opaque(&canvas, width, width - 30, height / 2));
 }
 
+#[test]
+fn frame_layout_draws_default_top_and_bottom_edges() {
+    let width = 320;
+    let height = 180;
+    let mut canvas = vec![0; (width * height * 4) as usize];
+    let frame = SpectrumFrame::new(vec![1.0; 4], 0);
+    let geometry = frame_geometry(vec![OverlayPosition::Top, OverlayPosition::Bottom]);
+
+    render_bars(
+        &mut canvas,
+        RenderTarget::new(width, height, 1),
+        &frame,
+        &OverlayPosition::Bottom,
+        &default_paint(),
+        &geometry,
+    );
+
+    assert!(pixel_is_opaque(&canvas, width, width / 2, 12));
+    assert!(pixel_is_opaque(&canvas, width, width / 2, height - 16));
+    assert!(!pixel_is_opaque(&canvas, width, width / 2, height / 2));
+}
+
+#[test]
+fn frame_layout_draws_all_edges() {
+    let width = 320;
+    let height = 180;
+    let mut canvas = vec![0; (width * height * 4) as usize];
+    let frame = SpectrumFrame::new(vec![1.0; 8], 0);
+    let geometry = frame_geometry(vec![
+        OverlayPosition::Top,
+        OverlayPosition::Bottom,
+        OverlayPosition::Left,
+        OverlayPosition::Right,
+    ]);
+
+    render_bars(
+        &mut canvas,
+        RenderTarget::new(width, height, 1),
+        &frame,
+        &OverlayPosition::Bottom,
+        &default_paint(),
+        &geometry,
+    );
+
+    assert!(pixel_is_opaque(&canvas, width, width / 2, 12));
+    assert!(pixel_is_opaque(&canvas, width, width / 2, height - 16));
+    assert!(pixel_is_opaque(&canvas, width, 12, height / 2));
+    assert!(pixel_is_opaque(&canvas, width, width - 16, height / 2));
+}
+
+#[test]
+fn frame_layout_only_clears_and_damages_frame_edges() {
+    let width = 320;
+    let height = 180;
+    let mut canvas = vec![0xAA; (width * height * 4) as usize];
+    let frame = SpectrumFrame::new(vec![1.0; 4], 0);
+    let geometry = frame_geometry(vec![OverlayPosition::Top, OverlayPosition::Bottom]);
+
+    let damage = render_bars(
+        &mut canvas,
+        RenderTarget::new(width, height, 1),
+        &frame,
+        &OverlayPosition::Bottom,
+        &default_paint(),
+        &geometry,
+    );
+
+    assert!(matches!(damage, RenderDamage::Rects(ref rects) if rects.len() == 2));
+    assert_eq!(
+        pixel_bytes(&canvas, width, width / 2, height / 2),
+        [0xAA; 4]
+    );
+    assert!(pixel_is_opaque(&canvas, width, width / 2, 12));
+    assert!(pixel_is_opaque(&canvas, width, width / 2, height - 16));
+}
+
 fn row_has_opaque_pixels(canvas: &[u8], width: u32, row: u32) -> bool {
     let start = (row * width * 4) as usize;
     let end = start + (width * 4) as usize;
@@ -473,6 +550,16 @@ fn column_has_opaque_pixels(canvas: &[u8], width: u32, column: u32) -> bool {
 
 fn pixel_is_opaque(canvas: &[u8], width: u32, x: u32, y: u32) -> bool {
     canvas[((y * width + x) * 4) as usize + 3] != 0
+}
+
+fn pixel_bytes(canvas: &[u8], width: u32, x: u32, y: u32) -> [u8; 4] {
+    let start = ((y * width + x) * 4) as usize;
+    [
+        canvas[start],
+        canvas[start + 1],
+        canvas[start + 2],
+        canvas[start + 3],
+    ]
 }
 
 fn opaque_runs_in_row(canvas: &[u8], width: u32, row: u32) -> Vec<usize> {
@@ -549,4 +636,22 @@ fn split_geometry() -> BarGeometry {
         line_split_gap: 80,
         ..VisualizerConfig::default()
     })
+}
+
+fn frame_geometry(edges: Vec<OverlayPosition>) -> BarGeometry {
+    let mut config = AppConfig::default();
+    config.visualizer.layout = VisualizerLayout::Frame;
+    config.visualizer.frame_edges = edges;
+    config.visualizer.frame_mirror_mode = FrameMirrorMode::All;
+    config.visualizer.bar_width = 20;
+    config.visualizer.gap = 0;
+    config.visualizer.bar_corner_radius = 0.0;
+    config.overlay.width = 30;
+    config.overlay.height = 40;
+    config.overlay.anchor_margin = 10;
+    config.overlay.margin_left = 0;
+    config.overlay.margin_right = 0;
+    config.overlay.margin_top = 0;
+    config.overlay.margin_bottom = 0;
+    BarGeometry::from_app_config(&config)
 }

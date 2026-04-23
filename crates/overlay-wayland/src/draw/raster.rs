@@ -3,7 +3,7 @@ use super::geometry::BarGeometry;
 const AA_SAMPLES: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
 const EDGE_AA_MARGIN: u32 = 2;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
     pub x: i32,
     pub y: i32,
@@ -54,6 +54,23 @@ pub fn fill_rect(
     }
 
     fill_rounded_rect_rows(canvas, width, bounds, radius, color, row_span);
+}
+
+pub fn clear_rect(canvas: &mut [u8], width: u32, height: u32, rect: Rect) {
+    let x0 = rect.x.max(0) as u32;
+    let y0 = rect.y.max(0) as u32;
+    let x1 = (rect.x + rect.width as i32).min(width as i32).max(0) as u32;
+    let y1 = (rect.y + rect.height as i32).min(height as i32).max(0) as u32;
+    if x0 >= x1 || y0 >= y1 {
+        return;
+    }
+
+    let row_bytes = ((x1 - x0) * 4) as usize;
+    for row in y0..y1 {
+        let start = ((row * width + x0) * 4) as usize;
+        let end = start + row_bytes;
+        canvas[start..end].fill(0);
+    }
 }
 
 fn fill_rect_rows(
