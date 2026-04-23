@@ -497,7 +497,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
 name = "kwybars-common"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "time",
  "tracing",
@@ -507,7 +507,7 @@ dependencies = [
 
 [[package]]
 name = "kwybars-daemon"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "kwybars-common",
  "kwybars-engine",
@@ -516,7 +516,7 @@ dependencies = [
 
 [[package]]
 name = "kwybars-engine"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "kwybars-common",
  "tracing",
@@ -524,7 +524,7 @@ dependencies = [
 
 [[package]]
 name = "kwybars-overlay"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "gdk-pixbuf",
  "gtk4",
@@ -536,7 +536,7 @@ dependencies = [
 
 [[package]]
 name = "kwybarsctl"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "kwybars-common",
 ]
