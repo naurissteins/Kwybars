@@ -2,7 +2,8 @@ use std::env;
 use std::fs;
 use std::io::{BufRead, BufReader, Read};
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -47,6 +48,7 @@ pub enum SourceKind {
 pub struct LiveFrameStream {
     latest: Arc<Mutex<SpectrumFrame>>,
     source_kind: SourceKind,
+    _worker: LiveWorker,
 }
 
 impl LiveFrameStream {
@@ -59,46 +61,50 @@ impl LiveFrameStream {
         let framerate = config.framerate.max(1);
         let pipewire_tuning = PipewireTuning::from_config(&config);
 
-        let source_kind = match config.backend {
+        let (source_kind, worker) = match config.backend {
             VisualizerBackend::Dummy => {
-                spawn_dummy_thread(Arc::clone(&latest), bar_count, framerate);
-                SourceKind::Dummy
+                let worker = spawn_dummy_thread(Arc::clone(&latest), bar_count, framerate);
+                (SourceKind::Dummy, worker)
             }
             VisualizerBackend::Pipewire => {
-                if spawn_pipewire_thread(Arc::clone(&latest), bar_count, pipewire_tuning).is_ok() {
-                    SourceKind::Pipewire
-                } else if spawn_cava_thread(Arc::clone(&latest), bar_count, framerate).is_ok() {
-                    SourceKind::Cava
+                if let Ok(worker) =
+                    spawn_pipewire_thread(Arc::clone(&latest), bar_count, pipewire_tuning)
+                {
+                    (SourceKind::Pipewire, worker)
+                } else if let Ok(worker) =
+                    spawn_cava_thread(Arc::clone(&latest), bar_count, framerate)
+                {
+                    (SourceKind::Cava, worker)
                 } else {
                     warn!("kwybars: falling back to dummy frame source");
-                    spawn_dummy_thread(Arc::clone(&latest), bar_count, framerate);
-                    SourceKind::Dummy
+                    let worker = spawn_dummy_thread(Arc::clone(&latest), bar_count, framerate);
+                    (SourceKind::Dummy, worker)
                 }
             }
             VisualizerBackend::Cava => {
-                if spawn_cava_thread(Arc::clone(&latest), bar_count, framerate).is_ok() {
-                    SourceKind::Cava
-                } else if spawn_pipewire_thread(Arc::clone(&latest), bar_count, pipewire_tuning)
-                    .is_ok()
+                if let Ok(worker) = spawn_cava_thread(Arc::clone(&latest), bar_count, framerate) {
+                    (SourceKind::Cava, worker)
+                } else if let Ok(worker) =
+                    spawn_pipewire_thread(Arc::clone(&latest), bar_count, pipewire_tuning)
                 {
-                    SourceKind::Pipewire
+                    (SourceKind::Pipewire, worker)
                 } else {
                     warn!("kwybars: falling back to dummy frame source");
-                    spawn_dummy_thread(Arc::clone(&latest), bar_count, framerate);
-                    SourceKind::Dummy
+                    let worker = spawn_dummy_thread(Arc::clone(&latest), bar_count, framerate);
+                    (SourceKind::Dummy, worker)
                 }
             }
             VisualizerBackend::Auto => {
-                if spawn_cava_thread(Arc::clone(&latest), bar_count, framerate).is_ok() {
-                    SourceKind::Cava
-                } else if spawn_pipewire_thread(Arc::clone(&latest), bar_count, pipewire_tuning)
-                    .is_ok()
+                if let Ok(worker) = spawn_cava_thread(Arc::clone(&latest), bar_count, framerate) {
+                    (SourceKind::Cava, worker)
+                } else if let Ok(worker) =
+                    spawn_pipewire_thread(Arc::clone(&latest), bar_count, pipewire_tuning)
                 {
-                    SourceKind::Pipewire
+                    (SourceKind::Pipewire, worker)
                 } else {
                     warn!("kwybars: falling back to dummy frame source");
-                    spawn_dummy_thread(Arc::clone(&latest), bar_count, framerate);
-                    SourceKind::Dummy
+                    let worker = spawn_dummy_thread(Arc::clone(&latest), bar_count, framerate);
+                    (SourceKind::Dummy, worker)
                 }
             }
         };
@@ -106,6 +112,7 @@ impl LiveFrameStream {
         Self {
             latest,
             source_kind,
+            _worker: worker,
         }
     }
 
@@ -121,12 +128,39 @@ impl LiveFrameStream {
     }
 }
 
-fn spawn_dummy_thread(latest: Arc<Mutex<SpectrumFrame>>, bar_count: usize, framerate: u32) {
+struct LiveWorker {
+    stop: Arc<AtomicBool>,
+    child: Option<Arc<Mutex<Option<Child>>>>,
+}
+
+impl LiveWorker {
+    fn new(stop: Arc<AtomicBool>, child: Option<Arc<Mutex<Option<Child>>>>) -> Self {
+        Self { stop, child }
+    }
+}
+
+impl Drop for LiveWorker {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Release);
+
+        if let Some(child) = &self.child {
+            terminate_child(child);
+        }
+    }
+}
+
+fn spawn_dummy_thread(
+    latest: Arc<Mutex<SpectrumFrame>>,
+    bar_count: usize,
+    framerate: u32,
+) -> LiveWorker {
     let frame_delay = Duration::from_millis((1000_u64 / u64::from(framerate)).max(1));
+    let stop = Arc::new(AtomicBool::new(false));
+    let thread_stop = Arc::clone(&stop);
 
     thread::spawn(move || {
         let mut source = DummySineSource::new(bar_count);
-        loop {
+        while !thread_stop.load(Ordering::Acquire) {
             let frame = source.next_frame();
             if let Ok(mut target) = latest.lock() {
                 *target = frame;
@@ -134,13 +168,15 @@ fn spawn_dummy_thread(latest: Arc<Mutex<SpectrumFrame>>, bar_count: usize, frame
             thread::sleep(frame_delay);
         }
     });
+
+    LiveWorker::new(stop, None)
 }
 
 fn spawn_pipewire_thread(
     latest: Arc<Mutex<SpectrumFrame>>,
     bar_count: usize,
     tuning: PipewireTuning,
-) -> std::io::Result<()> {
+) -> std::io::Result<LiveWorker> {
     let mut command = Command::new("pw-cat");
     command
         .arg("--record")
@@ -168,28 +204,33 @@ fn spawn_pipewire_thread(
     // Detect immediate startup failures so auto mode can fall back quickly.
     thread::sleep(Duration::from_millis(120));
     if let Some(status) = child.try_wait()? {
+        let _ = child.wait();
         return Err(std::io::Error::other(format!(
             "pw-cat exited early with status {status}"
         )));
     }
 
-    thread::spawn(move || {
-        let stdout = match child.stdout.take() {
-            Some(stdout) => stdout,
-            None => {
-                error!("kwybars: pw-cat did not provide stdout");
-                let _ = child.kill();
-                return;
-            }
-        };
+    let stdout = match child.stdout.take() {
+        Some(stdout) => stdout,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(std::io::Error::other("pw-cat did not provide stdout"));
+        }
+    };
+    let stop = Arc::new(AtomicBool::new(false));
+    let thread_stop = Arc::clone(&stop);
+    let child = Arc::new(Mutex::new(Some(child)));
+    let thread_child = Arc::clone(&child);
 
+    thread::spawn(move || {
         let mut reader = BufReader::new(stdout);
         let mut read_buf = vec![0_u8; 8192];
         let mut pending = Vec::<u8>::new();
         let mut smoothed = vec![0.0_f32; bar_count];
         let frame_stride = 2 * std::mem::size_of::<f32>();
 
-        loop {
+        while !thread_stop.load(Ordering::Acquire) {
             let read = match reader.read(&mut read_buf) {
                 Ok(0) => break,
                 Ok(value) => value,
@@ -216,50 +257,50 @@ fn spawn_pipewire_thread(
             pending = tail;
         }
 
-        let _ = child.kill();
+        cleanup_child(&thread_child, thread_stop.load(Ordering::Acquire));
     });
 
-    Ok(())
+    Ok(LiveWorker::new(stop, Some(child)))
 }
 
 fn spawn_cava_thread(
     latest: Arc<Mutex<SpectrumFrame>>,
     bar_count: usize,
     framerate: u32,
-) -> std::io::Result<()> {
+) -> std::io::Result<LiveWorker> {
     let config_path = write_cava_config(bar_count, framerate)?;
 
+    let mut command = Command::new("cava");
+    command
+        .arg("-p")
+        .arg(&config_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+
+    let mut child = command.spawn().inspect_err(|err| {
+        error!("kwybars: failed to start cava: {err}");
+        let _ = fs::remove_file(&config_path);
+    })?;
+
+    let stdout = match child.stdout.take() {
+        Some(stdout) => stdout,
+        None => {
+            let _ = fs::remove_file(&config_path);
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(std::io::Error::other("cava did not provide stdout"));
+        }
+    };
+    let stop = Arc::new(AtomicBool::new(false));
+    let thread_stop = Arc::clone(&stop);
+    let child = Arc::new(Mutex::new(Some(child)));
+    let thread_child = Arc::clone(&child);
+
     thread::spawn(move || {
-        let mut command = Command::new("cava");
-        command
-            .arg("-p")
-            .arg(&config_path)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null());
-
-        let mut child = match command.spawn() {
-            Ok(child) => child,
-            Err(err) => {
-                error!("kwybars: failed to start cava: {err}");
-                let _ = fs::remove_file(&config_path);
-                return;
-            }
-        };
-
-        let stdout = match child.stdout.take() {
-            Some(stdout) => stdout,
-            None => {
-                error!("kwybars: cava did not provide stdout");
-                let _ = fs::remove_file(&config_path);
-                let _ = child.kill();
-                return;
-            }
-        };
-
         let mut reader = BufReader::new(stdout);
         let mut line = String::new();
         let mut smoothed = vec![0.0_f32; bar_count];
-        loop {
+        while !thread_stop.load(Ordering::Acquire) {
             line.clear();
             match reader.read_line(&mut line) {
                 Ok(0) => break,
@@ -280,10 +321,28 @@ fn spawn_cava_thread(
         }
 
         let _ = fs::remove_file(&config_path);
-        let _ = child.kill();
+        cleanup_child(&thread_child, thread_stop.load(Ordering::Acquire));
     });
 
-    Ok(())
+    Ok(LiveWorker::new(stop, Some(child)))
+}
+
+fn cleanup_child(child: &Arc<Mutex<Option<Child>>>, terminate: bool) {
+    let Ok(mut child) = child.lock() else {
+        return;
+    };
+    let Some(mut child) = child.take() else {
+        return;
+    };
+
+    if terminate {
+        let _ = child.kill();
+    }
+    let _ = child.wait();
+}
+
+fn terminate_child(child: &Arc<Mutex<Option<Child>>>) {
+    cleanup_child(child, true);
 }
 
 fn apply_decay_smoothing(smoothed: &mut [f32], input: &[f32], attack: f32, decay: f32) {
