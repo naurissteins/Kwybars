@@ -8,7 +8,12 @@ use kwybars_common::cli;
 use kwybars_common::config::DaemonConfig;
 use kwybars_common::notify::notify_error_with_cooldown;
 
+const GTK_RENDERER_ENV: &str = "GSK_RENDERER";
+const DEFAULT_GTK_RENDERER: &str = "cairo";
+
 fn main() {
+    apply_default_gtk_renderer();
+
     let config_path = match resolve_cli_config_path() {
         Ok(path) => path,
         Err(exit_code) => std::process::exit(exit_code),
@@ -29,6 +34,16 @@ fn main() {
             Duration::from_secs(defaults.notify_cooldown_seconds),
         );
         std::process::exit(1);
+    }
+}
+
+fn apply_default_gtk_renderer() {
+    if std::env::var_os(GTK_RENDERER_ENV).is_some() {
+        return;
+    }
+
+    if let Err(err) = gtk::glib::setenv(GTK_RENDERER_ENV, DEFAULT_GTK_RENDERER, false) {
+        eprintln!("kwybars-overlay: failed to set default {GTK_RENDERER_ENV}: {err}");
     }
 }
 
