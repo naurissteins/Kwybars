@@ -26,6 +26,38 @@ pub(super) fn color_for_index(
     }
 }
 
+pub(super) fn palette_color_for_index(
+    colors: &[RgbaColor],
+    index: usize,
+    count: usize,
+    smooth: bool,
+) -> RgbaColor {
+    if colors.is_empty() {
+        return RgbaColor::default();
+    }
+    if colors.len() == 1 || count <= 1 {
+        return colors[0];
+    }
+    if !smooth {
+        return colors[discrete_palette_index(index, count, colors.len())];
+    }
+
+    let t = index as f32 / (count.saturating_sub(1)) as f32;
+    let scaled = t * (colors.len().saturating_sub(1)) as f32;
+    let lower_index = scaled.floor() as usize;
+    let upper_index = scaled.ceil() as usize;
+
+    if lower_index == upper_index {
+        return colors[lower_index.min(colors.len() - 1)];
+    }
+
+    lerp_color(
+        colors[lower_index.min(colors.len() - 1)],
+        colors[upper_index.min(colors.len() - 1)],
+        scaled.fract(),
+    )
+}
+
 pub(super) fn gradient_axis_for_layout(
     x: f64,
     y: f64,
@@ -140,4 +172,83 @@ pub(super) fn scaled_rgba(color: RgbaColor, alpha_scale: f64) -> (f64, f64, f64,
 
 fn lerp(start: f32, end: f32, t: f32) -> f32 {
     start + ((end - start) * t.clamp(0.0, 1.0))
+}
+
+fn lerp_color(start: RgbaColor, end: RgbaColor, t: f32) -> RgbaColor {
+    RgbaColor {
+        r: lerp(start.r, end.r, t),
+        g: lerp(start.g, end.g, t),
+        b: lerp(start.b, end.b, t),
+        a: lerp(start.a, end.a, t),
+    }
+}
+
+fn discrete_palette_index(index: usize, count: usize, color_count: usize) -> usize {
+    if color_count == 0 {
+        return 0;
+    }
+    if count <= 1 {
+        return 0;
+    }
+
+    let ratio = index as f64 / count as f64;
+    ((ratio * color_count as f64).floor() as usize).min(color_count - 1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RgbaColor, palette_color_for_index};
+
+    #[test]
+    fn smooth_palette_interpolates_between_theme_stops() {
+        let colors = [
+            RgbaColor {
+                r: 1.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            },
+            RgbaColor {
+                r: 0.0,
+                g: 0.0,
+                b: 1.0,
+                a: 1.0,
+            },
+        ];
+
+        let mid = palette_color_for_index(&colors, 1, 3, true);
+        assert!((mid.r - 0.5).abs() < 1e-6);
+        assert!(mid.g.abs() < 1e-6);
+        assert!((mid.b - 0.5).abs() < 1e-6);
+        assert!((mid.a - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn discrete_palette_keeps_block_distribution() {
+        let colors = [
+            RgbaColor {
+                r: 1.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            },
+            RgbaColor {
+                r: 0.0,
+                g: 1.0,
+                b: 0.0,
+                a: 1.0,
+            },
+            RgbaColor {
+                r: 0.0,
+                g: 0.0,
+                b: 1.0,
+                a: 1.0,
+            },
+        ];
+
+        let resolved = palette_color_for_index(&colors, 3, 6, false);
+        assert!(resolved.r.abs() < 1e-6);
+        assert!((resolved.g - 1.0).abs() < 1e-6);
+        assert!(resolved.b.abs() < 1e-6);
+    }
 }

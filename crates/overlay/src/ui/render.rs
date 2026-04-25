@@ -13,7 +13,9 @@ use kwybars_common::theme::ThemePalette;
 use kwybars_engine::live::LiveFrameStream;
 use tracing::error;
 
-use super::color::{color_for_index, gradient_axis_for_layout, set_gradient_source};
+use super::color::{
+    color_for_index, gradient_axis_for_layout, palette_color_for_index, set_gradient_source,
+};
 use super::draw;
 use super::frame::{
     EdgePaint, FrameMetrics, frame_edge_rect, normalized_frame_edges, paint_line_edge,
@@ -286,9 +288,12 @@ pub(super) fn build_drawing_area(
                     bar_style,
                     |index, spec| {
                         let color = if let Some(colors) = theme_colors.as_ref() {
-                            let color_idx =
-                                draw::bar_color_index(index, values.len(), colors.len());
-                            colors[color_idx]
+                            palette_color_for_index(
+                                colors,
+                                index,
+                                values.len(),
+                                bar_gradient_direction == VisualizerGradientDirection::Horizontal,
+                            )
                         } else {
                             color_for_index(
                                 bar_color_mode,
@@ -677,9 +682,12 @@ pub(super) fn build_drawing_area(
                     bar_style,
                     |index, spec| {
                         let color = if let Some(colors) = theme_colors.as_ref() {
-                            let color_idx =
-                                draw::bar_color_index(index, values.len(), colors.len());
-                            colors[color_idx]
+                            palette_color_for_index(
+                                colors,
+                                index,
+                                values.len(),
+                                bar_gradient_direction == VisualizerGradientDirection::Horizontal,
+                            )
                         } else {
                             color_for_index(
                                 bar_color_mode,
