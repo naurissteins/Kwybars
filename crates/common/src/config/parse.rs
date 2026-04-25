@@ -6,7 +6,8 @@ use super::model::{
     AppConfig, ConfigLoadError, DaemonConfig, FrameMirrorMode, HorizontalAlignment,
     ImageOverlayConfig, ImageOverlayFit, LineMode, MirrorOrientation, OverlayConfig, OverlayLayer,
     OverlayMonitorMode, OverlayPosition, RgbaColor, VerticalAlignment, VisualizerBackend,
-    VisualizerColorMode, VisualizerColorOverrides, VisualizerConfig, VisualizerLayout,
+    VisualizerColorMode, VisualizerColorOverrides, VisualizerConfig, VisualizerGradientDirection,
+    VisualizerLayout,
 };
 
 pub fn default_config_path() -> PathBuf {
@@ -258,6 +259,9 @@ fn parse_visualizer_key(
         "gap" => visualizer.gap = parse_u32(key, value)?,
         "framerate" => visualizer.framerate = parse_u32(key, value)?,
         "color_mode" => visualizer.color_mode = VisualizerColorMode::parse(value)?,
+        "gradient_direction" => {
+            visualizer.gradient_direction = VisualizerGradientDirection::parse(value)?
+        }
         "color_rgba" => visualizer.color_rgba = RgbaColor::parse(value)?,
         "color2_rgba" => visualizer.color2_rgba = RgbaColor::parse(value)?,
         "theme" => visualizer.theme = parse_optional_string(value),

@@ -19,6 +19,7 @@ bar_width = 8
 gap = 20
 framerate = 60
 color_mode = "gradient"
+gradient_direction = "vertical"
 color_rgba = "rgba(175, 198, 255, 0.7)"
 color2_rgba = "rgba(191, 198, 220, 0.7)"
 

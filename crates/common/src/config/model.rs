@@ -365,6 +365,33 @@ impl Display for VisualizerColorMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VisualizerGradientDirection {
+    Vertical,
+    Horizontal,
+}
+
+impl VisualizerGradientDirection {
+    pub(crate) fn parse(value: &str) -> Result<Self, ConfigLoadError> {
+        match value {
+            "vertical" => Ok(Self::Vertical),
+            "horizontal" => Ok(Self::Horizontal),
+            _ => Err(ConfigLoadError::Parse(format!(
+                "unknown visualizer.gradient_direction value: {value}"
+            ))),
+        }
+    }
+}
+
+impl Display for VisualizerGradientDirection {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Vertical => write!(f, "vertical"),
+            Self::Horizontal => write!(f, "horizontal"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VisualizerLayout {
     Line,
     Mirror,
@@ -529,6 +556,7 @@ pub struct VisualizerConfig {
     pub gap: u32,
     pub framerate: u32,
     pub color_mode: VisualizerColorMode,
+    pub gradient_direction: VisualizerGradientDirection,
     pub color_rgba: RgbaColor,
     pub color2_rgba: RgbaColor,
     pub theme: Option<String>,
@@ -577,6 +605,7 @@ impl Default for VisualizerConfig {
             gap: 20,
             framerate: 60,
             color_mode: VisualizerColorMode::Gradient,
+            gradient_direction: VisualizerGradientDirection::Vertical,
             color_rgba: RgbaColor {
                 r: 175.0 / 255.0,
                 g: 198.0 / 255.0,

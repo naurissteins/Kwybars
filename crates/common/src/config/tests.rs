@@ -1,8 +1,8 @@
 use super::{
     AppConfig, DaemonConfig, FrameMirrorMode, HorizontalAlignment, ImageOverlayFit, LineMode,
     MirrorOrientation, OverlayLayer, OverlayMonitorMode, OverlayPosition, VerticalAlignment,
-    VisualizerBackend, VisualizerColorMode, VisualizerColorOverrides, VisualizerLayout,
-    apply_color_overrides, parse_color_overrides, parse_config,
+    VisualizerBackend, VisualizerColorMode, VisualizerColorOverrides, VisualizerGradientDirection,
+    VisualizerLayout, apply_color_overrides, parse_color_overrides, parse_config,
 };
 
 #[test]
@@ -59,6 +59,7 @@ fn parses_valid_config() {
         gap = 2
         framerate = 75
         color_mode = "gradient"
+        gradient_direction = "horizontal"
         color_rgba = "rgba(255, 255, 255, 0.5)"
         color2_rgba = "rgba(255, 0, 0, 1.0)"
         theme = "catppuccin-mocha"
@@ -153,6 +154,10 @@ fn parses_valid_config() {
     assert_eq!(parsed.visualizer.gap, 2);
     assert_eq!(parsed.visualizer.framerate, 75);
     assert_eq!(parsed.visualizer.color_mode, VisualizerColorMode::Gradient);
+    assert_eq!(
+        parsed.visualizer.gradient_direction,
+        VisualizerGradientDirection::Horizontal
+    );
     assert!((parsed.visualizer.color_rgba.r - 1.0).abs() < 1e-5);
     assert!((parsed.visualizer.color_rgba.g - 1.0).abs() < 1e-5);
     assert!((parsed.visualizer.color_rgba.b - 1.0).abs() < 1e-5);
@@ -259,6 +264,10 @@ fn built_in_defaults_match_expected_no_config_setup() {
     assert_eq!(config.visualizer.gap, 20);
     assert_eq!(config.visualizer.framerate, 60);
     assert_eq!(config.visualizer.color_mode, VisualizerColorMode::Gradient);
+    assert_eq!(
+        config.visualizer.gradient_direction,
+        VisualizerGradientDirection::Vertical
+    );
     assert!((config.visualizer.color_rgba.r - (175.0 / 255.0)).abs() < 1e-5);
     assert!((config.visualizer.color_rgba.g - (198.0 / 255.0)).abs() < 1e-5);
     assert!((config.visualizer.color_rgba.b - 1.0).abs() < 1e-5);
@@ -360,6 +369,7 @@ fn display_tokens_round_trip_with_enum_parsers() {
     assert_round_trip!(OverlayMonitorMode [Primary, All, List]);
     assert_round_trip!(VisualizerBackend [Auto, Pipewire, Cava, Dummy]);
     assert_round_trip!(VisualizerColorMode [Solid, Gradient]);
+    assert_round_trip!(VisualizerGradientDirection [Vertical, Horizontal]);
     assert_round_trip!(VisualizerLayout [Line, Mirror, Wave, Frame, Radial, Polygon, Particle, Floating]);
     assert_round_trip!(LineMode [Continuous, Split]);
     assert_round_trip!(MirrorOrientation [Horizontal, Vertical]);

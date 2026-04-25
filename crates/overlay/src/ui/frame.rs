@@ -1,7 +1,9 @@
-use kwybars_common::config::{FrameMirrorMode, OverlayPosition, RgbaColor, VisualizerColorMode};
+use kwybars_common::config::{
+    FrameMirrorMode, OverlayPosition, RgbaColor, VisualizerColorMode, VisualizerGradientDirection,
+};
 use tracing::error;
 
-use super::color::color_for_index;
+use super::color::{color_for_index, gradient_axis_for_layout, set_gradient_source};
 use super::draw;
 
 #[derive(Clone, Copy)]
@@ -25,6 +27,7 @@ pub(super) struct EdgePaint<'a> {
     pub(super) global_offset: usize,
     pub(super) style: draw::BarStyle,
     pub(super) color_mode: VisualizerColorMode,
+    pub(super) gradient_direction: VisualizerGradientDirection,
     pub(super) color: RgbaColor,
     pub(super) color2: RgbaColor,
     pub(super) theme_colors: Option<&'a [RgbaColor]>,
@@ -142,6 +145,86 @@ pub(super) fn paint_line_edge(
     edge_rect: draw::FrameEdgeRect,
     edge_paint: &EdgePaint<'_>,
 ) {
+    let use_continuous_gradient = edge_paint.theme_colors.is_none()
+        || edge_paint.gradient_direction == VisualizerGradientDirection::Horizontal;
+
+    if use_continuous_gradient {
+        let axis = gradient_axis_for_layout(
+            edge_rect.x,
+            edge_rect.y,
+            edge_rect.width,
+            edge_rect.height,
+            matches!(edge_rect.orientation, draw::BarOrientation::Horizontal),
+            edge_rect.from_start,
+            edge_paint.gradient_direction,
+        );
+        set_gradient_source(
+            edge_paint.ctx,
+            axis,
+            edge_paint.color_mode,
+            edge_paint.color,
+            edge_paint.color2,
+            edge_paint.theme_colors,
+            1.0,
+        );
+
+        match edge_rect.orientation {
+            draw::BarOrientation::Horizontal => {
+                draw::for_each_horizontal_bar(
+                    values,
+                    edge_rect.width,
+                    edge_rect.height,
+                    edge_paint.style.thickness,
+                    edge_paint.style.gap,
+                    edge_rect.from_start,
+                    |_, x, y, bar_width, bar_height| {
+                        draw::append_bar_path(
+                            edge_paint.ctx,
+                            draw::BarRect {
+                                x: edge_rect.x + x,
+                                y: edge_rect.y + y,
+                                width: bar_width,
+                                height: bar_height,
+                            },
+                            edge_paint.style,
+                            draw::BarOrientation::Horizontal,
+                            edge_rect.from_start,
+                        );
+                    },
+                );
+            }
+            draw::BarOrientation::Vertical => {
+                draw::for_each_vertical_bar(
+                    values,
+                    edge_rect.width,
+                    edge_rect.height,
+                    edge_paint.style.thickness,
+                    edge_paint.style.gap,
+                    edge_rect.from_start,
+                    |_, x, y, bar_width, bar_height| {
+                        draw::append_bar_path(
+                            edge_paint.ctx,
+                            draw::BarRect {
+                                x: edge_rect.x + x,
+                                y: edge_rect.y + y,
+                                width: bar_width,
+                                height: bar_height,
+                            },
+                            edge_paint.style,
+                            draw::BarOrientation::Vertical,
+                            edge_rect.from_start,
+                        );
+                    },
+                );
+            }
+        }
+
+        if edge_paint.ctx.fill().is_err() {
+            error!("kwybars: cairo fill failed");
+        }
+        return;
+    }
+
     let paint_color = |ctx: &gtk::cairo::Context, local_index: usize| {
         let global_index = edge_paint.global_offset + local_index;
         let resolved = if let Some(colors) = edge_paint.theme_colors {

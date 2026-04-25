@@ -7,13 +7,13 @@ use gtk::glib;
 use gtk::prelude::*;
 use kwybars_common::config::{
     AppConfig, LineMode, MirrorOrientation, OverlayPosition, RgbaColor, VisualizerColorMode,
-    VisualizerLayout,
+    VisualizerGradientDirection, VisualizerLayout,
 };
 use kwybars_common::theme::ThemePalette;
 use kwybars_engine::live::LiveFrameStream;
 use tracing::error;
 
-use super::color::color_for_index;
+use super::color::{color_for_index, gradient_axis_for_layout, set_gradient_source};
 use super::draw;
 use super::frame::{
     EdgePaint, FrameMetrics, frame_edge_rect, normalized_frame_edges, paint_line_edge,
@@ -82,6 +82,7 @@ pub(super) fn build_drawing_area(
     let fps = config.visualizer.framerate.max(1);
     let interval_ms = (1000_u64 / u64::from(fps)).max(1);
     let bar_color_mode = config.visualizer.color_mode;
+    let bar_gradient_direction = config.visualizer.gradient_direction;
     let bar_color = config.visualizer.color_rgba;
     let bar_color2 = config.visualizer.color2_rgba;
     let line_mode = match config.visualizer.line_mode {
@@ -434,6 +435,70 @@ pub(super) fn build_drawing_area(
                     (active_x, active_y, active_width, active_height)
                 };
 
+                let should_use_continuous_mirror_gradient = theme_colors.is_none()
+                    || bar_gradient_direction == VisualizerGradientDirection::Horizontal;
+
+                if should_use_continuous_mirror_gradient {
+                    let axis = gradient_axis_for_layout(
+                        active_x,
+                        active_y,
+                        active_width,
+                        active_height,
+                        mirror_horizontal,
+                        true,
+                        bar_gradient_direction,
+                    );
+                    set_gradient_source(
+                        ctx,
+                        axis,
+                        bar_color_mode,
+                        bar_color,
+                        bar_color2,
+                        theme_colors.as_deref(),
+                        1.0,
+                    );
+
+                    if mirror_horizontal {
+                        draw::draw_horizontal_mirror_bars_mode(
+                            ctx,
+                            &values,
+                            draw::MirrorHorizontalLayout {
+                                width: active_width,
+                                height: active_height,
+                                bar_thickness: bar_style.thickness,
+                                gap: bar_style.gap,
+                                mirror_gap,
+                                mode: line_mode,
+                            },
+                            bar_style,
+                            active_x,
+                            active_y,
+                        );
+                    } else {
+                        draw::draw_vertical_mirror_bars_mode(
+                            ctx,
+                            &values,
+                            draw::MirrorVerticalLayout {
+                                width: active_width,
+                                height: active_height,
+                                bar_thickness: bar_style.thickness,
+                                gap: bar_style.gap,
+                                mirror_gap,
+                                mode: line_mode,
+                            },
+                            bar_style,
+                            active_x,
+                            active_y,
+                        );
+                    }
+
+                    if ctx.fill().is_err() {
+                        error!("kwybars: cairo fill failed");
+                    }
+                    draw_image_overlay(ctx);
+                    return;
+                }
+
                 if let Some(colors) = theme_colors.as_ref() {
                     if mirror_horizontal {
                         draw::for_each_horizontal_mirror_bar_mode(
@@ -541,87 +606,6 @@ pub(super) fn build_drawing_area(
                     draw_image_overlay(ctx);
                     return;
                 }
-
-                match bar_color_mode {
-                    VisualizerColorMode::Solid => {
-                        ctx.set_source_rgba(
-                            f64::from(bar_color.r),
-                            f64::from(bar_color.g),
-                            f64::from(bar_color.b),
-                            f64::from(bar_color.a),
-                        );
-                    }
-                    VisualizerColorMode::Gradient => {
-                        let (x0, y0, x1, y1) = if mirror_horizontal {
-                            (active_x, active_y, active_x, active_y + active_height)
-                        } else {
-                            (active_x, active_y, active_x + active_width, active_y)
-                        };
-                        let gradient = gtk::cairo::LinearGradient::new(x0, y0, x1, y1);
-                        gradient.add_color_stop_rgba(
-                            0.0,
-                            f64::from(bar_color.r),
-                            f64::from(bar_color.g),
-                            f64::from(bar_color.b),
-                            f64::from(bar_color.a),
-                        );
-                        gradient.add_color_stop_rgba(
-                            1.0,
-                            f64::from(bar_color2.r),
-                            f64::from(bar_color2.g),
-                            f64::from(bar_color2.b),
-                            f64::from(bar_color2.a),
-                        );
-                        if ctx.set_source(&gradient).is_err() {
-                            ctx.set_source_rgba(
-                                f64::from(bar_color.r),
-                                f64::from(bar_color.g),
-                                f64::from(bar_color.b),
-                                f64::from(bar_color.a),
-                            );
-                        }
-                    }
-                }
-
-                if mirror_horizontal {
-                    draw::draw_horizontal_mirror_bars_mode(
-                        ctx,
-                        &values,
-                        draw::MirrorHorizontalLayout {
-                            width: active_width,
-                            height: active_height,
-                            bar_thickness: bar_style.thickness,
-                            gap: bar_style.gap,
-                            mirror_gap,
-                            mode: line_mode,
-                        },
-                        bar_style,
-                        active_x,
-                        active_y,
-                    );
-                } else {
-                    draw::draw_vertical_mirror_bars_mode(
-                        ctx,
-                        &values,
-                        draw::MirrorVerticalLayout {
-                            width: active_width,
-                            height: active_height,
-                            bar_thickness: bar_style.thickness,
-                            gap: bar_style.gap,
-                            mirror_gap,
-                            mode: line_mode,
-                        },
-                        bar_style,
-                        active_x,
-                        active_y,
-                    );
-                }
-
-                if ctx.fill().is_err() {
-                    error!("kwybars: cairo fill failed");
-                }
-                draw_image_overlay(ctx);
-                return;
             }
 
             if is_frame {
@@ -662,6 +646,7 @@ pub(super) fn build_drawing_area(
                         global_offset: edge_slice.global_offset,
                         style: bar_style,
                         color_mode: bar_color_mode,
+                        gradient_direction: bar_gradient_direction,
                         color: bar_color,
                         color2: bar_color2,
                         theme_colors: theme_colors.as_deref(),
@@ -717,6 +702,66 @@ pub(super) fn build_drawing_area(
                         }
                     },
                 );
+                draw_image_overlay(ctx);
+                return;
+            }
+
+            let should_use_continuous_line_gradient = theme_colors.is_none()
+                || bar_gradient_direction == VisualizerGradientDirection::Horizontal;
+
+            if should_use_continuous_line_gradient {
+                let axis = gradient_axis_for_layout(
+                    0.0,
+                    0.0,
+                    f64::from(width),
+                    f64::from(height),
+                    is_horizontal,
+                    is_top || is_left,
+                    bar_gradient_direction,
+                );
+                set_gradient_source(
+                    ctx,
+                    axis,
+                    bar_color_mode,
+                    bar_color,
+                    bar_color2,
+                    theme_colors.as_deref(),
+                    1.0,
+                );
+
+                if is_horizontal {
+                    draw::draw_horizontal_bars_mode(
+                        ctx,
+                        &values,
+                        draw::HorizontalBarLayout {
+                            width: f64::from(width),
+                            height: f64::from(height),
+                            bar_thickness: bar_style.thickness,
+                            gap: bar_style.gap,
+                            from_top: is_top,
+                            mode: line_mode,
+                        },
+                        bar_style,
+                    );
+                } else {
+                    draw::draw_vertical_bars_mode(
+                        ctx,
+                        &values,
+                        draw::VerticalBarLayout {
+                            width: f64::from(width),
+                            height: f64::from(height),
+                            bar_thickness: bar_style.thickness,
+                            gap: bar_style.gap,
+                            from_left: is_left,
+                            mode: line_mode,
+                        },
+                        bar_style,
+                    );
+                }
+
+                if ctx.fill().is_err() {
+                    error!("kwybars: cairo fill failed");
+                }
                 draw_image_overlay(ctx);
                 return;
             }
@@ -800,92 +845,7 @@ pub(super) fn build_drawing_area(
                     );
                 }
                 draw_image_overlay(ctx);
-                return;
             }
-
-            match bar_color_mode {
-                VisualizerColorMode::Solid => {
-                    ctx.set_source_rgba(
-                        f64::from(bar_color.r),
-                        f64::from(bar_color.g),
-                        f64::from(bar_color.b),
-                        f64::from(bar_color.a),
-                    );
-                }
-                VisualizerColorMode::Gradient => {
-                    let (x0, y0, x1, y1) = if is_horizontal {
-                        if is_top {
-                            (0.0, 0.0, 0.0, f64::from(height))
-                        } else {
-                            (0.0, f64::from(height), 0.0, 0.0)
-                        }
-                    } else if is_left {
-                        (0.0, 0.0, f64::from(width), 0.0)
-                    } else {
-                        (f64::from(width), 0.0, 0.0, 0.0)
-                    };
-
-                    let gradient = gtk::cairo::LinearGradient::new(x0, y0, x1, y1);
-                    gradient.add_color_stop_rgba(
-                        0.0,
-                        f64::from(bar_color.r),
-                        f64::from(bar_color.g),
-                        f64::from(bar_color.b),
-                        f64::from(bar_color.a),
-                    );
-                    gradient.add_color_stop_rgba(
-                        1.0,
-                        f64::from(bar_color2.r),
-                        f64::from(bar_color2.g),
-                        f64::from(bar_color2.b),
-                        f64::from(bar_color2.a),
-                    );
-
-                    if ctx.set_source(&gradient).is_err() {
-                        ctx.set_source_rgba(
-                            f64::from(bar_color.r),
-                            f64::from(bar_color.g),
-                            f64::from(bar_color.b),
-                            f64::from(bar_color.a),
-                        );
-                    }
-                }
-            }
-
-            if is_horizontal {
-                draw::draw_horizontal_bars_mode(
-                    ctx,
-                    &values,
-                    draw::HorizontalBarLayout {
-                        width: f64::from(width),
-                        height: f64::from(height),
-                        bar_thickness: bar_style.thickness,
-                        gap: bar_style.gap,
-                        from_top: is_top,
-                        mode: line_mode,
-                    },
-                    bar_style,
-                );
-            } else {
-                draw::draw_vertical_bars_mode(
-                    ctx,
-                    &values,
-                    draw::VerticalBarLayout {
-                        width: f64::from(width),
-                        height: f64::from(height),
-                        bar_thickness: bar_style.thickness,
-                        gap: bar_style.gap,
-                        from_left: is_left,
-                        mode: line_mode,
-                    },
-                    bar_style,
-                );
-            }
-
-            if ctx.fill().is_err() {
-                error!("kwybars: cairo fill failed");
-            }
-            draw_image_overlay(ctx);
         });
     }
 
@@ -963,61 +923,16 @@ fn to_i32(value: u32) -> i32 {
 }
 
 fn set_wave_source(ctx: &gtk::cairo::Context, source: WaveSource<'_>) {
-    if let Some(colors) = source.theme_colors {
-        if colors.len() == 1 {
-            let (r, g, b, a) = scaled_rgba(colors[0], source.alpha_scale);
-            ctx.set_source_rgba(r, g, b, a);
-            return;
-        }
-
-        let gradient = gtk::cairo::LinearGradient::new(
-            source.axis_start.0,
-            source.axis_start.1,
-            source.axis_end.0,
-            source.axis_end.1,
-        );
-        let stop_denom = (colors.len().saturating_sub(1)).max(1) as f64;
-        for (index, color) in colors.iter().enumerate() {
-            let (r, g, b, a) = scaled_rgba(*color, source.alpha_scale);
-            gradient.add_color_stop_rgba(index as f64 / stop_denom, r, g, b, a);
-        }
-        if ctx.set_source(&gradient).is_ok() {
-            return;
-        }
-
-        let (r, g, b, a) = scaled_rgba(colors[0], source.alpha_scale);
-        ctx.set_source_rgba(r, g, b, a);
-        return;
-    }
-
-    match source.color_mode {
-        VisualizerColorMode::Solid => {
-            let (r, g, b, a) = scaled_rgba(source.color, source.alpha_scale);
-            ctx.set_source_rgba(r, g, b, a);
-        }
-        VisualizerColorMode::Gradient => {
-            let gradient = gtk::cairo::LinearGradient::new(
-                source.axis_start.0,
-                source.axis_start.1,
-                source.axis_end.0,
-                source.axis_end.1,
-            );
-            let (r1, g1, b1, a1) = scaled_rgba(source.color, source.alpha_scale);
-            let (r2, g2, b2, a2) = scaled_rgba(source.color2, source.alpha_scale);
-            gradient.add_color_stop_rgba(0.0, r1, g1, b1, a1);
-            gradient.add_color_stop_rgba(1.0, r2, g2, b2, a2);
-            if ctx.set_source(&gradient).is_err() {
-                ctx.set_source_rgba(r1, g1, b1, a1);
-            }
-        }
-    }
-}
-
-fn scaled_rgba(color: RgbaColor, alpha_scale: f64) -> (f64, f64, f64, f64) {
-    (
-        f64::from(color.r),
-        f64::from(color.g),
-        f64::from(color.b),
-        (f64::from(color.a) * alpha_scale).clamp(0.0, 1.0),
-    )
+    set_gradient_source(
+        ctx,
+        super::color::GradientAxis {
+            start: source.axis_start,
+            end: source.axis_end,
+        },
+        source.color_mode,
+        source.color,
+        source.color2,
+        source.theme_colors,
+        source.alpha_scale,
+    );
 }
