@@ -36,7 +36,7 @@ https://github.com/user-attachments/assets/5fe84372-86be-49a8-b9c0-6564e81f1eaa
 
 <div align=center>
 
-  [Documentation](https://https://naurissteins.com/kwybars)
+  [Documentation](https://naurissteins.com/kwybars)
   
 </div>
 
