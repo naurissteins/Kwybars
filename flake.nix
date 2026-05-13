@@ -128,9 +128,21 @@
         let
           cfg = config.programs.kwybars;
           package = cfg.package;
-          configArg = lib.optionalString (
-            cfg.configPath != null
-          ) " --config ${lib.escapeShellArg (toString cfg.configPath)}";
+
+          resolvedPath =
+            if cfg.settings != { } then
+              (pkgs.formats.toml { }).generate "kwybars.toml" cfg.settings
+
+            else if cfg.preset != null then
+              "${package}/share/kwybars/examples/${cfg.preset}.toml"
+            else
+              cfg.configPath; # may be null → no --config flag
+
+          activeSources = lib.count lib.id [
+            (cfg.settings != { })
+            (cfg.configPath != null)
+            (cfg.preset != null)
+          ];
         in
         {
           options.programs.kwybars = {
@@ -143,6 +155,23 @@
               description = "Kwybars package to install.";
             };
 
+            settings = lib.mkOption {
+              type = lib.types.nullOr (pkgs.formats.toml { }).type;
+              default = { };
+              example = lib.literalExpression ''
+                {
+                	overlay.position 	= "bottom"
+                	overlay.width 		= 800
+                	overlay.height 		= 500
+                }
+              '';
+              description = ''
+                Kwybars configuration as a Nix attribute set, serialised to TOML
+                and passed via --config. Mutually exclusive with
+                <option>configPath</option> and <option>preset</option>.
+              '';
+            };
+
             configPath = lib.mkOption {
               type = lib.types.nullOr (
                 lib.types.oneOf [
@@ -152,7 +181,32 @@
               );
               default = null;
               example = lib.literalExpression ''"/home/alice/.config/kwybars/current.toml"'';
-              description = "Optional config path passed to the packaged user service.";
+              description = ''
+                Path to an existing TOML config file passed via --config.
+                Mutually exclusive with <option>settings</option> and
+                <option>preset</option>.
+              '';
+            };
+
+            preset = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              example = lib.literalExpression ''"config"'';
+              description = ''
+                Name of a bundled example config (without the .toml extension)
+                shipped under <literal>''${package}/share/kwybars/examples/</literal>.
+                For example, <literal>"config"</literal> resolves to
+                <literal>''${package}/share/kwybars/examples/config.toml</literal>.
+                Mutually exclusive with <option>settings</option> and
+                <option>configPath</option>.
+              '';
+            };
+
+            extraArgs = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              example = [ "--verbose" ];
+              description = "Extra command-line arguments to pass to the kwybars-daemon executable.";
             };
 
             systemd.enable = lib.mkOption {
@@ -163,6 +217,24 @@
           };
 
           config = lib.mkIf cfg.enable {
+            assertions = [
+              {
+                assertion = activeSources <= 1;
+                message = ''
+                  programs.kwybars: at most one of `settings`, `configPath`, or `preset`
+                  may be set at a time (${toString activeSources} are currently set).
+                '';
+              }
+              {
+                assertion =
+                  cfg.preset == null || builtins.pathExists "${package}/share/kwybars/examples/${cfg.preset}.toml";
+                message = ''
+                  programs.kwybars.preset: "${cfg.preset}.toml" was not found in
+                  ${package}/share/kwybars/examples/.
+                '';
+              }
+            ];
+
             environment.systemPackages = [ package ];
 
             systemd.user.services.kwybars-daemon = lib.mkIf cfg.systemd.enable {
@@ -171,9 +243,13 @@
               partOf = [ "graphical-session.target" ];
               wantedBy = [ "default.target" ];
 
+              environment = lib.mkIf (resolvedPath != null) {
+                KWYBARS_CONFIG = toString resolvedPath;
+              };
+
               serviceConfig = {
                 Type = "simple";
-                ExecStart = "${package}/bin/kwybars-daemon${configArg}";
+                ExecStart = "${package}/bin/kwybars-daemon ${lib.escapeShellArgs cfg.extraArgs}";
                 Restart = "on-failure";
                 RestartSec = 2;
               };
