@@ -1,0 +1,16 @@
+[overlay]
+monitor_mode = "primary"
+layer = "background"
+position = "bottom"
+full_length = true
+height = 260
+
+[visualizer]
+layout = "floating"
+bars = 16
+bar_width = 50
+gap = 14
+framerate = 60
+color_mode = "gradient"
+color_rgba = "rgba(251, 191, 36, 0.8)"
+color2_rgba = "rgba(244, 114, 182, 0.8)"
