@@ -20,8 +20,7 @@
         system:
         let
           pkgs = pkgsFor system;
-          workspaceVersion =
-            (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
+          workspaceVersion = (fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
         in
         rec {
           kwybars = pkgs.rustPlatform.buildRustPackage {
@@ -77,11 +76,21 @@
 
               wrapProgram "$out/bin/kwybars-daemon" \
                 --set KWYBARS_THEMES_DIR "$out/share/kwybars/themes" \
-                --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.cava pkgs.libnotify ]}:$out/bin
+                --prefix PATH : ${
+                  pkgs.lib.makeBinPath [
+                    pkgs.cava
+                    pkgs.libnotify
+                  ]
+                }:$out/bin
 
               wrapProgram "$out/bin/kwybars-overlay" \
                 --set KWYBARS_THEMES_DIR "$out/share/kwybars/themes" \
-                --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.cava pkgs.libnotify ]}:$out/bin
+                --prefix PATH : ${
+                  pkgs.lib.makeBinPath [
+                    pkgs.cava
+                    pkgs.libnotify
+                  ]
+                }:$out/bin
 
               wrapProgram "$out/bin/kwybarsctl" \
                 --set KWYBARS_THEMES_DIR "$out/share/kwybars/themes"
@@ -122,18 +131,20 @@
 
             package = lib.mkOption {
               type = lib.types.package;
-              default = self.packages.${pkgs.system}.default;
-              defaultText = lib.literalExpression "inputs.kwybars.packages.${pkgs.system}.default";
+              default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+              defaultText = lib.literalExpression "inputs.kwybars.packages.${pkgs.stdenv.hostPlatform.system}.default";
               description = "Kwybars package to install.";
             };
 
             configPath = lib.mkOption {
-              type = lib.types.nullOr (lib.types.oneOf [
-                lib.types.path
-                lib.types.str
-              ]);
+              type = lib.types.nullOr (
+                lib.types.oneOf [
+                  lib.types.path
+                  lib.types.str
+                ]
+              );
               default = null;
-              example = lib.literalExpression "\"/home/alice/.config/kwybars/current.toml\"";
+              example = lib.literalExpression ''"/home/alice/.config/kwybars/current.toml"'';
               description = "Optional config path passed to the packaged user service.";
             };
 
@@ -162,6 +173,14 @@
             };
           };
         };
+
+      formatter = forAllSystems (
+        system:
+        let
+          pkgs = pkgsFor system;
+        in
+        pkgs.nixfmt
+      );
 
       apps = forAllSystems (
         system:
