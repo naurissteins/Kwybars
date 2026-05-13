@@ -79,8 +79,6 @@
               install_binary kwybarsctl
 
               install -Dm644 assets/examples/config.toml "$out/share/kwybars/examples/config.toml"
-              install -Dm644 assets/systemd/kwybars-daemon.service \
-                "$out/lib/systemd/user/kwybars-daemon.service"
               install -Dm644 assets/themes/*.toml -t "$out/share/kwybars/themes"
 
               wrapProgram "$out/bin/kwybars-daemon" \
