@@ -78,7 +78,7 @@
               install_binary kwybars-overlay
               install_binary kwybarsctl
 
-              install -Dm644 assets/examples/config.toml "$out/share/kwybars/examples/config.toml"
+              install -Dm644 assets/examples/*.toml -t "$out/share/kwybars/examples"
               install -Dm644 assets/themes/*.toml -t "$out/share/kwybars/themes"
 
               wrapProgram "$out/bin/kwybars-daemon" \
