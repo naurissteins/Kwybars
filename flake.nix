@@ -27,7 +27,16 @@
             pname = "kwybars";
             version = workspaceVersion;
 
-            src = self;
+            src = pkgs.lib.fileset.toSource {
+              root = ./.;
+              fileset = pkgs.lib.fileset.unions [
+                ./Cargo.toml
+                ./Cargo.lock
+                ./assets/examples
+                ./assets/themes
+                ./crates
+              ];
+            };
 
             cargoLock = {
               lockFile = ./Cargo.lock;
