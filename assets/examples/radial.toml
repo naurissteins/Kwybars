@@ -1,0 +1,22 @@
+[overlay]
+monitor_mode = "primary"
+layer = "background"
+width = 620
+height = 620
+
+[visualizer]
+layout = "radial"
+bars = 46
+bar_width = 10
+gap = 8
+framerate = 60
+radial_inner_radius = 164
+radial_arc_degrees = 360
+radial_start_angle = 0
+radial_rotation_speed = 0
+center_offset_x = 0
+center_offset_y = 0
+bar_corner_radius = 16
+color_mode = "gradient"
+color_rgba = "rgba(122, 162, 247, 0.88)"
+color2_rgba = "rgba(187, 154, 247, 0.88)"

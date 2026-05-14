@@ -1,0 +1,22 @@
+[overlay]
+monitor_mode = "primary"
+layer = "background"
+full_length = true
+height = 340
+anchor_margin = 18
+margin_left = 18
+margin_right = 18
+margin_top = 0
+margin_bottom = 0
+
+[visualizer]
+layout = "frame"
+frame_edges = ["top", "bottom"]
+bars = 88
+bar_width = 8
+gap = 10
+framerate = 60
+bar_corner_radius = 16
+color_mode = "gradient"
+color_rgba = "rgba(244, 184, 228, 0.8)"
+color2_rgba = "rgba(180, 190, 254, 0.8)"

@@ -1,0 +1,20 @@
+[overlay]
+monitor_mode = "primary"
+layer = "background"
+position = "bottom"
+full_length = true
+height = 300
+anchor_margin = 0
+margin_left = 0
+margin_right = 0
+margin_bottom = 0
+
+[visualizer]
+layout = "particle"
+bars = 10
+bar_width = 100
+gap = 14
+framerate = 60
+color_mode = "gradient"
+color_rgba = "rgba(147, 197, 253, 0.82)"
+color2_rgba = "rgba(134, 239, 172, 0.82)"

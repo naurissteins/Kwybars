@@ -1,0 +1,24 @@
+[overlay]
+monitor_mode = "primary"
+layer = "background"
+position = "bottom"
+full_length = true
+height = 220
+anchor_margin = 0
+margin_left = 0
+margin_right = 0
+margin_bottom = 0
+
+[visualizer]
+layout = "wave"
+bars = 10
+framerate = 60
+wave_stroke_width = 6
+wave_fill = true
+wave_glow = false
+wave_smoothing = 1
+wave_motion_smoothing = 0.1
+wave_amplitude = 0.9
+color_mode = "gradient"
+color_rgba = "rgba(125, 207, 255, 0.78)"
+color2_rgba = "rgba(192, 132, 252, 0.78)"

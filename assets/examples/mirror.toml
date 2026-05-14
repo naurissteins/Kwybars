@@ -1,0 +1,21 @@
+[overlay]
+monitor_mode = "primary"
+layer = "background"
+full_length = true
+height = 860
+anchor_margin = 20
+margin_left = 20
+margin_right = 20
+
+[visualizer]
+layout = "mirror"
+mirror_orientation = "horizontal"
+bars = 72
+bar_width = 13
+gap = 12
+mirror_gap = 30
+framerate = 60
+bar_corner_radius = 18
+color_mode = "gradient"
+color_rgba = "rgba(166, 227, 161, 0.82)"
+color2_rgba = "rgba(137, 180, 250, 0.82)"
