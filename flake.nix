@@ -20,15 +20,23 @@
         system:
         let
           pkgs = pkgsFor system;
-          workspaceVersion =
-            (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
+          workspaceVersion = (fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
         in
         rec {
           kwybars = pkgs.rustPlatform.buildRustPackage {
             pname = "kwybars";
             version = workspaceVersion;
 
-            src = self;
+            src = pkgs.lib.fileset.toSource {
+              root = ./.;
+              fileset = pkgs.lib.fileset.unions [
+                ./Cargo.toml
+                ./Cargo.lock
+                ./assets/examples
+                ./assets/themes
+                ./crates
+              ];
+            };
 
             cargoLock = {
               lockFile = ./Cargo.lock;
@@ -70,18 +78,26 @@
               install_binary kwybars-overlay
               install_binary kwybarsctl
 
-              install -Dm644 assets/examples/config.toml "$out/share/kwybars/examples/config.toml"
-              install -Dm644 assets/systemd/kwybars-daemon.service \
-                "$out/lib/systemd/user/kwybars-daemon.service"
+              install -Dm644 assets/examples/*.toml -t "$out/share/kwybars/examples"
               install -Dm644 assets/themes/*.toml -t "$out/share/kwybars/themes"
 
               wrapProgram "$out/bin/kwybars-daemon" \
                 --set KWYBARS_THEMES_DIR "$out/share/kwybars/themes" \
-                --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.cava pkgs.libnotify ]}:$out/bin
+                --prefix PATH : ${
+                  pkgs.lib.makeBinPath [
+                    pkgs.cava
+                    pkgs.libnotify
+                  ]
+                }:$out/bin
 
               wrapProgram "$out/bin/kwybars-overlay" \
                 --set KWYBARS_THEMES_DIR "$out/share/kwybars/themes" \
-                --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.cava pkgs.libnotify ]}:$out/bin
+                --prefix PATH : ${
+                  pkgs.lib.makeBinPath [
+                    pkgs.cava
+                    pkgs.libnotify
+                  ]
+                }:$out/bin
 
               wrapProgram "$out/bin/kwybarsctl" \
                 --set KWYBARS_THEMES_DIR "$out/share/kwybars/themes"
@@ -112,9 +128,21 @@
         let
           cfg = config.programs.kwybars;
           package = cfg.package;
-          configArg = lib.optionalString (
-            cfg.configPath != null
-          ) " --config ${lib.escapeShellArg (toString cfg.configPath)}";
+
+          resolvedPath =
+            if cfg.settings != { } then
+              (pkgs.formats.toml { }).generate "kwybars.toml" cfg.settings
+
+            else if cfg.preset != null then
+              "${package}/share/kwybars/examples/${cfg.preset}.toml"
+            else
+              cfg.configPath; # may be null → no --config flag
+
+          activeSources = lib.count lib.id [
+            (cfg.settings != { })
+            (cfg.configPath != null)
+            (cfg.preset != null)
+          ];
         in
         {
           options.programs.kwybars = {
@@ -122,19 +150,63 @@
 
             package = lib.mkOption {
               type = lib.types.package;
-              default = self.packages.${pkgs.system}.default;
-              defaultText = lib.literalExpression "inputs.kwybars.packages.${pkgs.system}.default";
+              default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+              defaultText = lib.literalExpression "inputs.kwybars.packages.${pkgs.stdenv.hostPlatform.system}.default";
               description = "Kwybars package to install.";
             };
 
+            settings = lib.mkOption {
+              type = lib.types.nullOr (pkgs.formats.toml { }).type;
+              default = { };
+              example = lib.literalExpression ''
+                {
+                	overlay.position 	= "bottom"
+                	overlay.width 		= 800
+                	overlay.height 		= 500
+                }
+              '';
+              description = ''
+                Kwybars configuration as a Nix attribute set, serialised to TOML
+                and passed via --config. Mutually exclusive with
+                <option>configPath</option> and <option>preset</option>.
+              '';
+            };
+
             configPath = lib.mkOption {
-              type = lib.types.nullOr (lib.types.oneOf [
-                lib.types.path
-                lib.types.str
-              ]);
+              type = lib.types.nullOr (
+                lib.types.oneOf [
+                  lib.types.path
+                  lib.types.str
+                ]
+              );
               default = null;
-              example = lib.literalExpression "\"/home/alice/.config/kwybars/current.toml\"";
-              description = "Optional config path passed to the packaged user service.";
+              example = lib.literalExpression ''"/home/alice/.config/kwybars/current.toml"'';
+              description = ''
+                Path to an existing TOML config file passed via --config.
+                Mutually exclusive with <option>settings</option> and
+                <option>preset</option>.
+              '';
+            };
+
+            preset = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              example = lib.literalExpression ''"config"'';
+              description = ''
+                Name of a bundled example config (without the .toml extension)
+                shipped under <literal>''${package}/share/kwybars/examples/</literal>.
+                For example, <literal>"config"</literal> resolves to
+                <literal>''${package}/share/kwybars/examples/config.toml</literal>.
+                Mutually exclusive with <option>settings</option> and
+                <option>configPath</option>.
+              '';
+            };
+
+            extraArgs = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              example = [ "--verbose" ];
+              description = "Extra command-line arguments to pass to the kwybars-daemon executable.";
             };
 
             systemd.enable = lib.mkOption {
@@ -145,6 +217,24 @@
           };
 
           config = lib.mkIf cfg.enable {
+            assertions = [
+              {
+                assertion = activeSources <= 1;
+                message = ''
+                  programs.kwybars: at most one of `settings`, `configPath`, or `preset`
+                  may be set at a time (${toString activeSources} are currently set).
+                '';
+              }
+              {
+                assertion =
+                  cfg.preset == null || builtins.pathExists "${package}/share/kwybars/examples/${cfg.preset}.toml";
+                message = ''
+                  programs.kwybars.preset: "${cfg.preset}.toml" was not found in
+                  ${package}/share/kwybars/examples/.
+                '';
+              }
+            ];
+
             environment.systemPackages = [ package ];
 
             systemd.user.services.kwybars-daemon = lib.mkIf cfg.systemd.enable {
@@ -153,15 +243,27 @@
               partOf = [ "graphical-session.target" ];
               wantedBy = [ "default.target" ];
 
+              environment = lib.mkIf (resolvedPath != null) {
+                KWYBARS_CONFIG = toString resolvedPath;
+              };
+
               serviceConfig = {
                 Type = "simple";
-                ExecStart = "${package}/bin/kwybars-daemon${configArg}";
+                ExecStart = "${package}/bin/kwybars-daemon ${lib.escapeShellArgs cfg.extraArgs}";
                 Restart = "on-failure";
                 RestartSec = 2;
               };
             };
           };
         };
+
+      formatter = forAllSystems (
+        system:
+        let
+          pkgs = pkgsFor system;
+        in
+        pkgs.nixfmt
+      );
 
       apps = forAllSystems (
         system:
