@@ -234,6 +234,8 @@ pub fn doctor(path: &Path) -> Result<String, ControlError> {
         }
     }
 
+    report_overlay_frame_sources(&mut lines);
+
     if issues.is_empty() {
         lines.push("summary: ok".to_owned());
         Ok(lines.join("\n"))
@@ -352,4 +354,99 @@ fn find_in_path(binary: &str) -> Option<PathBuf> {
     env::split_paths(&path)
         .map(|dir| dir.join(binary))
         .find(|candidate| candidate.is_file())
+}
+
+fn report_overlay_frame_sources(lines: &mut Vec<String>) {
+    let overlays = running_overlay_processes();
+    if overlays.is_empty() {
+        lines.push("overlay frame source: no running overlay detected".to_owned());
+        return;
+    }
+
+    for overlay in overlays {
+        match read_process_environment(overlay.pid) {
+            Ok(environment) => {
+                let frame_socket = environment
+                    .iter()
+                    .find_map(|entry| entry.strip_prefix("KWYBARS_FRAME_SOCKET="));
+                match frame_socket {
+                    Some(path) if Path::new(path).exists() => {
+                        lines.push(format!(
+                            "overlay frame source: daemon socket (pid {}, {})",
+                            overlay.pid, path
+                        ));
+                    }
+                    Some(path) => {
+                        lines.push(format!(
+                            "overlay frame source: daemon socket missing (pid {}, {})",
+                            overlay.pid, path
+                        ));
+                    }
+                    None => {
+                        lines.push(format!(
+                            "overlay frame source: direct backend (pid {})",
+                            overlay.pid
+                        ));
+                    }
+                }
+            }
+            Err(err) => {
+                lines.push(format!(
+                    "overlay frame source: unknown (pid {}, could not read environment: {err})",
+                    overlay.pid
+                ));
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ProcessSummary {
+    pid: u32,
+}
+
+fn running_overlay_processes() -> Vec<ProcessSummary> {
+    let Ok(entries) = fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+
+    let mut processes = Vec::new();
+    for entry_result in entries {
+        let Ok(entry) = entry_result else {
+            continue;
+        };
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        if process_name(pid).as_deref() == Some("kwybars-overlay") {
+            processes.push(ProcessSummary { pid });
+        }
+    }
+    processes.sort_by_key(|process| process.pid);
+    processes
+}
+
+fn process_name(pid: u32) -> Option<String> {
+    let path = PathBuf::from("/proc").join(pid.to_string()).join("comm");
+    let value = fs::read_to_string(path).ok()?;
+    Some(value.trim().to_owned())
+}
+
+fn read_process_environment(pid: u32) -> std::io::Result<Vec<String>> {
+    let path = PathBuf::from("/proc").join(pid.to_string()).join("environ");
+    let bytes = fs::read(path)?;
+    Ok(bytes
+        .split(|byte| *byte == 0)
+        .filter_map(|entry| {
+            if entry.is_empty() {
+                None
+            } else {
+                Some(String::from_utf8_lossy(entry).into_owned())
+            }
+        })
+        .collect())
 }
