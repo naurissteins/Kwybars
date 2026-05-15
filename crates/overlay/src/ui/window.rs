@@ -13,7 +13,9 @@ use super::style;
 use crate::ui::ImageOverlayLayer;
 
 pub fn spawn_frame_stream(config: &AppConfig) -> Rc<LiveFrameStream> {
-    let stream = Rc::new(LiveFrameStream::spawn(config.visualizer.clone()));
+    let stream = Rc::new(LiveFrameStream::spawn_or_subscribe(
+        config.visualizer.clone(),
+    ));
     info!("kwybars: using {:?} frame source", stream.source_kind());
     stream
 }

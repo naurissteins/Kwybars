@@ -5,6 +5,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use kwybars_common::config::DaemonConfig;
+use kwybars_engine::ipc::FRAME_SOCKET_ENV;
 use tracing::info;
 
 const SPAWN_RETRY_INTERVAL: Duration = Duration::from_millis(1800);
@@ -26,6 +27,7 @@ impl OverlayProcess {
         &mut self,
         daemon: &DaemonConfig,
         config_path: &Path,
+        frame_socket_path: Option<&Path>,
         now: Instant,
     ) -> io::Result<()> {
         if self.child.is_some() {
@@ -39,7 +41,7 @@ impl OverlayProcess {
         }
 
         self.last_spawn_attempt = Some(now);
-        let mut command = build_command(daemon, config_path);
+        let mut command = build_command(daemon, config_path, frame_socket_path);
         let mut child = command.spawn()?;
         if let Some(stderr) = child.stderr.take() {
             spawn_overlay_stderr_forwarder(stderr);
@@ -91,7 +93,11 @@ impl Drop for OverlayProcess {
     }
 }
 
-fn build_command(daemon: &DaemonConfig, config_path: &Path) -> Command {
+fn build_command(
+    daemon: &DaemonConfig,
+    config_path: &Path,
+    frame_socket_path: Option<&Path>,
+) -> Command {
     let command_name = if daemon.overlay_command.trim().is_empty() {
         "kwybars-overlay"
     } else {
@@ -104,6 +110,9 @@ fn build_command(daemon: &DaemonConfig, config_path: &Path) -> Command {
     }
     command.env("KWYBARS_CONFIG", config_path);
     command.env("KWYBARS_DISABLE_NOTIFICATIONS", "1");
+    if let Some(frame_socket_path) = frame_socket_path {
+        command.env(FRAME_SOCKET_ENV, frame_socket_path);
+    }
     command.stdin(Stdio::null());
     command.stderr(Stdio::piped());
     command

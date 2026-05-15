@@ -1,6 +1,7 @@
 use std::env;
 use std::fs;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, ErrorKind, Read};
+use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,6 +13,7 @@ use kwybars_common::config::{VisualizerBackend, VisualizerConfig};
 use kwybars_common::spectrum::SpectrumFrame;
 use tracing::{error, warn};
 
+use crate::ipc::FRAME_SOCKET_ENV;
 use crate::pipeline::{DummySineSource, FrameSource};
 
 const CAVA_ATTACK: f32 = 0.8;
@@ -42,6 +44,7 @@ impl PipewireTuning {
 pub enum SourceKind {
     Pipewire,
     Cava,
+    DaemonIpc,
     Dummy,
 }
 
@@ -52,6 +55,31 @@ pub struct LiveFrameStream {
 }
 
 impl LiveFrameStream {
+    pub fn spawn_or_subscribe(config: VisualizerConfig) -> Self {
+        let bar_count = config.bars.max(1);
+        let latest = Arc::new(Mutex::new(SpectrumFrame::new(
+            vec![0.0; bar_count],
+            now_millis(),
+        )));
+
+        if let Some(socket_path) = env::var_os(FRAME_SOCKET_ENV) {
+            match spawn_frame_socket_thread(Arc::clone(&latest), PathBuf::from(socket_path)) {
+                Ok(worker) => {
+                    return Self {
+                        latest,
+                        source_kind: SourceKind::DaemonIpc,
+                        _worker: worker,
+                    };
+                }
+                Err(err) => {
+                    warn!("kwybars: could not subscribe to daemon frame stream: {err}");
+                }
+            }
+        }
+
+        Self::spawn(config)
+    }
+
     pub fn spawn(config: VisualizerConfig) -> Self {
         let bar_count = config.bars.max(1);
         let latest = Arc::new(Mutex::new(SpectrumFrame::new(
@@ -327,6 +355,48 @@ fn spawn_cava_thread(
     Ok(LiveWorker::new(stop, Some(child)))
 }
 
+fn spawn_frame_socket_thread(
+    latest: Arc<Mutex<SpectrumFrame>>,
+    socket_path: PathBuf,
+) -> std::io::Result<LiveWorker> {
+    let stream = UnixStream::connect(socket_path)?;
+    stream.set_read_timeout(Some(Duration::from_millis(250)))?;
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let thread_stop = Arc::clone(&stop);
+    thread::spawn(move || {
+        let mut reader = BufReader::new(stream);
+        let mut line = String::new();
+        while !thread_stop.load(Ordering::Acquire) {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) => break,
+                Ok(_) => {
+                    if let Some(frame) = crate::ipc::parse_frame(&line)
+                        && let Ok(mut target) = latest.lock()
+                    {
+                        *target = frame;
+                    }
+                }
+                Err(err)
+                    if matches!(
+                        err.kind(),
+                        ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted
+                    ) =>
+                {
+                    continue;
+                }
+                Err(err) => {
+                    warn!("kwybars: error reading daemon frame stream: {err}");
+                    break;
+                }
+            }
+        }
+    });
+
+    Ok(LiveWorker::new(stop, None))
+}
+
 fn cleanup_child(child: &Arc<Mutex<Option<Child>>>, terminate: bool) {
     let Ok(mut child) = child.lock() else {
         return;
@@ -513,7 +583,7 @@ fn parse_cava_line(line: &str, expected_bars: usize) -> Option<Vec<f32>> {
     Some(bars)
 }
 
-fn now_millis() -> u64 {
+pub(crate) fn now_millis() -> u64 {
     match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(duration) => duration.as_millis().min(u64::MAX as u128) as u64,
         Err(_) => 0,

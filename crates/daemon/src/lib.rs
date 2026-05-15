@@ -4,13 +4,15 @@ mod process;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use activity::{ActivityState, ActivityTracker};
 use kwybars_common::config::{self, DaemonConfig, VisualizerConfig};
 use kwybars_common::notify::notify_error_with_cooldown;
-use kwybars_engine::live::LiveFrameStream;
+use kwybars_engine::ipc::FrameSocketServer;
+use kwybars_engine::live::{LiveFrameStream, SourceKind};
 use process::OverlayProcess;
 use tracing::{error, info, warn};
 
@@ -106,8 +108,24 @@ pub fn run(config_path: PathBuf) -> Result<(), DaemonError> {
 
     let mut config_stamp = ConfigStamp::read(&config_path);
     let mut pending_config_reload: Option<PendingConfigReload> = None;
-    let mut stream = LiveFrameStream::spawn(runtime.visualizer.clone());
-    info!("audio source: {:?}", stream.source_kind());
+    let stream = Arc::new(Mutex::new(LiveFrameStream::spawn(
+        runtime.visualizer.clone(),
+    )));
+    info!("audio source: {:?}", stream_source_kind(&stream));
+    let frame_server =
+        match FrameSocketServer::spawn(Arc::clone(&stream), runtime.visualizer.framerate) {
+            Ok(server) => {
+                info!(
+                    "kwybars-daemon: sharing frames at {}",
+                    server.path().display()
+                );
+                Some(server)
+            }
+            Err(err) => {
+                warn!("kwybars-daemon: could not start frame sharing socket: {err}");
+                None
+            }
+        };
     let mut inactivity_grace_until: Option<Instant> = None;
 
     let mut activity = ActivityTracker::new();
@@ -175,8 +193,11 @@ pub fn run(config_path: PathBuf) -> Result<(), DaemonError> {
                         }
                         if audio_probe_config_changed(&runtime.visualizer, &next_runtime.visualizer)
                         {
-                            stream = LiveFrameStream::spawn(next_runtime.visualizer.clone());
-                            info!("audio source: {:?}", stream.source_kind());
+                            replace_stream(&stream, next_runtime.visualizer.clone());
+                            if let Some(frame_server) = frame_server.as_ref() {
+                                frame_server.set_framerate(next_runtime.visualizer.framerate);
+                            }
+                            info!("audio source: {:?}", stream_source_kind(&stream));
                         }
                         if !next_runtime.daemon.enabled {
                             overlay.stop().map_err(DaemonError::Runtime)?;
@@ -201,7 +222,7 @@ pub fn run(config_path: PathBuf) -> Result<(), DaemonError> {
             }
         }
 
-        let peak = stream.latest_frame().peak;
+        let peak = latest_peak(&stream);
         let mut instantaneous_active = peak >= runtime.daemon.activity_threshold;
         if !instantaneous_active
             && activity.state() == ActivityState::Active
@@ -228,7 +249,10 @@ pub fn run(config_path: PathBuf) -> Result<(), DaemonError> {
 
         match activity.state() {
             ActivityState::Active => {
-                if let Err(err) = overlay.ensure_running(&runtime.daemon, &config_path, now) {
+                let frame_socket_path = frame_server.as_ref().map(FrameSocketServer::path);
+                if let Err(err) =
+                    overlay.ensure_running(&runtime.daemon, &config_path, frame_socket_path, now)
+                {
                     error!("kwybars-daemon: could not launch overlay: {err}");
                     notify_error_with_cooldown(
                         "daemon.overlay_launch_failed",
@@ -256,6 +280,31 @@ fn load_runtime_config(config_path: &Path) -> Result<RuntimeConfig, config::Conf
         visualizer: app_config.visualizer,
         daemon: app_config.daemon,
     })
+}
+
+fn stream_source_kind(stream: &Arc<Mutex<LiveFrameStream>>) -> SourceKind {
+    stream
+        .lock()
+        .map(|stream| stream.source_kind())
+        .unwrap_or(SourceKind::Dummy)
+}
+
+fn latest_peak(stream: &Arc<Mutex<LiveFrameStream>>) -> f32 {
+    stream
+        .lock()
+        .map(|stream| stream.latest_frame().peak)
+        .unwrap_or(0.0)
+}
+
+fn replace_stream(stream: &Arc<Mutex<LiveFrameStream>>, config: VisualizerConfig) {
+    match stream.lock() {
+        Ok(mut stream) => {
+            *stream = LiveFrameStream::spawn(config);
+        }
+        Err(err) => {
+            error!("kwybars-daemon: could not replace poisoned audio stream: {err}");
+        }
+    }
 }
 
 fn notify_cooldown(config: &DaemonConfig) -> Duration {

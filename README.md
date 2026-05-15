@@ -32,7 +32,7 @@ https://github.com/user-attachments/assets/5fe84372-86be-49a8-b9c0-6564e81f1eaa
 -   Transparent image overlay for Rainmeter-style compositions
 -   Hot reload config changes (no restart needed)
 -   Built-in themes and optional custom theme palettes (`~/.config/kwybars/themes/*.toml`)
--   Optional but recommended `kwybars-daemon` that auto starts/stops overlay based on audio activity
+-   Optional but recommended `kwybars-daemon` that auto starts/stops overlay based on audio activity and shares one audio backend stream with the overlay
 
 <div align=center>
 
