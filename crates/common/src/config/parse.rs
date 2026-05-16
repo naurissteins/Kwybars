@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use super::model::{
     AppConfig, ConfigLoadError, DaemonConfig, FrameMirrorMode, HorizontalAlignment,
     ImageOverlayConfig, ImageOverlayFit, LineMode, MirrorOrientation, OverlayConfig, OverlayLayer,
-    OverlayMonitorMode, OverlayPosition, RgbaColor, VerticalAlignment, VisualizerBackend,
-    VisualizerColorMode, VisualizerColorOverrides, VisualizerConfig, VisualizerGradientDirection,
-    VisualizerLayout,
+    OverlayMonitorMode, OverlayOutputConfig, OverlayPosition, RgbaColor, VerticalAlignment,
+    VisualizerBackend, VisualizerColorMode, VisualizerColorOverrides, VisualizerConfig,
+    VisualizerGradientDirection, VisualizerLayout,
 };
 
 pub fn default_config_path() -> PathBuf {
@@ -78,6 +78,7 @@ pub fn load_color_overrides(path: &Path) -> Result<VisualizerColorOverrides, Con
 pub(crate) fn parse_config(raw: &str) -> Result<AppConfig, ConfigLoadError> {
     let mut config = AppConfig::default();
     let mut section: Option<&str> = None;
+    let mut current_output_index: Option<usize> = None;
 
     for (line_idx, line) in raw.lines().enumerate() {
         let line_no = line_idx + 1;
@@ -86,9 +87,27 @@ pub(crate) fn parse_config(raw: &str) -> Result<AppConfig, ConfigLoadError> {
             continue;
         }
 
+        if trimmed.starts_with("[[") && trimmed.ends_with("]]") {
+            let next = &trimmed[2..trimmed.len() - 2];
+            match next {
+                "overlay.outputs" => {
+                    config.overlay.outputs.push(OverlayOutputConfig::default());
+                    current_output_index = config.overlay.outputs.len().checked_sub(1);
+                    section = Some(next);
+                }
+                other => {
+                    return Err(ConfigLoadError::Parse(format!(
+                        "line {line_no}: unknown array section [[{other}]]"
+                    )));
+                }
+            }
+            continue;
+        }
+
         if trimmed.starts_with('[') && trimmed.ends_with(']') {
             let next = &trimmed[1..trimmed.len() - 1];
             section = Some(next);
+            current_output_index = None;
             continue;
         }
 
@@ -104,6 +123,15 @@ pub(crate) fn parse_config(raw: &str) -> Result<AppConfig, ConfigLoadError> {
         match section {
             Some("overlay") => parse_overlay_key(&mut config.overlay, key, &value)
                 .map_err(|err| with_line_context(err, line_no))?,
+            Some("overlay.outputs") => {
+                let Some(index) = current_output_index else {
+                    return Err(ConfigLoadError::Parse(format!(
+                        "line {line_no}: output key without [[overlay.outputs]] header"
+                    )));
+                };
+                parse_overlay_output_key(&mut config.overlay.outputs[index], key, &value)
+                    .map_err(|err| with_line_context(err, line_no))?
+            }
             Some("visualizer") => parse_visualizer_key(&mut config.visualizer, key, &value)
                 .map_err(|err| with_line_context(err, line_no))?,
             Some("image_overlay") => {
@@ -126,6 +154,14 @@ pub(crate) fn parse_config(raw: &str) -> Result<AppConfig, ConfigLoadError> {
                     )));
                 }
             }
+        }
+    }
+
+    for output in &config.overlay.outputs {
+        if output.monitor.trim().is_empty() {
+            return Err(ConfigLoadError::Parse(
+                "overlay.outputs entry missing monitor".to_owned(),
+            ));
         }
     }
 
@@ -204,6 +240,41 @@ fn parse_overlay_key(
         _ => {
             return Err(ConfigLoadError::Parse(format!(
                 "unknown overlay key: {key}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn parse_overlay_output_key(
+    output: &mut OverlayOutputConfig,
+    key: &str,
+    value: &str,
+) -> Result<(), ConfigLoadError> {
+    match key {
+        "monitor" => output.monitor = parse_optional_string(value).unwrap_or_default(),
+        "enabled" => output.enabled = parse_bool(key, value)?,
+        "position" => output.position = Some(OverlayPosition::parse(value)?),
+        "layer" => output.layer = Some(OverlayLayer::parse(value)?),
+        "anchor_margin" => output.anchor_margin = Some(parse_u32(key, value)?),
+        "margin_left" => output.margin_left = Some(parse_u32(key, value)?),
+        "margin_right" => output.margin_right = Some(parse_u32(key, value)?),
+        "margin_top" => output.margin_top = Some(parse_u32(key, value)?),
+        "margin_bottom" => output.margin_bottom = Some(parse_u32(key, value)?),
+        "fade_in_ms" => output.fade_in_ms = Some(parse_u64(key, value)?),
+        "fade_out_ms" => output.fade_out_ms = Some(parse_u64(key, value)?),
+        "full_length" => output.full_length = Some(parse_bool(key, value)?),
+        "width" => output.width = Some(parse_u32(key, value)?),
+        "height" => output.height = Some(parse_u32(key, value)?),
+        "horizontal_alignment" => {
+            output.horizontal_alignment = Some(HorizontalAlignment::parse(value)?);
+        }
+        "vertical_alignment" => {
+            output.vertical_alignment = Some(VerticalAlignment::parse(value)?);
+        }
+        _ => {
+            return Err(ConfigLoadError::Parse(format!(
+                "unknown overlay.outputs key: {key}"
             )));
         }
     }

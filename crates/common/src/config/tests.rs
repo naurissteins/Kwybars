@@ -93,6 +93,17 @@ fn parses_valid_config() {
         notify_cooldown_seconds = 30
         overlay_command = "cargo"
         overlay_args = ["run", "-p", "kwybars-overlay"]
+
+        [[overlay.outputs]]
+        monitor = "DP-1"
+        position = "bottom"
+        height = 180
+        margin_left = 40
+        fade_out_ms = 500
+
+        [[overlay.outputs]]
+        monitor = "HDMI-A-1"
+        enabled = false
         "#;
 
     let parsed = match parse_config(raw) {
@@ -118,6 +129,17 @@ fn parses_valid_config() {
     assert_eq!(parsed.overlay.vertical_alignment, VerticalAlignment::Bottom);
     assert_eq!(parsed.overlay.monitor_mode, OverlayMonitorMode::List);
     assert_eq!(parsed.overlay.monitors, vec!["DP-1", "HDMI-A-1"]);
+    assert_eq!(parsed.overlay.outputs.len(), 2);
+    assert_eq!(parsed.overlay.outputs[0].monitor, "DP-1");
+    assert_eq!(
+        parsed.overlay.outputs[0].position,
+        Some(OverlayPosition::Bottom)
+    );
+    assert_eq!(parsed.overlay.outputs[0].height, Some(180));
+    assert_eq!(parsed.overlay.outputs[0].margin_left, Some(40));
+    assert_eq!(parsed.overlay.outputs[0].fade_out_ms, Some(500));
+    assert_eq!(parsed.overlay.outputs[1].monitor, "HDMI-A-1");
+    assert!(!parsed.overlay.outputs[1].enabled);
     assert_eq!(parsed.visualizer.backend, VisualizerBackend::Dummy);
     assert_eq!(parsed.visualizer.layout, VisualizerLayout::Polygon);
     assert_eq!(parsed.visualizer.line_mode, LineMode::Split);
@@ -232,6 +254,7 @@ fn built_in_defaults_match_expected_no_config_setup() {
     assert_eq!(config.overlay.margin_right, 20);
     assert_eq!(config.overlay.fade_in_ms, 180);
     assert_eq!(config.overlay.fade_out_ms, 350);
+    assert!(config.overlay.outputs.is_empty());
 
     assert_eq!(config.visualizer.backend, VisualizerBackend::Cava);
     assert_eq!(config.visualizer.layout, VisualizerLayout::Line);
@@ -301,6 +324,17 @@ fn built_in_defaults_match_expected_no_config_setup() {
     assert_eq!(config.daemon.notify_cooldown_seconds, 45);
     assert_eq!(config.daemon.overlay_command, "kwybars-overlay");
     assert!(config.daemon.overlay_args.is_empty());
+}
+
+#[test]
+fn rejects_overlay_output_without_monitor() {
+    let raw = r#"
+        [[overlay.outputs]]
+        position = "bottom"
+        "#;
+
+    let parsed = parse_config(raw);
+    assert!(parsed.is_err());
 }
 
 #[test]

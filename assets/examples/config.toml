@@ -13,6 +13,17 @@ margin_right = 20
 fade_in_ms = 180
 fade_out_ms = 350
 
+# Optional per-monitor overrides. When any [[overlay.outputs]] entries are
+# present, they replace monitor_mode/monitors selection.
+# [[overlay.outputs]]
+# monitor = "DP-1"
+# position = "bottom"
+# height = 180
+#
+# [[overlay.outputs]]
+# monitor = "HDMI-A-1"
+# enabled = false
+
 [visualizer]
 layout = "line"
 bar_corner_radius = 20

@@ -1,15 +1,14 @@
 use std::rc::Rc;
 
-use gtk::gdk;
 use gtk::prelude::*;
 use kwybars_common::config::AppConfig;
 use kwybars_common::theme::ThemePalette;
 use kwybars_engine::live::LiveFrameStream;
 use tracing::info;
 
-use super::layer;
 use super::render::build_drawing_area;
 use super::style;
+use super::{layer, output};
 use crate::ui::ImageOverlayLayer;
 
 pub fn spawn_frame_stream(config: &AppConfig) -> Rc<LiveFrameStream> {
@@ -29,28 +28,16 @@ pub fn build_overlay_windows(
 ) -> Vec<gtk::ApplicationWindow> {
     style::install_css();
 
-    let monitors = layer::selected_monitors(&config.overlay);
-    if monitors.is_empty() {
-        return vec![build_overlay_window(
-            app,
-            &config,
-            theme_palette.clone(),
-            image_overlay.clone(),
-            Rc::clone(&stream),
-            None,
-        )];
-    }
-
-    monitors
+    output::window_targets(&config)
         .into_iter()
-        .map(|monitor| {
+        .map(|target| {
             build_overlay_window(
                 app,
-                &config,
+                &target.config,
                 theme_palette.clone(),
                 image_overlay.clone(),
                 Rc::clone(&stream),
-                Some(monitor),
+                target.monitor,
             )
         })
         .collect()
@@ -62,7 +49,7 @@ fn build_overlay_window(
     theme_palette: Option<ThemePalette>,
     image_overlay: Option<ImageOverlayLayer>,
     stream: Rc<LiveFrameStream>,
-    monitor: Option<gdk::Monitor>,
+    monitor: Option<gtk::gdk::Monitor>,
 ) -> gtk::ApplicationWindow {
     let window = gtk::ApplicationWindow::builder()
         .application(app)

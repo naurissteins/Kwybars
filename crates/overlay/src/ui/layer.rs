@@ -2,91 +2,10 @@ use gtk::gdk;
 use gtk::prelude::*;
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use kwybars_common::config::{
-    AppConfig, HorizontalAlignment, OverlayConfig, OverlayLayer, OverlayMonitorMode,
-    OverlayPosition, VerticalAlignment, VisualizerLayout,
+    AppConfig, HorizontalAlignment, OverlayConfig, OverlayLayer, OverlayPosition,
+    VerticalAlignment, VisualizerLayout,
 };
 use tracing::warn;
-
-pub fn selected_monitors(overlay: &OverlayConfig) -> Vec<gdk::Monitor> {
-    let Some(display) = gdk::Display::default() else {
-        return Vec::new();
-    };
-
-    let monitors_model = display.monitors();
-    let monitors: Vec<gdk::Monitor> = (0..monitors_model.n_items())
-        .filter_map(|index| monitors_model.item(index))
-        .filter_map(|item| item.downcast::<gdk::Monitor>().ok())
-        .collect();
-
-    if monitors.is_empty() {
-        return Vec::new();
-    }
-
-    match overlay.monitor_mode {
-        OverlayMonitorMode::Primary => vec![monitors[0].clone()],
-        OverlayMonitorMode::All => monitors,
-        OverlayMonitorMode::List => resolve_named_monitors(monitors, &overlay.monitors),
-    }
-}
-
-fn resolve_named_monitors(monitors: Vec<gdk::Monitor>, requested: &[String]) -> Vec<gdk::Monitor> {
-    if requested.is_empty() {
-        return vec![monitors[0].clone()];
-    }
-
-    let mut used_indices = std::collections::BTreeSet::new();
-    let mut selected = Vec::new();
-
-    for requested_name in requested {
-        let requested_name = requested_name.trim();
-        if requested_name.is_empty() {
-            continue;
-        }
-
-        if let Some(index) = parse_monitor_index(requested_name, monitors.len()) {
-            if used_indices.insert(index) {
-                selected.push(monitors[index].clone());
-            }
-            continue;
-        }
-
-        let Some(index) = monitors.iter().enumerate().find_map(|(index, monitor)| {
-            let connector = monitor.connector()?;
-            if connector.as_str() == requested_name {
-                Some(index)
-            } else {
-                None
-            }
-        }) else {
-            continue;
-        };
-
-        if used_indices.insert(index) {
-            selected.push(monitors[index].clone());
-        }
-    }
-
-    if selected.is_empty() {
-        vec![monitors[0].clone()]
-    } else {
-        selected
-    }
-}
-
-fn parse_monitor_index(raw: &str, max: usize) -> Option<usize> {
-    let one_based = if let Some(rest) = raw.strip_prefix("index:") {
-        rest.parse::<usize>().ok()?
-    } else {
-        raw.parse::<usize>().ok()?
-    };
-
-    if one_based == 0 {
-        return None;
-    }
-
-    let index = one_based - 1;
-    if index < max { Some(index) } else { None }
-}
 
 pub fn apply_default_size(
     window: &gtk::ApplicationWindow,

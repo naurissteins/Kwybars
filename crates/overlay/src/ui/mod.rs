@@ -4,6 +4,7 @@ mod fade;
 mod frame;
 mod image;
 mod layer;
+mod output;
 mod render;
 mod style;
 mod window;

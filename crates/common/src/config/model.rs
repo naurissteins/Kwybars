@@ -155,6 +155,99 @@ impl Display for OverlayMonitorMode {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OverlayOutputConfig {
+    pub monitor: String,
+    pub enabled: bool,
+    pub position: Option<OverlayPosition>,
+    pub layer: Option<OverlayLayer>,
+    pub anchor_margin: Option<u32>,
+    pub margin_left: Option<u32>,
+    pub margin_right: Option<u32>,
+    pub margin_top: Option<u32>,
+    pub margin_bottom: Option<u32>,
+    pub fade_in_ms: Option<u64>,
+    pub fade_out_ms: Option<u64>,
+    pub full_length: Option<bool>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub horizontal_alignment: Option<HorizontalAlignment>,
+    pub vertical_alignment: Option<VerticalAlignment>,
+}
+
+impl OverlayOutputConfig {
+    pub fn merged_overlay(&self, base: &OverlayConfig) -> OverlayConfig {
+        let mut overlay = base.clone();
+        if let Some(position) = self.position.clone() {
+            overlay.position = position;
+        }
+        if let Some(layer) = self.layer.clone() {
+            overlay.layer = layer;
+        }
+        if let Some(value) = self.anchor_margin {
+            overlay.anchor_margin = value;
+        }
+        if let Some(value) = self.margin_left {
+            overlay.margin_left = value;
+        }
+        if let Some(value) = self.margin_right {
+            overlay.margin_right = value;
+        }
+        if let Some(value) = self.margin_top {
+            overlay.margin_top = value;
+        }
+        if let Some(value) = self.margin_bottom {
+            overlay.margin_bottom = value;
+        }
+        if let Some(value) = self.fade_in_ms {
+            overlay.fade_in_ms = value;
+        }
+        if let Some(value) = self.fade_out_ms {
+            overlay.fade_out_ms = value;
+        }
+        if let Some(value) = self.full_length {
+            overlay.full_length = value;
+        }
+        if let Some(value) = self.width {
+            overlay.width = value;
+        }
+        if let Some(value) = self.height {
+            overlay.height = value;
+        }
+        if let Some(value) = self.horizontal_alignment.clone() {
+            overlay.horizontal_alignment = value;
+        }
+        if let Some(value) = self.vertical_alignment.clone() {
+            overlay.vertical_alignment = value;
+        }
+        overlay.outputs.clear();
+        overlay
+    }
+}
+
+impl Default for OverlayOutputConfig {
+    fn default() -> Self {
+        Self {
+            monitor: String::new(),
+            enabled: true,
+            position: None,
+            layer: None,
+            anchor_margin: None,
+            margin_left: None,
+            margin_right: None,
+            margin_top: None,
+            margin_bottom: None,
+            fade_in_ms: None,
+            fade_out_ms: None,
+            full_length: None,
+            width: None,
+            height: None,
+            horizontal_alignment: None,
+            vertical_alignment: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OverlayConfig {
     pub position: OverlayPosition,
     pub layer: OverlayLayer,
@@ -172,6 +265,7 @@ pub struct OverlayConfig {
     pub vertical_alignment: VerticalAlignment,
     pub monitor_mode: OverlayMonitorMode,
     pub monitors: Vec<String>,
+    pub outputs: Vec<OverlayOutputConfig>,
 }
 
 impl Default for OverlayConfig {
@@ -193,6 +287,7 @@ impl Default for OverlayConfig {
             vertical_alignment: VerticalAlignment::Center,
             monitor_mode: OverlayMonitorMode::Primary,
             monitors: Vec::new(),
+            outputs: Vec::new(),
         }
     }
 }
