@@ -16,6 +16,8 @@ fn parses_valid_config() {
         margin_right = 13
         margin_top = 7
         margin_bottom = 9
+        fade_in_ms = 150
+        fade_out_ms = 420
         full_length = false
         width = 1200
         height = 140
@@ -104,6 +106,8 @@ fn parses_valid_config() {
     assert_eq!(parsed.overlay.margin_right, 13);
     assert_eq!(parsed.overlay.margin_top, 7);
     assert_eq!(parsed.overlay.margin_bottom, 9);
+    assert_eq!(parsed.overlay.fade_in_ms, 150);
+    assert_eq!(parsed.overlay.fade_out_ms, 420);
     assert!(!parsed.overlay.full_length);
     assert_eq!(parsed.overlay.width, 1200);
     assert_eq!(parsed.overlay.height, 140);
@@ -226,6 +230,8 @@ fn built_in_defaults_match_expected_no_config_setup() {
     assert_eq!(config.overlay.anchor_margin, 20);
     assert_eq!(config.overlay.margin_left, 20);
     assert_eq!(config.overlay.margin_right, 20);
+    assert_eq!(config.overlay.fade_in_ms, 180);
+    assert_eq!(config.overlay.fade_out_ms, 350);
 
     assert_eq!(config.visualizer.backend, VisualizerBackend::Cava);
     assert_eq!(config.visualizer.layout, VisualizerLayout::Line);

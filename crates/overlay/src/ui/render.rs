@@ -17,6 +17,7 @@ use super::color::{
     color_for_index, gradient_axis_for_layout, palette_color_for_index, set_gradient_source,
 };
 use super::draw;
+use super::fade::FadeController;
 use super::frame::{
     EdgePaint, FrameMetrics, frame_edge_rect, normalized_frame_edges, paint_line_edge,
     resolve_frame_edge_slice,
@@ -83,6 +84,10 @@ pub(super) fn build_drawing_area(
     let bar_count = config.visualizer.bars.max(1);
     let fps = config.visualizer.framerate.max(1);
     let interval_ms = (1000_u64 / u64::from(fps)).max(1);
+    let fade_in = Duration::from_millis(config.overlay.fade_in_ms);
+    let fade_out = Duration::from_millis(config.overlay.fade_out_ms);
+    let activity_threshold = config.daemon.activity_threshold;
+    let deactivate_delay = Duration::from_millis(config.daemon.deactivate_delay_ms);
     let bar_color_mode = config.visualizer.color_mode;
     let bar_gradient_direction = config.visualizer.gradient_direction;
     let bar_color = config.visualizer.color_rgba;
@@ -159,6 +164,14 @@ pub(super) fn build_drawing_area(
     let particle_state = Rc::new(RefCell::new(vec![FloatingParticle::default(); bar_count]));
     let particle_offsets = Rc::new(RefCell::new(vec![0.0_f64; bar_count]));
     let rotation_started_at = Instant::now();
+    let fade = Rc::new(RefCell::new(FadeController::new(
+        rotation_started_at,
+        fade_in,
+        fade_out,
+        activity_threshold,
+        deactivate_delay,
+    )));
+    drawing_area.set_opacity(fade.borrow().opacity());
 
     {
         let values_for_draw = Rc::clone(&bar_values);
@@ -862,6 +875,7 @@ pub(super) fn build_drawing_area(
         let values_for_tick = Rc::clone(&bar_values);
         let physics_for_tick = Rc::clone(&particle_state);
         let offsets_for_tick = Rc::clone(&particle_offsets);
+        let fade_for_tick = Rc::clone(&fade);
         let drawing_area_weak = drawing_area.downgrade();
 
         let gravity = 0.042_f64;
@@ -873,6 +887,11 @@ pub(super) fn build_drawing_area(
             };
 
             let frame = stream_for_tick.latest_frame();
+            let opacity = fade_for_tick
+                .borrow_mut()
+                .update(Instant::now(), frame.peak);
+            drawing_area_for_tick.set_opacity(opacity);
+
             let mut target = values_for_tick.borrow_mut();
             let mut physics = physics_for_tick.borrow_mut();
             let mut offsets = offsets_for_tick.borrow_mut();

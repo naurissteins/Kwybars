@@ -192,6 +192,8 @@ fn parse_overlay_key(
         "margin_right" => overlay.margin_right = parse_u32(key, value)?,
         "margin_top" => overlay.margin_top = parse_u32(key, value)?,
         "margin_bottom" => overlay.margin_bottom = parse_u32(key, value)?,
+        "fade_in_ms" => overlay.fade_in_ms = parse_u64(key, value)?,
+        "fade_out_ms" => overlay.fade_out_ms = parse_u64(key, value)?,
         "full_length" => overlay.full_length = parse_bool(key, value)?,
         "width" => overlay.width = parse_u32(key, value)?,
         "height" => overlay.height = parse_u32(key, value)?,

@@ -10,6 +10,8 @@ height = 500
 anchor_margin = 20
 margin_left = 20
 margin_right = 20
+fade_in_ms = 180
+fade_out_ms = 350
 
 [visualizer]
 layout = "line"

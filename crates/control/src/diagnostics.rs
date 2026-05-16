@@ -140,6 +140,11 @@ pub fn doctor(path: &Path) -> Result<String, ControlError> {
             "overlay.monitor_mode: {}",
             config.overlay.monitor_mode
         ));
+        lines.push(format!("overlay.fade_in_ms: {}", config.overlay.fade_in_ms));
+        lines.push(format!(
+            "overlay.fade_out_ms: {}",
+            config.overlay.fade_out_ms
+        ));
         lines.push(format!(
             "overlay.horizontal_alignment: {}",
             config.overlay.horizontal_alignment

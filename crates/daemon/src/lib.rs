@@ -9,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use activity::{ActivityState, ActivityTracker};
-use kwybars_common::config::{self, DaemonConfig, VisualizerConfig};
+use kwybars_common::config::{self, DaemonConfig, OverlayConfig, VisualizerConfig};
 use kwybars_common::notify::notify_error_with_cooldown;
 use kwybars_engine::ipc::FrameSocketServer;
 use kwybars_engine::live::{LiveFrameStream, SourceKind};
@@ -44,6 +44,7 @@ impl Error for DaemonError {
 
 #[derive(Clone, Debug, PartialEq)]
 struct RuntimeConfig {
+    overlay: OverlayConfig,
     visualizer: VisualizerConfig,
     daemon: DaemonConfig,
 }
@@ -127,6 +128,7 @@ pub fn run(config_path: PathBuf) -> Result<(), DaemonError> {
             }
         };
     let mut inactivity_grace_until: Option<Instant> = None;
+    let mut scheduled_overlay_stop: Option<Instant> = None;
 
     let mut activity = ActivityTracker::new();
     let mut overlay = OverlayProcess::new();
@@ -190,6 +192,7 @@ pub fn run(config_path: PathBuf) -> Result<(), DaemonError> {
                                 "kwybars-daemon: overlay launch settings changed, restarting overlay"
                             );
                             overlay.stop().map_err(DaemonError::Runtime)?;
+                            scheduled_overlay_stop = None;
                         }
                         if audio_probe_config_changed(&runtime.visualizer, &next_runtime.visualizer)
                         {
@@ -249,6 +252,7 @@ pub fn run(config_path: PathBuf) -> Result<(), DaemonError> {
 
         match activity.state() {
             ActivityState::Active => {
+                scheduled_overlay_stop = None;
                 let frame_socket_path = frame_server.as_ref().map(FrameSocketServer::path);
                 if let Err(err) =
                     overlay.ensure_running(&runtime.daemon, &config_path, frame_socket_path, now)
@@ -264,8 +268,26 @@ pub fn run(config_path: PathBuf) -> Result<(), DaemonError> {
                 }
             }
             ActivityState::Inactive => {
-                if runtime.daemon.stop_on_silence {
-                    overlay.stop().map_err(DaemonError::Runtime)?;
+                if runtime.daemon.stop_on_silence && overlay.is_running() {
+                    let fade_out = Duration::from_millis(runtime.overlay.fade_out_ms);
+                    if fade_out.is_zero() {
+                        scheduled_overlay_stop = None;
+                        overlay.stop().map_err(DaemonError::Runtime)?;
+                    } else {
+                        let stop_at = scheduled_overlay_stop.get_or_insert_with(|| {
+                            info!(
+                                "kwybars-daemon: stopping overlay after {} ms fade-out",
+                                runtime.overlay.fade_out_ms
+                            );
+                            now + fade_out
+                        });
+                        if now >= *stop_at {
+                            scheduled_overlay_stop = None;
+                            overlay.stop().map_err(DaemonError::Runtime)?;
+                        }
+                    }
+                } else {
+                    scheduled_overlay_stop = None;
                 }
             }
         }
@@ -277,6 +299,7 @@ fn load_runtime_config(config_path: &Path) -> Result<RuntimeConfig, config::Conf
         resolve_runtime_config_path(config_path).unwrap_or_else(|| config_path.to_path_buf());
     let app_config = config::load_or_default(&resolved_config_path)?;
     Ok(RuntimeConfig {
+        overlay: app_config.overlay,
         visualizer: app_config.visualizer,
         daemon: app_config.daemon,
     })

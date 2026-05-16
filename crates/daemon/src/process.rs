@@ -67,6 +67,10 @@ impl OverlayProcess {
         Ok(maybe_exit)
     }
 
+    pub fn is_running(&self) -> bool {
+        self.child.is_some()
+    }
+
     pub fn stop(&mut self) -> io::Result<()> {
         let Some(mut child) = self.child.take() else {
             return Ok(());

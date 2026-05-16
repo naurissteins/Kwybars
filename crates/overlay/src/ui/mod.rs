@@ -1,5 +1,6 @@
 mod color;
 mod draw;
+mod fade;
 mod frame;
 mod image;
 mod layer;
