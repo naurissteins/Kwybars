@@ -101,6 +101,13 @@ fn parses_valid_config() {
         margin_left = 40
         fade_out_ms = 500
 
+        [overlay.outputs.visualizer]
+        layout = "wave"
+        wave_glow = true
+        wave_stroke_width = 5
+        color_mode = "solid"
+        color_rgba = "rgba(10, 20, 30, 0.8)"
+
         [[overlay.outputs]]
         monitor = "HDMI-A-1"
         enabled = false
@@ -138,6 +145,26 @@ fn parses_valid_config() {
     assert_eq!(parsed.overlay.outputs[0].height, Some(180));
     assert_eq!(parsed.overlay.outputs[0].margin_left, Some(40));
     assert_eq!(parsed.overlay.outputs[0].fade_out_ms, Some(500));
+    assert_eq!(
+        parsed.overlay.outputs[0].visualizer.layout,
+        Some(VisualizerLayout::Wave)
+    );
+    assert_eq!(parsed.overlay.outputs[0].visualizer.wave_glow, Some(true));
+    assert_eq!(
+        parsed.overlay.outputs[0].visualizer.wave_stroke_width,
+        Some(5)
+    );
+    assert_eq!(
+        parsed.overlay.outputs[0].visualizer.color_mode,
+        Some(VisualizerColorMode::Solid)
+    );
+    let Some(output_color) = parsed.overlay.outputs[0].visualizer.color_rgba else {
+        panic!("missing output visualizer color override");
+    };
+    assert!((output_color.r - (10.0 / 255.0)).abs() < 1e-5);
+    assert!((output_color.g - (20.0 / 255.0)).abs() < 1e-5);
+    assert!((output_color.b - (30.0 / 255.0)).abs() < 1e-5);
+    assert!((output_color.a - 0.8).abs() < 1e-5);
     assert_eq!(parsed.overlay.outputs[1].monitor, "HDMI-A-1");
     assert!(!parsed.overlay.outputs[1].enabled);
     assert_eq!(parsed.visualizer.backend, VisualizerBackend::Dummy);
@@ -331,6 +358,20 @@ fn rejects_overlay_output_without_monitor() {
     let raw = r#"
         [[overlay.outputs]]
         position = "bottom"
+        "#;
+
+    let parsed = parse_config(raw);
+    assert!(parsed.is_err());
+}
+
+#[test]
+fn rejects_audio_source_keys_in_output_visualizer() {
+    let raw = r#"
+        [[overlay.outputs]]
+        monitor = "DP-1"
+
+        [overlay.outputs.visualizer]
+        bars = 80
         "#;
 
     let parsed = parse_config(raw);

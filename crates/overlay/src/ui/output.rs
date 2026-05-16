@@ -6,6 +6,7 @@ use tracing::warn;
 pub(super) struct OverlayWindowTarget {
     pub(super) config: AppConfig,
     pub(super) monitor: Option<gdk::Monitor>,
+    pub(super) use_global_theme: bool,
 }
 
 pub(super) fn window_targets(config: &AppConfig) -> Vec<OverlayWindowTarget> {
@@ -39,9 +40,11 @@ pub(super) fn window_targets(config: &AppConfig) -> Vec<OverlayWindowTarget> {
 
         let mut target_config = config.clone();
         target_config.overlay = output.merged_overlay(&config.overlay);
+        target_config.visualizer = output.merged_visualizer(&config.visualizer);
         targets.push(OverlayWindowTarget {
             config: target_config,
             monitor: Some(monitors[index].clone()),
+            use_global_theme: !output.visualizer.overrides_direct_colors(),
         });
     }
 
@@ -54,6 +57,7 @@ fn legacy_window_targets(config: &AppConfig) -> Vec<OverlayWindowTarget> {
         return vec![OverlayWindowTarget {
             config: config.clone(),
             monitor: None,
+            use_global_theme: true,
         }];
     }
 
@@ -62,6 +66,7 @@ fn legacy_window_targets(config: &AppConfig) -> Vec<OverlayWindowTarget> {
         .map(|monitor| OverlayWindowTarget {
             config: config.clone(),
             monitor: Some(monitor),
+            use_global_theme: true,
         })
         .collect()
 }
@@ -120,10 +125,6 @@ fn monitor_index_for_name(monitors: &[gdk::Monitor], requested_name: &str) -> Op
     let requested_name = requested_name.trim();
     if requested_name.is_empty() {
         return None;
-    }
-
-    if requested_name == "primary" && !monitors.is_empty() {
-        return Some(0);
     }
 
     if requested_name == "primary" && !monitors.is_empty() {

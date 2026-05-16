@@ -31,10 +31,15 @@ pub fn build_overlay_windows(
     output::window_targets(&config)
         .into_iter()
         .map(|target| {
+            let target_theme_palette = if target.use_global_theme {
+                theme_palette.clone()
+            } else {
+                None
+            };
             build_overlay_window(
                 app,
                 &target.config,
-                theme_palette.clone(),
+                target_theme_palette,
                 image_overlay.clone(),
                 Rc::clone(&stream),
                 target.monitor,

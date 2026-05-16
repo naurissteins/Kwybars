@@ -19,7 +19,7 @@ https://github.com/user-attachments/assets/5fe84372-86be-49a8-b9c0-6564e81f1eaa
 
 -   Place visualizer on any screen edge `top | bottom | left | right`
 -   Multi-monitor support: show bars on primary, all, or selected monitors
--   Per-monitor overlay configuration with `[[overlay.outputs]]`
+-   Per-monitor overlay and visualizer configuration with `[[overlay.outputs]]`
 -   Control window layer: `background`, `bottom`, `top`
 -   Custom overlay size + alignment
 -   Solid or gradient bar colors

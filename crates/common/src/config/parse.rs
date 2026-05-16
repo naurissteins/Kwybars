@@ -106,8 +106,15 @@ pub(crate) fn parse_config(raw: &str) -> Result<AppConfig, ConfigLoadError> {
 
         if trimmed.starts_with('[') && trimmed.ends_with(']') {
             let next = &trimmed[1..trimmed.len() - 1];
+            if next == "overlay.outputs.visualizer" && current_output_index.is_none() {
+                return Err(ConfigLoadError::Parse(format!(
+                    "line {line_no}: [overlay.outputs.visualizer] without [[overlay.outputs]] header"
+                )));
+            }
             section = Some(next);
-            current_output_index = None;
+            if next != "overlay.outputs.visualizer" {
+                current_output_index = None;
+            }
             continue;
         }
 
@@ -131,6 +138,19 @@ pub(crate) fn parse_config(raw: &str) -> Result<AppConfig, ConfigLoadError> {
                 };
                 parse_overlay_output_key(&mut config.overlay.outputs[index], key, &value)
                     .map_err(|err| with_line_context(err, line_no))?
+            }
+            Some("overlay.outputs.visualizer") => {
+                let Some(index) = current_output_index else {
+                    return Err(ConfigLoadError::Parse(format!(
+                        "line {line_no}: output visualizer key without [[overlay.outputs]] header"
+                    )));
+                };
+                parse_overlay_output_visualizer_key(
+                    &mut config.overlay.outputs[index].visualizer,
+                    key,
+                    &value,
+                )
+                .map_err(|err| with_line_context(err, line_no))?
             }
             Some("visualizer") => parse_visualizer_key(&mut config.visualizer, key, &value)
                 .map_err(|err| with_line_context(err, line_no))?,
@@ -275,6 +295,94 @@ fn parse_overlay_output_key(
         _ => {
             return Err(ConfigLoadError::Parse(format!(
                 "unknown overlay.outputs key: {key}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn parse_overlay_output_visualizer_key(
+    visualizer: &mut super::model::OverlayOutputVisualizerConfig,
+    key: &str,
+    value: &str,
+) -> Result<(), ConfigLoadError> {
+    match key {
+        "layout" => visualizer.layout = Some(VisualizerLayout::parse(value)?),
+        "line_mode" => visualizer.line_mode = Some(LineMode::parse(value)?),
+        "line_split_gap" => visualizer.line_split_gap = Some(parse_u32(key, value)?),
+        "mirror_orientation" => {
+            visualizer.mirror_orientation = Some(MirrorOrientation::parse(value)?);
+        }
+        "mirror_gap" => visualizer.mirror_gap = Some(parse_u32(key, value)?),
+        "wave_stroke_width" => {
+            visualizer.wave_stroke_width = Some(parse_u32(key, value)?.max(1));
+        }
+        "wave_fill" => visualizer.wave_fill = Some(parse_bool(key, value)?),
+        "wave_glow" => visualizer.wave_glow = Some(parse_bool(key, value)?),
+        "wave_smoothing" => visualizer.wave_smoothing = Some(parse_f32(key, value)?.max(0.0)),
+        "wave_motion_smoothing" => {
+            visualizer.wave_motion_smoothing = Some(parse_f32(key, value)?.max(0.0));
+        }
+        "wave_amplitude" => visualizer.wave_amplitude = Some(parse_f32(key, value)?.max(0.0)),
+        "frame_edges" => visualizer.frame_edges = Some(parse_overlay_position_list(value)?),
+        "frame_mirror_mode" => {
+            visualizer.frame_mirror_mode = Some(FrameMirrorMode::parse(value)?);
+        }
+        "frame_mirror" => {
+            visualizer.frame_mirror_mode = Some(if parse_bool(key, value)? {
+                FrameMirrorMode::All
+            } else {
+                FrameMirrorMode::Off
+            });
+        }
+        "bar_width" => visualizer.bar_width = Some(parse_u32(key, value)?),
+        "bar_corner_radius" => {
+            visualizer.bar_corner_radius = Some(parse_f32(key, value)?.max(0.0));
+        }
+        "segmented_bars" => visualizer.segmented_bars = Some(parse_bool(key, value)?),
+        "segment_length" => visualizer.segment_length = Some(parse_u32(key, value)?.max(1)),
+        "segment_gap" => visualizer.segment_gap = Some(parse_u32(key, value)?),
+        "radial_inner_radius" => {
+            visualizer.radial_inner_radius = Some(parse_u32(key, value)?.max(1));
+        }
+        "radial_start_angle" => visualizer.radial_start_angle = Some(parse_f32(key, value)?),
+        "radial_arc_degrees" => visualizer.radial_arc_degrees = Some(parse_f32(key, value)?),
+        "radial_rotation_speed" => {
+            visualizer.radial_rotation_speed = Some(parse_f32(key, value)?);
+        }
+        "center_offset_x" => visualizer.center_offset_x = Some(parse_f32(key, value)?),
+        "center_offset_y" => visualizer.center_offset_y = Some(parse_f32(key, value)?),
+        "polygon_sides" => visualizer.polygon_sides = Some(parse_u32(key, value)?.max(3)),
+        "polygon_radius" => visualizer.polygon_radius = Some(parse_u32(key, value)?.max(1)),
+        "polygon_bar_length" => visualizer.polygon_bar_length = Some(parse_u32(key, value)?),
+        "polygon_rotation" => visualizer.polygon_rotation = Some(parse_f32(key, value)?),
+        "polygon_rotation_speed" => {
+            visualizer.polygon_rotation_speed = Some(parse_f32(key, value)?);
+        }
+        "gap" => visualizer.gap = Some(parse_u32(key, value)?),
+        "color_mode" => visualizer.color_mode = Some(VisualizerColorMode::parse(value)?),
+        "gradient_direction" => {
+            visualizer.gradient_direction = Some(VisualizerGradientDirection::parse(value)?);
+        }
+        "color_rgba" => visualizer.color_rgba = Some(RgbaColor::parse(value)?),
+        "color2_rgba" => visualizer.color2_rgba = Some(RgbaColor::parse(value)?),
+        "backend"
+        | "bars"
+        | "framerate"
+        | "pipewire_attack"
+        | "pipewire_decay"
+        | "pipewire_gain"
+        | "pipewire_curve"
+        | "pipewire_neighbor_mix"
+        | "theme"
+        | "theme_opacity" => {
+            return Err(ConfigLoadError::Parse(format!(
+                "overlay.outputs.visualizer key is not supported per output: {key}"
+            )));
+        }
+        _ => {
+            return Err(ConfigLoadError::Parse(format!(
+                "unknown overlay.outputs.visualizer key: {key}"
             )));
         }
     }

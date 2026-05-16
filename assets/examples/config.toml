@@ -20,6 +20,12 @@ fade_out_ms = 350
 # position = "bottom"
 # height = 180
 #
+# [overlay.outputs.visualizer]
+# layout = "wave"
+# wave_glow = true
+# color_mode = "solid"
+# color_rgba = "rgba(175, 198, 255, 0.75)"
+#
 # [[overlay.outputs]]
 # monitor = "HDMI-A-1"
 # enabled = false

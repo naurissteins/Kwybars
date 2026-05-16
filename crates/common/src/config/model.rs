@@ -154,10 +154,11 @@ impl Display for OverlayMonitorMode {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OverlayOutputConfig {
     pub monitor: String,
     pub enabled: bool,
+    pub visualizer: OverlayOutputVisualizerConfig,
     pub position: Option<OverlayPosition>,
     pub layer: Option<OverlayLayer>,
     pub anchor_margin: Option<u32>,
@@ -222,6 +223,10 @@ impl OverlayOutputConfig {
         overlay.outputs.clear();
         overlay
     }
+
+    pub fn merged_visualizer(&self, base: &VisualizerConfig) -> VisualizerConfig {
+        self.visualizer.merged(base)
+    }
 }
 
 impl Default for OverlayOutputConfig {
@@ -229,6 +234,7 @@ impl Default for OverlayOutputConfig {
         Self {
             monitor: String::new(),
             enabled: true,
+            visualizer: OverlayOutputVisualizerConfig::default(),
             position: None,
             layer: None,
             anchor_margin: None,
@@ -247,7 +253,7 @@ impl Default for OverlayOutputConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OverlayConfig {
     pub position: OverlayPosition,
     pub layer: OverlayLayer,
@@ -725,6 +731,160 @@ impl Default for VisualizerConfig {
             pipewire_curve: 0.95,
             pipewire_neighbor_mix: 0.24,
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct OverlayOutputVisualizerConfig {
+    pub layout: Option<VisualizerLayout>,
+    pub line_mode: Option<LineMode>,
+    pub line_split_gap: Option<u32>,
+    pub mirror_orientation: Option<MirrorOrientation>,
+    pub mirror_gap: Option<u32>,
+    pub wave_stroke_width: Option<u32>,
+    pub wave_fill: Option<bool>,
+    pub wave_glow: Option<bool>,
+    pub wave_smoothing: Option<f32>,
+    pub wave_motion_smoothing: Option<f32>,
+    pub wave_amplitude: Option<f32>,
+    pub frame_edges: Option<Vec<OverlayPosition>>,
+    pub frame_mirror_mode: Option<FrameMirrorMode>,
+    pub bar_width: Option<u32>,
+    pub bar_corner_radius: Option<f32>,
+    pub segmented_bars: Option<bool>,
+    pub segment_length: Option<u32>,
+    pub segment_gap: Option<u32>,
+    pub radial_inner_radius: Option<u32>,
+    pub radial_start_angle: Option<f32>,
+    pub radial_arc_degrees: Option<f32>,
+    pub radial_rotation_speed: Option<f32>,
+    pub center_offset_x: Option<f32>,
+    pub center_offset_y: Option<f32>,
+    pub polygon_sides: Option<u32>,
+    pub polygon_radius: Option<u32>,
+    pub polygon_bar_length: Option<u32>,
+    pub polygon_rotation: Option<f32>,
+    pub polygon_rotation_speed: Option<f32>,
+    pub gap: Option<u32>,
+    pub color_mode: Option<VisualizerColorMode>,
+    pub gradient_direction: Option<VisualizerGradientDirection>,
+    pub color_rgba: Option<RgbaColor>,
+    pub color2_rgba: Option<RgbaColor>,
+}
+
+impl OverlayOutputVisualizerConfig {
+    pub fn overrides_direct_colors(&self) -> bool {
+        self.color_mode.is_some()
+            || self.gradient_direction.is_some()
+            || self.color_rgba.is_some()
+            || self.color2_rgba.is_some()
+    }
+
+    pub fn merged(&self, base: &VisualizerConfig) -> VisualizerConfig {
+        let mut visualizer = base.clone();
+        if let Some(value) = self.layout {
+            visualizer.layout = value;
+        }
+        if let Some(value) = self.line_mode {
+            visualizer.line_mode = value;
+        }
+        if let Some(value) = self.line_split_gap {
+            visualizer.line_split_gap = value;
+        }
+        if let Some(value) = self.mirror_orientation {
+            visualizer.mirror_orientation = value;
+        }
+        if let Some(value) = self.mirror_gap {
+            visualizer.mirror_gap = value;
+        }
+        if let Some(value) = self.wave_stroke_width {
+            visualizer.wave_stroke_width = value;
+        }
+        if let Some(value) = self.wave_fill {
+            visualizer.wave_fill = value;
+        }
+        if let Some(value) = self.wave_glow {
+            visualizer.wave_glow = value;
+        }
+        if let Some(value) = self.wave_smoothing {
+            visualizer.wave_smoothing = value;
+        }
+        if let Some(value) = self.wave_motion_smoothing {
+            visualizer.wave_motion_smoothing = value;
+        }
+        if let Some(value) = self.wave_amplitude {
+            visualizer.wave_amplitude = value;
+        }
+        if let Some(value) = self.frame_edges.clone() {
+            visualizer.frame_edges = value;
+        }
+        if let Some(value) = self.frame_mirror_mode {
+            visualizer.frame_mirror_mode = value;
+        }
+        if let Some(value) = self.bar_width {
+            visualizer.bar_width = value;
+        }
+        if let Some(value) = self.bar_corner_radius {
+            visualizer.bar_corner_radius = value;
+        }
+        if let Some(value) = self.segmented_bars {
+            visualizer.segmented_bars = value;
+        }
+        if let Some(value) = self.segment_length {
+            visualizer.segment_length = value;
+        }
+        if let Some(value) = self.segment_gap {
+            visualizer.segment_gap = value;
+        }
+        if let Some(value) = self.radial_inner_radius {
+            visualizer.radial_inner_radius = value;
+        }
+        if let Some(value) = self.radial_start_angle {
+            visualizer.radial_start_angle = value;
+        }
+        if let Some(value) = self.radial_arc_degrees {
+            visualizer.radial_arc_degrees = value;
+        }
+        if let Some(value) = self.radial_rotation_speed {
+            visualizer.radial_rotation_speed = value;
+        }
+        if let Some(value) = self.center_offset_x {
+            visualizer.center_offset_x = value;
+        }
+        if let Some(value) = self.center_offset_y {
+            visualizer.center_offset_y = value;
+        }
+        if let Some(value) = self.polygon_sides {
+            visualizer.polygon_sides = value;
+        }
+        if let Some(value) = self.polygon_radius {
+            visualizer.polygon_radius = value;
+        }
+        if let Some(value) = self.polygon_bar_length {
+            visualizer.polygon_bar_length = value;
+        }
+        if let Some(value) = self.polygon_rotation {
+            visualizer.polygon_rotation = value;
+        }
+        if let Some(value) = self.polygon_rotation_speed {
+            visualizer.polygon_rotation_speed = value;
+        }
+        if let Some(value) = self.gap {
+            visualizer.gap = value;
+        }
+        if let Some(value) = self.color_mode {
+            visualizer.color_mode = value;
+        }
+        if let Some(value) = self.gradient_direction {
+            visualizer.gradient_direction = value;
+        }
+        if let Some(value) = self.color_rgba {
+            visualizer.color_rgba = value;
+        }
+        if let Some(value) = self.color2_rgba {
+            visualizer.color2_rgba = value;
+        }
+        visualizer
     }
 }
 
