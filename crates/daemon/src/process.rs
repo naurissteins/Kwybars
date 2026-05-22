@@ -4,15 +4,18 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::display::GraphicalEnvironment;
 use kwybars_common::config::DaemonConfig;
 use kwybars_engine::ipc::FRAME_SOCKET_ENV;
-use tracing::info;
+use tracing::{info, warn};
 
 const SPAWN_RETRY_INTERVAL: Duration = Duration::from_millis(1800);
+const DISPLAY_WARNING_INTERVAL: Duration = Duration::from_secs(30);
 
 pub struct OverlayProcess {
     child: Option<Child>,
     last_spawn_attempt: Option<Instant>,
+    last_display_warning: Option<Instant>,
 }
 
 impl OverlayProcess {
@@ -20,6 +23,7 @@ impl OverlayProcess {
         Self {
             child: None,
             last_spawn_attempt: None,
+            last_display_warning: None,
         }
     }
 
@@ -41,7 +45,17 @@ impl OverlayProcess {
         }
 
         self.last_spawn_attempt = Some(now);
-        let mut command = build_command(daemon, config_path, frame_socket_path);
+        let Some(graphical_environment) = GraphicalEnvironment::detect() else {
+            self.warn_missing_display(now);
+            return Ok(());
+        };
+
+        let mut command = build_command(
+            daemon,
+            config_path,
+            frame_socket_path,
+            &graphical_environment,
+        );
         let mut child = command.spawn()?;
         if let Some(stderr) = child.stderr.take() {
             spawn_overlay_stderr_forwarder(stderr);
@@ -52,6 +66,20 @@ impl OverlayProcess {
             daemon.overlay_command
         );
         Ok(())
+    }
+
+    fn warn_missing_display(&mut self, now: Instant) {
+        if self
+            .last_display_warning
+            .is_some_and(|last| now.duration_since(last) < DISPLAY_WARNING_INTERVAL)
+        {
+            return;
+        }
+
+        self.last_display_warning = Some(now);
+        warn!(
+            "kwybars-daemon: cannot start overlay yet; WAYLAND_DISPLAY/DISPLAY is missing and no Wayland socket was found"
+        );
     }
 
     pub fn poll_exit(&mut self) -> io::Result<Option<ExitStatus>> {
@@ -101,6 +129,7 @@ fn build_command(
     daemon: &DaemonConfig,
     config_path: &Path,
     frame_socket_path: Option<&Path>,
+    graphical_environment: &GraphicalEnvironment,
 ) -> Command {
     let command_name = if daemon.overlay_command.trim().is_empty() {
         "kwybars-overlay"
@@ -114,6 +143,7 @@ fn build_command(
     }
     command.env("KWYBARS_CONFIG", config_path);
     command.env("KWYBARS_DISABLE_NOTIFICATIONS", "1");
+    graphical_environment.apply_to(&mut command);
     if let Some(frame_socket_path) = frame_socket_path {
         command.env(FRAME_SOCKET_ENV, frame_socket_path);
     }

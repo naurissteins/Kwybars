@@ -1,23 +1,22 @@
 mod activity;
+mod display;
 mod process;
-
-use std::error::Error;
-use std::fmt::{Display, Formatter};
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Duration, Instant, UNIX_EPOCH};
-
+#[cfg(test)]
+mod tests;
 use activity::{ActivityState, ActivityTracker};
 use kwybars_common::config::{self, DaemonConfig, OverlayConfig, VisualizerConfig};
 use kwybars_common::notify::notify_error_with_cooldown;
 use kwybars_engine::ipc::FrameSocketServer;
 use kwybars_engine::live::{LiveFrameStream, SourceKind};
 use process::OverlayProcess;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant, UNIX_EPOCH};
 use tracing::{error, info, warn};
-
 const CONFIG_RELOAD_DEBOUNCE: Duration = Duration::from_millis(260);
-
 #[derive(Debug)]
 pub enum DaemonError {
     Config(config::ConfigLoadError),
@@ -139,17 +138,6 @@ pub fn run(config_path: PathBuf) -> Result<(), DaemonError> {
         ));
         let now = Instant::now();
 
-        if let Some(exit_status) = overlay.poll_exit().map_err(DaemonError::Runtime)? {
-            warn!("kwybars-daemon: overlay exited with status {exit_status}");
-            notify_error_with_cooldown(
-                "daemon.overlay_exited",
-                "Kwybars Overlay Exited",
-                &format!("Overlay process exited: {exit_status}"),
-                runtime.daemon.notify_on_error,
-                notify_cooldown(&runtime.daemon),
-            );
-        }
-
         let next_config_stamp = ConfigStamp::read(&config_path);
         if next_config_stamp == config_stamp {
             pending_config_reload = None;
@@ -250,6 +238,27 @@ pub fn run(config_path: PathBuf) -> Result<(), DaemonError> {
             }
         }
 
+        if let Some(exit_status) = overlay.poll_exit().map_err(DaemonError::Runtime)? {
+            let notify_overlay_exit = should_notify_overlay_exit(
+                activity.state(),
+                scheduled_overlay_stop,
+                &runtime.daemon,
+            );
+            if notify_overlay_exit {
+                warn!("kwybars-daemon: overlay exited with status {exit_status}");
+                notify_error_with_cooldown(
+                    "daemon.overlay_exited",
+                    "Kwybars Overlay Exited",
+                    &format!("Overlay process exited: {exit_status}"),
+                    runtime.daemon.notify_on_error,
+                    notify_cooldown(&runtime.daemon),
+                );
+            } else {
+                info!("kwybars-daemon: overlay exited during managed shutdown ({exit_status})");
+                scheduled_overlay_stop = None;
+            }
+        }
+
         match activity.state() {
             ActivityState::Active => {
                 scheduled_overlay_stop = None;
@@ -334,6 +343,18 @@ fn notify_cooldown(config: &DaemonConfig) -> Duration {
     Duration::from_secs(config.notify_cooldown_seconds)
 }
 
+fn should_notify_overlay_exit(
+    activity_state: ActivityState,
+    scheduled_overlay_stop: Option<Instant>,
+    daemon: &DaemonConfig,
+) -> bool {
+    if !daemon.stop_on_silence {
+        return true;
+    }
+
+    activity_state == ActivityState::Active && scheduled_overlay_stop.is_none()
+}
+
 fn overlay_launch_changed(current: &DaemonConfig, next: &DaemonConfig) -> bool {
     current.overlay_command != next.overlay_command || current.overlay_args != next.overlay_args
 }
@@ -376,106 +397,4 @@ fn extend_inactivity_grace(
 
 fn resolve_runtime_config_path(path: &Path) -> Option<PathBuf> {
     std::fs::canonicalize(path).ok()
-}
-
-#[cfg(test)]
-mod tests {
-    use std::time::{Duration, Instant};
-
-    use kwybars_common::config::{DaemonConfig, VisualizerBackend, VisualizerConfig};
-
-    use super::{
-        ActivityState, CONFIG_RELOAD_DEBOUNCE, ConfigStamp, PendingConfigReload,
-        audio_probe_config_changed, config_switch_grace_duration, extend_inactivity_grace,
-    };
-
-    #[test]
-    fn ignores_purely_visual_visualizer_changes() {
-        let current = VisualizerConfig::default();
-        let mut next = current.clone();
-        next.layout = kwybars_common::config::VisualizerLayout::Polygon;
-        next.bar_width = 42;
-        next.gap = 7;
-        next.color_mode = kwybars_common::config::VisualizerColorMode::Solid;
-        next.center_offset_x = 10.0;
-        next.polygon_rotation = 45.0;
-
-        assert!(!audio_probe_config_changed(&current, &next));
-    }
-
-    #[test]
-    fn detects_audio_probe_changes() {
-        let current = VisualizerConfig::default();
-        let mut next = current.clone();
-        next.backend = VisualizerBackend::Pipewire;
-        assert!(audio_probe_config_changed(&current, &next));
-
-        let mut next = current.clone();
-        next.bars += 8;
-        assert!(audio_probe_config_changed(&current, &next));
-
-        let mut next = current.clone();
-        next.pipewire_gain += 0.1;
-        assert!(audio_probe_config_changed(&current, &next));
-    }
-
-    #[test]
-    fn config_switch_grace_has_minimum_duration() {
-        let current = DaemonConfig {
-            deactivate_delay_ms: 1200,
-            ..DaemonConfig::default()
-        };
-        let next = DaemonConfig {
-            deactivate_delay_ms: 1800,
-            ..DaemonConfig::default()
-        };
-
-        assert_eq!(
-            config_switch_grace_duration(&current, &next),
-            Duration::from_millis(2500)
-        );
-    }
-
-    #[test]
-    fn extend_inactivity_grace_only_when_active() {
-        let now = Instant::now();
-        let duration = Duration::from_secs(3);
-
-        assert_eq!(
-            extend_inactivity_grace(None, ActivityState::Inactive, now, duration),
-            None
-        );
-
-        let active_until = extend_inactivity_grace(None, ActivityState::Active, now, duration);
-        assert!(active_until.is_some_and(|until| until >= now + duration));
-    }
-
-    #[test]
-    fn debounce_keeps_latest_ready_at_when_stamp_changes() {
-        let first = ConfigStamp {
-            exists: true,
-            modified_millis: 1,
-            len: 10,
-            resolved_path: None,
-        };
-        let second = ConfigStamp {
-            exists: true,
-            modified_millis: 2,
-            len: 10,
-            resolved_path: None,
-        };
-        let start = Instant::now();
-        let mut pending = PendingConfigReload {
-            stamp: first,
-            ready_at: start + Duration::from_millis(100),
-        };
-
-        if pending.stamp != second {
-            pending.stamp = second.clone();
-            pending.ready_at = start + CONFIG_RELOAD_DEBOUNCE;
-        }
-
-        assert_eq!(pending.stamp, second);
-        assert!(pending.ready_at >= start + CONFIG_RELOAD_DEBOUNCE);
-    }
 }
