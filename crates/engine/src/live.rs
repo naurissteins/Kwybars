@@ -310,6 +310,16 @@ fn spawn_cava_thread(
         let _ = fs::remove_file(&config_path);
     })?;
 
+    // Detect unsupported Cava input methods before accepting the backend
+    thread::sleep(Duration::from_millis(120));
+    if let Some(status) = child.try_wait()? {
+        let _ = child.wait();
+        let _ = fs::remove_file(&config_path);
+        return Err(std::io::Error::other(format!(
+            "cava exited early with status {status}"
+        )));
+    }
+
     let stdout = match child.stdout.take() {
         Some(stdout) => stdout,
         None => {
@@ -537,7 +547,7 @@ bars = {bar_count}
 framerate = {framerate}
 
 [input]
-method = pulse
+method = pipewire
 source = auto
 
 [output]
