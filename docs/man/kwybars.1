@@ -1,0 +1,193 @@
+.TH KWYBARS 1 "May 2026" "Kwybars 0.1.9" "User Commands"
+.SH NAME
+kwybars \- GTK4 Wayland audio visualizer overlay
+.br
+kwybars-daemon \- start and supervise the Kwybars overlay
+.br
+kwybars-overlay \- render the visualizer overlay
+.br
+kwybarsctl \- inspect and manage Kwybars configuration
+.SH SYNOPSIS
+.B kwybars-daemon
+.RI [ options ]
+.br
+.B kwybars-overlay
+.RI [ options ]
+.br
+.B kwybarsctl
+.RI command
+.RI [ options ]
+.SH DESCRIPTION
+.B Kwybars
+is a Wayland-first desktop audio visualizer. It renders GTK4 bars as a transparent layer-shell overlay, usually anchored to a desktop edge.
+.PP
+The recommended runtime entrypoint is
+.BR kwybars-daemon .
+The daemon watches audio activity, starts
+.B kwybars-overlay
+when audio becomes active, stops it after silence when configured to do so, and shares one audio frame stream with the overlay process.
+.PP
+The
+.B kwybars-overlay
+binary owns the GTK/layer-shell window and rendering loop. It can be launched directly for development or troubleshooting, but daemon launch is preferred for normal desktop use.
+.PP
+The
+.B kwybarsctl
+binary provides read-only diagnostics plus safe config switching helpers.
+.SH DAEMON OPTIONS
+.TP
+.B -h, --help
+Show daemon help.
+.TP
+.BI -c,\ --config\  PATH
+Load a specific configuration file.
+.TP
+.BI --config= PATH
+Load a specific configuration file.
+.SH OVERLAY OPTIONS
+.TP
+.B -h, --help
+Show overlay help.
+.TP
+.BI -c,\ --config\  PATH
+Load a specific configuration file.
+.TP
+.BI --config= PATH
+Load a specific configuration file.
+.SH CONTROL COMMANDS
+.TP
+.B switch-config [--active PATH] TARGET
+Atomically replace the active config path with a symlink to
+.IR TARGET .
+By default, the active path is the normal Kwybars config path.
+.TP
+.B validate-config [--config PATH]
+Validate the selected config file, adjacent
+.IR colors.toml ,
+and configured theme. A positional config path may be used instead of
+.BR --config .
+.TP
+.B doctor [--config PATH]
+Print local runtime diagnostics, including Wayland session detection, Cava availability, config parse status, theme status, selected overlay values, and overlay frame-source state.
+.TP
+.B list-themes [--config PATH]
+List available user, packaged, and source-checkout themes using the same precedence as the runtime.
+.TP
+.B -h, --help
+Show control command help.
+.SH CONTROL OPTIONS
+.TP
+.BI -a,\ --active\  PATH
+Active config path to update for
+.BR switch-config .
+.TP
+.BI -c,\ --config\  PATH
+Config path to validate, inspect, or use for theme lookup.
+.SH CONFIGURATION
+The default config path is resolved in this order:
+.IP "1." 4
+.B KWYBARS_CONFIG
+.IP "2." 4
+.B $XDG_CONFIG_HOME/kwybars/config.toml
+.IP "3." 4
+.B $HOME/.config/kwybars/config.toml
+.IP "4." 4
+.B ./kwybars.toml
+.PP
+If no config exists, Kwybars uses built-in defaults. Packaged examples are installed under
+.BR /usr/share/doc/kwybars/examples/ ,
+and source checkouts include examples under
+.BR assets/examples/ .
+.PP
+Adjacent
+.B colors.toml
+files can override visualizer colors for the active config.
+.SH FILES
+.TP
+.I ~/.config/kwybars/config.toml
+Default user configuration file.
+.TP
+.I ~/.config/kwybars/colors.toml
+Optional adjacent color override file.
+.TP
+.I ~/.config/kwybars/themes/
+User theme directory.
+.TP
+.I /usr/share/kwybars/themes/
+Packaged built-in themes.
+.TP
+.I /usr/share/doc/kwybars/examples/
+Packaged example configurations.
+.TP
+.I /usr/lib/systemd/user/kwybars-daemon.service
+Packaged user service.
+.TP
+.I ~/.local/state/kwybars/daemon.log
+Default daemon log file when
+.B XDG_STATE_HOME
+is unset.
+.TP
+.I ~/.local/state/kwybars/overlay.log
+Default overlay log file when
+.B XDG_STATE_HOME
+is unset.
+.SH ENVIRONMENT
+.TP
+.B KWYBARS_CONFIG
+Overrides the default config path.
+.TP
+.B KWYBARS_THEMES_DIR
+Overrides the packaged built-in theme directory.
+.TP
+.B KWYBARS_LOG
+Controls tracing verbosity. Falls back to
+.B RUST_LOG
+when unset.
+.TP
+.B KWYBARS_LOG_FILE
+Overrides the log file target for the current process.
+.TP
+.B KWYBARS_FRAME_SOCKET
+Internal daemon-to-overlay frame stream socket. Normally set by
+.BR kwybars-daemon .
+.TP
+.B KWYBARS_DISABLE_NOTIFICATIONS
+Internal flag used to suppress duplicate overlay notifications when launched by the daemon.
+.TP
+.B GSK_RENDERER
+GTK renderer override. The overlay defaults this to
+.B cairo
+when unset.
+.TP
+.B WAYLAND_DISPLAY
+Wayland display socket name. Required for overlay display, though the daemon can recover from some missing environment cases by inspecting
+.BR XDG_RUNTIME_DIR .
+.SH EXAMPLES
+.TP
+Start the daemon manually:
+.B kwybars-daemon
+.TP
+Start with an explicit config:
+.B kwybars-daemon --config ~/.config/kwybars/config.toml
+.TP
+Run the overlay directly:
+.B kwybars-overlay --config ./assets/examples/wave.toml
+.TP
+Validate config:
+.B kwybarsctl validate-config
+.TP
+Run diagnostics:
+.B kwybarsctl doctor
+.TP
+List themes:
+.B kwybarsctl list-themes
+.TP
+Switch the active config symlink:
+.B kwybarsctl switch-config ~/.config/kwybars/presets/wave.toml
+.TP
+Enable the packaged user service:
+.B systemctl --user enable --now kwybars-daemon.service
+.SH SEE ALSO
+.BR cava (1),
+.BR systemctl (1),
+.BR journalctl (1)

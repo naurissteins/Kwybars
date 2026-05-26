@@ -74,7 +74,9 @@ jobs:
           dist_dir="dist/kwybars-${version}-x86_64-linux"
 
           rm -rf "$dist_dir"
-          mkdir -p "$dist_dir/themes"
+          mkdir -p \
+            "$dist_dir/themes" \
+            "$dist_dir/share/man/man1"
 
           install -m755 target/release/kwybars-overlay "$dist_dir/kwybars-overlay"
           install -m755 target/release/kwybars-daemon "$dist_dir/kwybars-daemon"
@@ -82,6 +84,7 @@ jobs:
           install -m644 assets/systemd/kwybars-daemon.service "$dist_dir/kwybars-daemon.service"
           install -m644 assets/examples/config.toml "$dist_dir/config.toml"
           install -m644 assets/themes/*.toml "$dist_dir/themes/"
+          install -m644 docs/man/*.1 "$dist_dir/share/man/man1/"
           install -m644 LICENSE "$dist_dir/LICENSE"
 
           tar -C dist -czf "dist/kwybars-${version}-x86_64-linux.tar.gz" "kwybars-${version}-x86_64-linux"

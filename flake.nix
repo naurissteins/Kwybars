@@ -35,6 +35,7 @@
                 ./assets/examples
                 ./assets/themes
                 ./crates
+                ./docs/man
               ];
             };
 
@@ -80,6 +81,7 @@
 
               install -Dm644 assets/examples/*.toml -t "$out/share/kwybars/examples"
               install -Dm644 assets/themes/*.toml -t "$out/share/kwybars/themes"
+              install -Dm644 docs/man/*.1 -t "$out/share/man/man1"
 
               wrapProgram "$out/bin/kwybars-daemon" \
                 --set KWYBARS_THEMES_DIR "$out/share/kwybars/themes" \
