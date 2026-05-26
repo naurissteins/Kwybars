@@ -1,52 +1,55 @@
-name: ci
+name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
+    branches: [main]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  rust-checks:
-    name: rust-checks
+  fmt:
+    name: Format
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          components: rustfmt
+      - run: cargo fmt --all -- --check
 
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          shared-key: ci-rust-cache
-
-      - name: Install System Dependencies
-        shell: bash
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Install system dependencies
         run: |
           set -euxo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
-            pkg-config \
             git \
+            gobject-introspection \
+            libgdk-pixbuf-2.0-dev \
+            libgirepository1.0-dev \
+            libglib2.0-dev \
+            libgtk-4-dev \
+            libwayland-dev \
             meson \
             ninja-build \
+            pkg-config \
             valac \
-            gobject-introspection \
-            libgirepository1.0-dev \
-            libgdk-pixbuf-2.0-dev \
-            libgtk-4-dev \
-            libcairo2-dev \
-            libglib2.0-dev \
-            libwayland-dev \
             wayland-protocols
 
           if ! pkg-config --exists gtk4-layer-shell-0; then
@@ -56,55 +59,32 @@ jobs:
             sudo meson install -C /tmp/gtk4-layer-shell/build
             sudo ldconfig
           fi
+      - run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Cargo Fmt
-        run: cargo fmt --all --check
-
-      - name: Cargo Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Cargo Check
-        run: cargo check --workspace
-
-      - name: Cargo Test
-        run: cargo test --workspace
-
-  release-build:
-    name: release-build
+  check:
+    name: Check
     runs-on: ubuntu-latest
-    needs: rust-checks
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ci-rust-cache
-
-      - name: Install System Dependencies
-        shell: bash
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install system dependencies
         run: |
           set -euxo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
-            pkg-config \
             git \
+            gobject-introspection \
+            libgdk-pixbuf-2.0-dev \
+            libgirepository1.0-dev \
+            libglib2.0-dev \
+            libgtk-4-dev \
+            libwayland-dev \
             meson \
             ninja-build \
+            pkg-config \
             valac \
-            gobject-introspection \
-            libgirepository1.0-dev \
-            libgdk-pixbuf-2.0-dev \
-            libgtk-4-dev \
-            libcairo2-dev \
-            libglib2.0-dev \
-            libwayland-dev \
             wayland-protocols
 
           if ! pkg-config --exists gtk4-layer-shell-0; then
@@ -114,6 +94,97 @@ jobs:
             sudo meson install -C /tmp/gtk4-layer-shell/build
             sudo ldconfig
           fi
+      - run: cargo check --workspace
 
-      - name: Cargo Build Release
-        run: cargo build --locked --release --workspace
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install system dependencies
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            git \
+            gobject-introspection \
+            libgdk-pixbuf-2.0-dev \
+            libgirepository1.0-dev \
+            libglib2.0-dev \
+            libgtk-4-dev \
+            libwayland-dev \
+            meson \
+            ninja-build \
+            pkg-config \
+            valac \
+            wayland-protocols
+
+          if ! pkg-config --exists gtk4-layer-shell-0; then
+            git clone --depth 1 https://github.com/wmww/gtk4-layer-shell.git /tmp/gtk4-layer-shell
+            meson setup /tmp/gtk4-layer-shell/build /tmp/gtk4-layer-shell
+            meson compile -C /tmp/gtk4-layer-shell/build
+            sudo meson install -C /tmp/gtk4-layer-shell/build
+            sudo ldconfig
+          fi
+      - run: cargo test --workspace
+
+  dependencies:
+    name: Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - run: ./scripts/check-deps
+
+  release-check:
+    name: Release Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install system dependencies
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            git \
+            gobject-introspection \
+            libgdk-pixbuf-2.0-dev \
+            libgirepository1.0-dev \
+            libglib2.0-dev \
+            libgtk-4-dev \
+            libwayland-dev \
+            meson \
+            ninja-build \
+            pkg-config \
+            valac \
+            wayland-protocols
+
+          if ! pkg-config --exists gtk4-layer-shell-0; then
+            git clone --depth 1 https://github.com/wmww/gtk4-layer-shell.git /tmp/gtk4-layer-shell
+            meson setup /tmp/gtk4-layer-shell/build /tmp/gtk4-layer-shell
+            meson compile -C /tmp/gtk4-layer-shell/build
+            sudo meson install -C /tmp/gtk4-layer-shell/build
+            sudo ldconfig
+          fi
+      - run: cargo build --locked --release --workspace
+
+  nix:
+    name: Nix Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - run: nix flake check --print-build-logs
+      - run: nix build .#packages.x86_64-linux.default --print-build-logs
