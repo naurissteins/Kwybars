@@ -4,6 +4,16 @@ on:
   push:
     tags:
       - '*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version label for the packaged artifact"
+        required: false
+        default: "manual"
+      artifact_name:
+        description: "Artifact name for manual packaging test uploads"
+        required: false
+        default: "kwybars-release-preview"
 
 permissions:
   contents: write
@@ -32,7 +42,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
+            dpkg-dev \
             pkg-config \
+            rpm \
             git \
             meson \
             ninja-build \
@@ -70,7 +82,11 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            version="${{ github.event.inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
           dist_dir="dist/kwybars-${version}-x86_64-linux"
 
           rm -rf "$dist_dir"
@@ -85,11 +101,61 @@ jobs:
           install -m644 assets/examples/config.toml "$dist_dir/config.toml"
           install -m644 assets/themes/*.toml "$dist_dir/themes/"
           install -m644 docs/man/*.1 "$dist_dir/share/man/man1/"
+          install -m644 README.md "$dist_dir/README.md"
           install -m644 LICENSE "$dist_dir/LICENSE"
 
           tar -C dist -czf "dist/kwybars-${version}-x86_64-linux.tar.gz" "kwybars-${version}-x86_64-linux"
 
+      - name: Package Debian package
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            version="${{ github.event.inputs.version }}"
+            if [[ ! "$version" =~ ^[0-9] ]]; then
+              crate_version="$(awk -F '"' '/^version =/ { print $2; exit }' Cargo.toml)"
+              version="${crate_version}~${version}"
+            fi
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          bash packaging/deb/build-deb.sh "$version" dist
+
+      - name: Package RPM package
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            artifact_version="${{ github.event.inputs.version }}"
+            package_version="$artifact_version"
+            if [[ ! "$package_version" =~ ^[0-9] ]]; then
+              crate_version="$(awk -F '"' '/^version =/ { print $2; exit }' Cargo.toml)"
+              package_version="${crate_version}~${package_version}"
+            fi
+          else
+            artifact_version="${GITHUB_REF_NAME#v}"
+            package_version="$artifact_version"
+          fi
+          bash packaging/rpm/build-rpm.sh \
+            "$package_version" \
+            dist \
+            "dist/kwybars-${artifact_version}-x86_64-linux.tar.gz"
+
       - name: Upload Release Asset
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/kwybars-*-x86_64-linux.tar.gz
+          files: |
+            dist/kwybars-*-x86_64-linux.tar.gz
+            dist/kwybars_*_amd64.deb
+            dist/kwybars-*.rpm
+
+      - name: Upload Manual Packaging Artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.inputs.artifact_name }}
+          path: |
+            dist/kwybars-*-x86_64-linux.tar.gz
+            dist/kwybars_*_amd64.deb
+            dist/kwybars-*.rpm
