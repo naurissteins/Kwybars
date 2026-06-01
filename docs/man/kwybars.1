@@ -33,7 +33,7 @@ binary owns the GTK/layer-shell window and rendering loop. It can be launched di
 .PP
 The
 .B kwybarsctl
-binary provides read-only diagnostics plus safe config switching helpers.
+binary provides read-only diagnostics plus safe config and image-overlay helpers.
 .SH DAEMON OPTIONS
 .TP
 .B -h, --help
@@ -61,6 +61,22 @@ Atomically replace the active config path with a symlink to
 .IR TARGET .
 By default, the active path is the normal Kwybars config path.
 .TP
+.B image-overlay match --overlay-dir DIR [--config PATH] WALLPAPER
+Match
+.I WALLPAPER
+by filename stem against images in
+.IR DIR ,
+then set
+.B [image_overlay].enabled
+and
+.B [image_overlay].path
+in the selected config. The lookup order is
+.IR png ,
+.IR webp ,
+.IR jpg ,
+then
+.IR jpeg .
+.TP
 .B validate-config [--config PATH]
 Validate the selected config file, adjacent
 .IR colors.toml ,
@@ -82,7 +98,12 @@ Active config path to update for
 .BR switch-config .
 .TP
 .BI -c,\ --config\  PATH
-Config path to validate, inspect, or use for theme lookup.
+Config path to update, validate, inspect, or use for theme lookup.
+.TP
+.BI --overlay-dir\  DIR
+Directory containing images for
+.B image-overlay match
+lookups.
 .SH CONFIGURATION
 The default config path is resolved in this order:
 .IP "1." 4
@@ -184,6 +205,9 @@ List themes:
 .TP
 Switch the active config symlink:
 .B kwybarsctl switch-config ~/.config/kwybars/presets/wave.toml
+.TP
+Match a wallpaper to an image overlay:
+.B kwybarsctl image-overlay match --overlay-dir ~/.config/kwybars/wallpaper-overlays ~/Pictures/wallpapers/forest.jpg
 .TP
 Enable the packaged user service:
 .B systemctl --user enable --now kwybars-daemon.service

@@ -1,11 +1,13 @@
 mod args;
 mod diagnostics;
 mod error;
+mod image_overlay;
 mod switch;
 
 use args::{Command, parse_args, usage};
 use diagnostics::{doctor, list_themes, validate_config};
 use error::ControlError;
+use image_overlay::match_image_overlay;
 use kwybars_common::config;
 use switch::{switch_config, validate_target};
 
@@ -35,6 +37,15 @@ fn run() -> Result<Option<String>, ControlError> {
             let active_path = active.unwrap_or_else(config::default_config_path);
             let target_path = validate_target(&target)?;
             let message = switch_config(&active_path, &target_path)?;
+            Ok(Some(message))
+        }
+        Command::ImageOverlayMatch {
+            wallpaper,
+            overlay_dir,
+            config: config_path,
+        } => {
+            let config_path = config_path.unwrap_or_else(config::default_config_path);
+            let message = match_image_overlay(&config_path, &wallpaper, &overlay_dir)?;
             Ok(Some(message))
         }
         Command::ValidateConfig { path } => {
