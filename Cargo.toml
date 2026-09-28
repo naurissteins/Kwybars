@@ -11,6 +11,7 @@ repository.workspace = true
 calloop = { version = "0.14", features = ["signals"] }
 lexopt = "0.3"
 pipewire = "0.10"
+realfft = "3.5"
 serde = { version = "1", features = ["derive"] }
 serde_ignored = "0.1"
 thiserror = "2"
