@@ -1,6 +1,7 @@
 //! configuration loading
 
 mod activity;
+mod audio;
 mod bounds;
 mod color;
 mod colors;
@@ -21,6 +22,7 @@ mod visualizer;
 mod tests;
 
 pub use activity::ActivityConfig;
+pub use audio::AudioConfig;
 pub use color::{ColorParseError, Rgba};
 pub use colors::ColorOverrides;
 pub use error::ConfigError;
@@ -44,4 +46,5 @@ pub struct Config {
     pub visualizer: VisualizerConfig,
     pub image_overlay: ImageOverlayConfig,
     pub activity: ActivityConfig,
+    pub audio: AudioConfig,
 }

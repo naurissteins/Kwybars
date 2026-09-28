@@ -7,6 +7,7 @@ use std::process::ExitCode;
 use crate::app::{self, RunOptions};
 
 mod meter;
+mod spectrum;
 #[cfg(test)]
 mod tests;
 
@@ -17,6 +18,7 @@ Runs the Kwybars audio visualizer overlay.
 
 Commands:
   debug audio          Show a live level meter of the captured audio
+  debug spectrum       Show the analyzed bars in the terminal
 
 Options:
   -c, --config <PATH>  Load the config from PATH instead of the default location
@@ -31,6 +33,7 @@ pub enum Command {
     Help,
     Version,
     DebugAudio,
+    DebugSpectrum(RunOptions),
 }
 
 /// command line that could not be parsed
@@ -77,6 +80,7 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command, UsageE
         {
             [] => Command::Run(options),
             ["debug", "audio"] => Command::DebugAudio,
+            ["debug", "spectrum"] => Command::DebugSpectrum(options),
             _ => return Err(UsageError::UnknownCommand(words.join(" "))),
         }
     })
@@ -97,6 +101,14 @@ pub fn execute(command: Command) -> ExitCode {
         Command::DebugAudio => {
             let result = app::debug::audio(meter::show);
             meter::finish();
+            exit_code(result)
+        }
+        Command::DebugSpectrum(options) => {
+            let mut view = spectrum::View::default();
+            let result = app::debug::spectrum(&options, |bars, status, gain| {
+                view.show(bars, status, gain);
+            });
+            view.finish();
             exit_code(result)
         }
     }

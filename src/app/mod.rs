@@ -21,13 +21,29 @@ pub struct RunOptions {
 
 /// runs the overlay until it exits
 pub fn run(options: RunOptions) -> Result<(), AppError> {
-    // Must run before any thread is spawned; see `logging::init`.
+    // must run before any thread is spawned, see `logging::init`
     let log = logging::init(&xdg::process_env);
     info!("kwybars {} starting", env!("CARGO_PKG_VERSION"));
     log.report();
 
-    let config_path = match options.config_path {
-        Some(path) => path,
+    let loaded = load_config(&options)?;
+    let visualizer = &loaded.config.visualizer;
+    info!(
+        "config: layout {:?}, {} bars at {} fps, {} output override(s)",
+        visualizer.layout,
+        visualizer.bars,
+        visualizer.framerate,
+        loaded.config.overlay.outputs.len()
+    );
+
+    warn!("the overlay is not implemented yet in this build, exiting");
+    Ok(())
+}
+
+/// resolves and loads the config, logging where everything came from
+fn load_config(options: &RunOptions) -> Result<config::Loaded, AppError> {
+    let config_path = match &options.config_path {
+        Some(path) => path.clone(),
         None => config::default_path(&xdg::process_env)?,
     };
     let loaded = config::load(&config_path, &xdg::process_env)?;
@@ -47,18 +63,10 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
     if let Some(loaded_theme) = &loaded.theme {
         match &loaded_theme.origin {
             config::ThemeOrigin::File(path) => info!("theme: {}", path.display()),
-            config::ThemeOrigin::BuiltIn => info!("theme: {} (built-in)", loaded_theme.theme.name),
+            config::ThemeOrigin::BuiltIn => {
+                info!("theme: {} (built-in)", loaded_theme.theme.name);
+            }
         }
     }
-    let visualizer = &loaded.config.visualizer;
-    info!(
-        "config: layout {:?}, {} bars at {} fps, {} output override(s)",
-        visualizer.layout,
-        visualizer.bars,
-        visualizer.framerate,
-        loaded.config.overlay.outputs.len()
-    );
-
-    warn!("the overlay is not implemented yet in this build, exiting");
-    Ok(())
+    Ok(loaded)
 }

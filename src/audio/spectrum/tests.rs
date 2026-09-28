@@ -159,3 +159,45 @@ fn analyze_cost() {
         );
     }
 }
+
+/// prints per-bar raw levels of a recording, for tuning the dynamics
+///
+/// `pw-cat --record --raw --format f32 --rate 48000 --channels 2 -P stream.capture.sink=true music.f32`
+/// then `KWYBARS_RAW_AUDIO=music.f32 cargo test --release --lib -- --ignored --nocapture band_profile`
+#[test]
+#[ignore = "needs KWYBARS_RAW_AUDIO"]
+fn band_profile() {
+    let Some(path) = std::env::var_os("KWYBARS_RAW_AUDIO") else {
+        panic!("set KWYBARS_RAW_AUDIO to a raw f32 stereo 48 kHz file");
+    };
+    let bytes = std::fs::read(path).unwrap_or_else(|err| panic!("{err}"));
+    let bars: usize = std::env::var("KWYBARS_BARS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(30);
+    let mut analyzer = analyzer(bars, 2);
+    let hz_per_bin = RATE as f32 / analyzer.fft_len() as f32;
+    let mut levels: Vec<Vec<f32>> = vec![Vec::new(); bars];
+    for (index, raw) in bytes.as_chunks::<4>().0.iter().enumerate() {
+        analyzer.push_interleaved(f32::from_le_bytes(*raw));
+        if index % 4096 == 4095 {
+            for (bar, value) in analyzer.analyze().iter().enumerate() {
+                levels[bar].push(*value);
+            }
+        }
+    }
+    let bands = analyzer.bands().to_vec();
+    for (bar, values) in levels.iter_mut().enumerate() {
+        values.sort_by(f32::total_cmp);
+        let at = |q: f32| values[((values.len() - 1) as f32 * q) as usize];
+        let db = |v: f32| 20.0 * v.max(1e-9).log10();
+        let band = &bands[bar];
+        let center = (band.start.max(1) as f32 * band.end as f32).sqrt() * hz_per_bin;
+        println!(
+            "bar {bar:3} {center:7.0} Hz bins {:4}  median {:6.1} dB  p90 {:6.1} dB",
+            band.len(),
+            db(at(0.5)),
+            db(at(0.9))
+        );
+    }
+}

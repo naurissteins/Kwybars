@@ -15,6 +15,8 @@ use realfft::{RealFftPlanner, RealToComplex};
 
 use history::History;
 
+use crate::config::Config;
+
 /// analysis window length the fft size is derived from, in seconds
 const WINDOW_SECONDS: f32 = 0.085;
 
@@ -24,6 +26,16 @@ pub struct SpectrumConfig {
     pub bars: usize,
     pub low_cutoff_hz: f32,
     pub high_cutoff_hz: f32,
+}
+
+impl SpectrumConfig {
+    pub fn from_config(config: &Config) -> Self {
+        Self {
+            bars: config.visualizer.bars.max(1),
+            low_cutoff_hz: config.audio.low_cutoff_hz,
+            high_cutoff_hz: config.audio.high_cutoff_hz,
+        }
+    }
 }
 
 impl Default for SpectrumConfig {

@@ -5,6 +5,7 @@ use serde_ignored::Path;
 
 use super::Config;
 use super::activity::{self, ActivityTable, DaemonTable};
+use super::audio::AudioConfig;
 use super::compat;
 use super::image::ImageOverlayConfig;
 use super::overlay::OverlayConfig;
@@ -37,6 +38,7 @@ struct ConfigFile {
     image_overlay: ImageOverlayConfig,
     activity: ActivityTable,
     daemon: DaemonTable,
+    audio: AudioConfig,
 }
 
 /// parses config text; unknown keys become warnings, bad types become errors
@@ -65,6 +67,7 @@ fn build(file: ConfigFile, warnings: &mut Vec<String>) -> Result<Config, ParseEr
         mut image_overlay,
         activity,
         daemon,
+        mut audio,
     } = file;
 
     // [visualizer] wins over the root shorthand
@@ -92,12 +95,14 @@ fn build(file: ConfigFile, warnings: &mut Vec<String>) -> Result<Config, ParseEr
 
     image_overlay.normalize(warnings);
     let activity = activity::resolve(activity, daemon, warnings);
+    audio.normalize(warnings);
 
     Ok(Config {
         overlay,
         visualizer,
         image_overlay,
         activity,
+        audio,
     })
 }
 

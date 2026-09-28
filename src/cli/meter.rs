@@ -23,25 +23,44 @@ pub fn finish() {
 }
 
 fn line(snapshot: &StatusSnapshot) -> String {
-    let db = if snapshot.peak > 0.0 {
-        20.0 * snapshot.peak.log10()
-    } else {
-        f32::NEG_INFINITY
-    };
+    let db = peak_db(snapshot.peak);
     let filled = (((db - FLOOR_DB) / -FLOOR_DB).clamp(0.0, 1.0) * WIDTH as f32).round() as usize;
-    let level = if db.is_finite() {
-        format!("{db:6.1} dBFS")
-    } else {
-        "  -inf dBFS".to_owned()
-    };
     format!(
-        "{:<11} {:>6} Hz {} ch |{}{}| {level}",
+        "{:<11} {:>6} Hz {} ch |{}{}| {}",
         state_label(snapshot.state),
         snapshot.rate,
         snapshot.channels,
         "#".repeat(filled),
         " ".repeat(WIDTH - filled),
+        level_text(db),
     )
+}
+
+/// state, format, and peak on one line
+pub fn summary(snapshot: &StatusSnapshot) -> String {
+    format!(
+        "{:<11} {:>6} Hz {} ch  peak {}",
+        state_label(snapshot.state),
+        snapshot.rate,
+        snapshot.channels,
+        level_text(peak_db(snapshot.peak)),
+    )
+}
+
+fn peak_db(peak: f32) -> f32 {
+    if peak > 0.0 {
+        20.0 * peak.log10()
+    } else {
+        f32::NEG_INFINITY
+    }
+}
+
+fn level_text(db: f32) -> String {
+    if db.is_finite() {
+        format!("{db:6.1} dBFS")
+    } else {
+        "  -inf dBFS".to_owned()
+    }
 }
 
 fn state_label(state: CaptureState) -> &'static str {

@@ -82,3 +82,31 @@ fn unknown_daemon_keys_stay_unknown() {
     let parsed = parse_ok("[daemon]\ntypo = 1\n");
     assert_eq!(parsed.warnings, vec!["daemon.typo: unknown key, ignored"]);
 }
+
+#[test]
+fn audio_section_defaults_and_bounds() {
+    use crate::config::AudioConfig;
+    assert_eq!(parse_ok("").config.audio, AudioConfig::default());
+
+    let parsed = parse_ok(
+        "[audio]\nsensitivity = 2.5\nauto_sensitivity = false\nlow_cutoff_hz = 30\nhigh_cutoff_hz = 16000\nsmoothing = 0.5\n",
+    );
+    let audio = &parsed.config.audio;
+    assert_eq!(
+        (
+            audio.sensitivity,
+            audio.auto_sensitivity,
+            audio.low_cutoff_hz,
+            audio.high_cutoff_hz,
+            audio.smoothing
+        ),
+        (2.5, false, 30.0, 16_000.0, 0.5)
+    );
+    assert!(parsed.warnings.is_empty());
+
+    let parsed =
+        parse_ok("[audio]\nsmoothing = 1.5\nlow_cutoff_hz = 5000\nhigh_cutoff_hz = 6000\n");
+    assert_close(parsed.config.audio.smoothing, 0.95);
+    assert_close(parsed.config.audio.high_cutoff_hz, 10_000.0);
+    assert_eq!(parsed.warnings.len(), 2, "{:?}", parsed.warnings);
+}
