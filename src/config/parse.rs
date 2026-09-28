@@ -4,6 +4,8 @@ use serde::Deserialize;
 use serde_ignored::Path;
 
 use super::Config;
+use super::activity::{self, ActivityTable, DaemonTable};
+use super::compat;
 use super::image::ImageOverlayConfig;
 use super::overlay::OverlayConfig;
 use super::visualizer::{VisualizerConfig, VisualizerOverrides};
@@ -33,15 +35,23 @@ struct ConfigFile {
     overlay: OverlayConfig,
     visualizer: VisualizerOverrides,
     image_overlay: ImageOverlayConfig,
+    activity: ActivityTable,
+    daemon: DaemonTable,
 }
 
 /// parses config text; unknown keys become warnings, bad types become errors
 pub fn parse(raw: &str) -> Result<Parsed, ParseError> {
     let mut warnings = Vec::new();
+    let mut removed = Vec::new();
     let deserializer = toml::de::Deserializer::parse(raw)?;
     let file: ConfigFile = serde_ignored::deserialize(deserializer, |path| {
-        warnings.push(format!("{}: unknown key, ignored", key_path(&path)));
+        let key = key_path(&path);
+        match compat::removed_reason(&key) {
+            Some(reason) => removed.push((key, reason)),
+            None => warnings.push(format!("{key}: unknown key, ignored")),
+        }
     })?;
+    warnings.extend(compat::removed_warnings(&removed));
     let config = build(file, &mut warnings)?;
     Ok(Parsed { config, warnings })
 }
@@ -53,6 +63,8 @@ fn build(file: ConfigFile, warnings: &mut Vec<String>) -> Result<Config, ParseEr
         mut overlay,
         visualizer: mut overrides,
         mut image_overlay,
+        activity,
+        daemon,
     } = file;
 
     // [visualizer] wins over the root shorthand
@@ -79,11 +91,13 @@ fn build(file: ConfigFile, warnings: &mut Vec<String>) -> Result<Config, ParseEr
     }
 
     image_overlay.normalize(warnings);
+    let activity = activity::resolve(activity, daemon, warnings);
 
     Ok(Config {
         overlay,
         visualizer,
         image_overlay,
+        activity,
     })
 }
 

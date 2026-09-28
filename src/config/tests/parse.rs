@@ -212,11 +212,10 @@ fn unknown_keys_warn_with_their_path() {
     let parsed = parse_ok(FULL);
     assert_eq!(
         parsed.warnings,
-        // tables are visited in key order, not file order
         vec![
-            "daemon: unknown key, ignored",
-            "visualizer.backend: unknown key, ignored",
-            "visualizer.pipewire_attack: unknown key, ignored",
+            "daemon.enabled: removed (kwybars runs as a single process without a daemon), ignored",
+            "visualizer.backend, visualizer.pipewire_attack: removed (audio is captured from PipeWire directly), ignored",
+            "[daemon] is deprecated, move these keys to [activity]: daemon.activity_threshold -> activity.threshold",
         ]
     );
 

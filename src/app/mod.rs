@@ -29,7 +29,7 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
         Some(path) => path,
         None => config::default_path(&xdg::process_env)?,
     };
-    let loaded = config::load(&config_path)?;
+    let loaded = config::load(&config_path, &xdg::process_env)?;
     match loaded.source {
         config::Source::File => info!("config path: {} (found)", config_path.display()),
         config::Source::Defaults => info!(
@@ -38,7 +38,16 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
         ),
     }
     for warning in &loaded.warnings {
-        warn!("{}: {warning}", config_path.display());
+        warn!("{warning}");
+    }
+    if let Some(path) = &loaded.colors_path {
+        info!("colors: {}", path.display());
+    }
+    if let Some(loaded_theme) = &loaded.theme {
+        match &loaded_theme.origin {
+            config::ThemeOrigin::File(path) => info!("theme: {}", path.display()),
+            config::ThemeOrigin::BuiltIn => info!("theme: {} (built-in)", loaded_theme.theme.name),
+        }
     }
     let visualizer = &loaded.config.visualizer;
     info!(

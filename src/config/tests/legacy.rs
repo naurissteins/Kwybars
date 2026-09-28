@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use kwybars_common::config as legacy;
 
 use crate::config::{self, Config, OutputConfig, Rgba};
+use crate::xdg::fake_env;
 
 macro_rules! same {
     ($file:expr, $new:expr, $old:expr, [$($field:ident),+ $(,)?]) => {
@@ -117,6 +118,27 @@ fn assert_matches(file: &str, new: &Config, old: &legacy::AppConfig) {
         "{file}: color2_rgba"
     );
 
+    let (activity, daemon) = (&new.activity, &old.daemon);
+    assert_eq!(
+        format!(
+            "{:?}",
+            (
+                activity.threshold,
+                activity.activate_delay_ms,
+                activity.deactivate_delay_ms
+            )
+        ),
+        format!(
+            "{:?}",
+            (
+                daemon.activity_threshold,
+                daemon.activate_delay_ms,
+                daemon.deactivate_delay_ms
+            )
+        ),
+        "{file}: activity"
+    );
+
     let (image, old_image) = (&new.image_overlay, &old.image_overlay);
     same!(
         file,
@@ -206,7 +228,7 @@ fn assert_output_matches(file: &str, new: &OutputConfig, old: &legacy::OverlayOu
 
 fn compare_file(path: &Path) {
     let name = path.display().to_string();
-    let new = match config::load(path) {
+    let new = match config::load(path, &fake_env(&[])) {
         Ok(loaded) => loaded.config,
         Err(err) => panic!("{name}: new parser failed: {err}"),
     };
