@@ -63,6 +63,20 @@ fn unknown_flag_is_an_error() {
 }
 
 #[test]
+fn debug_audio_command() {
+    assert_eq!(
+        parse_args(&["debug", "audio"]).ok(),
+        Some(Command::DebugAudio)
+    );
+    for words in [&["debug"][..], &["debug", "video"][..]] {
+        match parse_args(words) {
+            Err(UsageError::UnknownCommand(name)) => assert_eq!(name, words.join(" ")),
+            other => panic!("expected unknown command, got {other:?}"),
+        }
+    }
+}
+
+#[test]
 fn unknown_command_is_named() {
     match parse_args(&["frobnicate"]) {
         Err(UsageError::UnknownCommand(name)) => assert_eq!(name, "frobnicate"),

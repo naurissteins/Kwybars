@@ -50,9 +50,11 @@ jobs:
             ninja-build \
             valac \
             gobject-introspection \
+            libclang-dev \
             libgirepository1.0-dev \
             libgdk-pixbuf-2.0-dev \
             libgtk-4-dev \
+            libpipewire-0.3-dev \
             libcairo2-dev \
             libglib2.0-dev \
             libwayland-dev \

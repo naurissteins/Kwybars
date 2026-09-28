@@ -6,13 +6,17 @@ use std::process::ExitCode;
 
 use crate::app::{self, RunOptions};
 
+mod meter;
 #[cfg(test)]
 mod tests;
 
 const USAGE: &str = "\
-Usage: kwybars [OPTIONS]
+Usage: kwybars [OPTIONS] [COMMAND]
 
 Runs the Kwybars audio visualizer overlay.
+
+Commands:
+  debug audio          Show a live level meter of the captured audio
 
 Options:
   -c, --config <PATH>  Load the config from PATH instead of the default location
@@ -26,6 +30,7 @@ pub enum Command {
     Run(RunOptions),
     Help,
     Version,
+    DebugAudio,
 }
 
 /// command line that could not be parsed
@@ -45,6 +50,7 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command, UsageE
     let mut options = RunOptions::default();
     let mut help = false;
     let mut version = false;
+    let mut words: Vec<String> = Vec::new();
 
     while let Some(arg) = parser.next()? {
         match arg {
@@ -53,12 +59,7 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command, UsageE
             }
             Short('h') | Long("help") => help = true,
             Short('V') | Long("version") => version = true,
-            // Subcommands such as `validate-config` are matched here once they exist.
-            Value(value) => {
-                return Err(UsageError::UnknownCommand(
-                    value.to_string_lossy().into_owned(),
-                ));
-            }
+            Value(value) => words.push(value.to_string_lossy().into_owned()),
             _ => return Err(arg.unexpected().into()),
         }
     }
@@ -68,7 +69,16 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command, UsageE
     } else if version {
         Command::Version
     } else {
-        Command::Run(options)
+        match words
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .as_slice()
+        {
+            [] => Command::Run(options),
+            ["debug", "audio"] => Command::DebugAudio,
+            _ => return Err(UsageError::UnknownCommand(words.join(" "))),
+        }
     })
 }
 
@@ -83,13 +93,22 @@ pub fn execute(command: Command) -> ExitCode {
             println!("kwybars {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
         }
-        Command::Run(options) => match app::run(options) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(err) => {
-                tracing::error!("{err}");
-                ExitCode::FAILURE
-            }
-        },
+        Command::Run(options) => exit_code(app::run(options)),
+        Command::DebugAudio => {
+            let result = app::debug::audio(meter::show);
+            meter::finish();
+            exit_code(result)
+        }
+    }
+}
+
+fn exit_code(result: Result<(), app::AppError>) -> ExitCode {
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            tracing::error!("{err}");
+            ExitCode::FAILURE
+        }
     }
 }
 

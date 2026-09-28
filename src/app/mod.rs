@@ -1,5 +1,6 @@
 //! startup, run, and shutdown of the overlay
 
+pub mod debug;
 mod error;
 mod logging;
 

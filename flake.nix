@@ -50,6 +50,8 @@
             nativeBuildInputs = with pkgs; [
               makeWrapper
               pkg-config
+              # libclang for the pipewire bindings
+              rustPlatform.bindgenHook
             ];
 
             buildInputs = with pkgs; [
@@ -310,6 +312,7 @@
               libnotify
               pipewire
               pkg-config
+              rustPlatform.bindgenHook
               rustc
               rustfmt
             ];

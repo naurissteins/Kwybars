@@ -18,5 +18,7 @@ pkgs.mkShell {
 
     # pkg-config so cargo's build scripts can find libraries
     pkg-config
+    # libclang for the pipewire bindings
+    rustPlatform.bindgenHook
   ];
 }
