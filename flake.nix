@@ -35,6 +35,7 @@
                 ./assets/examples
                 ./assets/themes
                 ./crates
+                ./src
                 ./docs/man
               ];
             };

@@ -1,6 +1,26 @@
+[package]
+name = "kwybars"
+description = "Audio visualizer overlay for Wayland desktops"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+lexopt = "0.3"
+thiserror = "2"
+time = { version = "0.3", features = ["local-offset", "macros"] }
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "fmt", "std", "time"] }
+
+[lints]
+workspace = true
+
 [workspace]
-members = ["crates/common", "crates/control", "crates/daemon", "crates/engine", "crates/overlay"]
-resolver = "2"
+# The legacy crates stay until Phase 2 of the rewrite removes them.
+members = [".", "crates/common", "crates/control", "crates/daemon", "crates/engine", "crates/overlay"]
+resolver = "3"
 
 [workspace.package]
 edition = "2024"
@@ -15,6 +35,7 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 dbg_macro = "deny"
 expect_used = "deny"
+self_named_module_files = "deny"
 unwrap_used = "deny"
 
 [profile.release]
