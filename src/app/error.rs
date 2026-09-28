@@ -1,10 +1,12 @@
-//! Top-level error type for running the overlay.
+//! top-level error type for running the overlay
 
-use crate::config::ConfigPathError;
+use crate::config::{ConfigError, ConfigPathError};
 
-/// A failure that stops Kwybars.
+/// failure that stops kwybars
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error(transparent)]
     ConfigPath(#[from] ConfigPathError),
+    #[error(transparent)]
+    Config(#[from] ConfigError),
 }

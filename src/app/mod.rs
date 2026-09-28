@@ -29,14 +29,25 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
         Some(path) => path,
         None => config::default_path(&xdg::process_env)?,
     };
-    if config_path.is_file() {
-        info!("config path: {} (found)", config_path.display());
-    } else {
-        info!(
+    let loaded = config::load(&config_path)?;
+    match loaded.source {
+        config::Source::File => info!("config path: {} (found)", config_path.display()),
+        config::Source::Defaults => info!(
             "config path: {} (not found, using built-in defaults)",
             config_path.display()
-        );
+        ),
     }
+    for warning in &loaded.warnings {
+        warn!("{}: {warning}", config_path.display());
+    }
+    let visualizer = &loaded.config.visualizer;
+    info!(
+        "config: layout {:?}, {} bars at {} fps, {} output override(s)",
+        visualizer.layout,
+        visualizer.bars,
+        visualizer.framerate,
+        loaded.config.overlay.outputs.len()
+    );
 
     warn!("the overlay is not implemented yet in this build, exiting");
     Ok(())

@@ -1,11 +1,8 @@
-//! kwybars: an audio visualizer overlay for Wayland desktops
-
-mod app;
-mod cli;
-mod config;
-mod xdg;
+//! kwybars binary entrypoint
 
 use std::process::ExitCode;
+
+use kwybars::cli;
 
 fn main() -> ExitCode {
     match cli::parse(std::env::args_os().skip(1)) {

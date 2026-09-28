@@ -9,10 +9,17 @@ repository.workspace = true
 
 [dependencies]
 lexopt = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_ignored = "0.1"
 thiserror = "2"
 time = { version = "0.3", features = ["local-offset", "macros"] }
+toml = { version = "1.1", default-features = false, features = ["parse", "serde", "std"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "fmt", "std", "time"] }
+
+[dev-dependencies]
+# compares the new config parser against the legacy one until phase 2
+kwybars-common = { path = "crates/common" }
 
 [lints]
 workspace = true
