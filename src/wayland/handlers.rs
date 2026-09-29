@@ -104,7 +104,17 @@ impl CompositorHandler for Wayland {
     ) {
     }
 
-    fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: u32) {}
+    fn frame(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        surface: &wl_surface::WlSurface,
+        _: u32,
+    ) {
+        if let Some(surface) = self.surface_mut(&surface.id()) {
+            surface.frame_done();
+        }
+    }
 
     fn surface_enter(
         &mut self,
@@ -169,13 +179,12 @@ impl LayerShellHandler for Wayland {
         configure: LayerSurfaceConfigure,
         _: u32,
     ) {
-        let shm = &self.shm;
         if let Some(surface) = self
             .surfaces
             .iter_mut()
             .find(|surface| surface.is_layer(layer))
         {
-            surface.configure(configure.new_size, shm);
+            surface.configure(configure.new_size);
         }
     }
 }

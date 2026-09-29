@@ -79,6 +79,7 @@ impl Wayland {
             layer_shell: &self.layer_shell,
             viewporter: self.viewporter.as_ref(),
             fractional: self.fractional.as_ref(),
+            format: self.format,
         };
         OutputSurface::new(
             &globals,

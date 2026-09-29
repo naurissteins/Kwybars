@@ -1,9 +1,10 @@
-//! one layer surface on one output, with its scale and shared-memory buffer
+//! one layer surface on one output, with its scale and shared-memory buffers
 
-mod fill;
+mod buffers;
+mod draw;
 
 use smithay_client_toolkit::compositor::{CompositorState, Region};
-use smithay_client_toolkit::reexports::client::protocol::wl_output::WlOutput;
+use smithay_client_toolkit::reexports::client::protocol::{wl_output::WlOutput, wl_shm};
 use smithay_client_toolkit::reexports::client::{Proxy, QueueHandle, backend::ObjectId};
 use smithay_client_toolkit::reexports::protocols::wp::fractional_scale::v1::client::{
     wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1,
@@ -16,10 +17,6 @@ use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::shell::wlr_layer::{
     Anchor, KeyboardInteractivity, Layer as ShellLayer, LayerShell, LayerSurface,
 };
-use smithay_client_toolkit::shm::Shm;
-use smithay_client_toolkit::shm::slot::{Buffer, SlotPool};
-
-use fill::DrawError;
 use tracing::{debug, info, warn};
 
 use super::Wayland;
@@ -27,6 +24,8 @@ use super::handlers::{NoEvents, ScaleData};
 use super::placement::{Anchors, Placement};
 use super::scale::Scale;
 use crate::config::{Layer, SurfaceConfig};
+use crate::render::{ByteOrder, Painter};
+use buffers::BufferRing;
 
 /// layer-shell namespace compositors can match rules on
 const NAMESPACE: &str = "kwybars";
@@ -37,6 +36,8 @@ pub struct Globals<'a> {
     pub layer_shell: &'a LayerShell,
     pub viewporter: Option<&'a WpViewporter>,
     pub fractional: Option<&'a WpFractionalScaleManagerV1>,
+    /// the shm format buffers use
+    pub format: wl_shm::Format,
 }
 
 /// the overlay on one output
@@ -52,8 +53,14 @@ pub struct OutputSurface {
     scale: Scale,
     configured: Option<(u32, u32)>,
     output_size: Option<(u32, u32)>,
-    pool: Option<SlotPool>,
-    buffer: Option<Buffer>,
+
+    applied: Option<(Scale, (u32, u32))>,
+    order: ByteOrder,
+    ring: BufferRing,
+    painter: Option<Painter>,
+    frame_pending: bool,
+    drawn: Option<u64>,
+    failed: bool,
 }
 
 impl OutputSurface {
@@ -127,8 +134,17 @@ impl OutputSurface {
             fractional_scale,
             configured: None,
             output_size: None,
-            pool: None,
-            buffer: None,
+            applied: None,
+            order: if globals.format == wl_shm::Format::Abgr8888 {
+                ByteOrder::Rgba
+            } else {
+                ByteOrder::Bgra
+            },
+            ring: BufferRing::new(globals.format),
+            painter: None,
+            frame_pending: false,
+            drawn: None,
+            failed: false,
         }
     }
 
@@ -153,29 +169,36 @@ impl OutputSurface {
         &self.label
     }
 
-    /// the compositor sent a size; draws when anything visible changed
-    pub fn configure(&mut self, size: (u32, u32), shm: &Shm) {
+    /// the compositor sent a size; the next render redraws when it changed
+    pub fn configure(&mut self, size: (u32, u32)) {
         debug!("{}: configured {}x{}", self.label, size.0, size.1);
-        if self.configured == Some(size) {
-            return;
+        if self.configured != Some(size) {
+            self.configured = Some(size);
+            self.drawn = None;
         }
-        self.configured = Some(size);
-        self.draw(shm);
     }
 
     pub fn set_output_size(&mut self, size: Option<(u32, u32)>) {
-        self.output_size = size;
+        if self.output_size != size {
+            self.output_size = size;
+            self.drawn = None;
+        }
     }
 
     /// a preferred scale from the compositor; integer scales are ignored
     /// while fractional scaling is in use
-    pub fn set_scale(&mut self, scale: Scale, shm: &Shm) {
+    pub fn set_scale(&mut self, scale: Scale) {
         let fractional = matches!(self.scale, Scale::Fractional(_));
         if matches!(scale, Scale::Fractional(_)) != fractional || self.scale == scale {
             return;
         }
         self.scale = scale;
-        self.draw(shm);
+        self.drawn = None;
+    }
+
+    /// the frame callback requested with the last commit arrived
+    pub fn frame_done(&mut self) {
+        self.frame_pending = false;
     }
 
     /// logical size and buffer size, once configured
@@ -184,52 +207,6 @@ impl OutputSurface {
             .placement
             .surface_size(self.configured?, self.output_size);
         Some((logical, self.scale.buffer_size(logical)))
-    }
-
-    /// fills the surface with the translucent placeholder
-    fn draw(&mut self, shm: &Shm) {
-        // attaching a buffer before the first configure is a protocol error
-        let Some((logical, size)) = self.sizes() else {
-            return;
-        };
-        if let Err(err) = self.present(shm, logical, size) {
-            warn!("could not draw the overlay on {}: {err}", self.label);
-            return;
-        }
-        debug!(
-            "{}: {}x{} logical, {}x{} buffer, scale {}",
-            self.label, logical.0, logical.1, size.0, size.1, self.scale
-        );
-    }
-
-    fn present(
-        &mut self,
-        shm: &Shm,
-        logical: (u32, u32),
-        size: (u32, u32),
-    ) -> Result<(), DrawError> {
-        let buffer = fill::buffer(&mut self.pool, shm, size, fill::color(&self.config))?;
-        let surface = self.layer.wl_surface();
-        match (&self.viewport, self.scale) {
-            (Some(viewport), Scale::Fractional(_)) => {
-                let (Ok(width), Ok(height)) = (i32::try_from(logical.0), i32::try_from(logical.1))
-                else {
-                    return Err(DrawError::TooLarge);
-                };
-                surface.set_buffer_scale(1);
-                viewport.set_destination(width, height);
-            }
-            (_, Scale::Integer(scale)) => {
-                surface.set_buffer_scale(i32::try_from(scale).map_err(|_| DrawError::TooLarge)?);
-            }
-            (None, Scale::Fractional(_)) => surface.set_buffer_scale(1),
-        }
-        buffer.attach_to(surface)?;
-        surface.damage_buffer(0, 0, buffer.stride() / 4, buffer.height());
-        self.layer.commit();
-        // the previous buffer goes back to the pool once the compositor releases it
-        self.buffer = Some(buffer);
-        Ok(())
     }
 }
 

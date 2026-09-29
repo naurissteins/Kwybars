@@ -14,8 +14,8 @@ use smithay_client_toolkit::reexports::calloop::{LoopHandle, RegistrationToken};
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::reexports::client::backend::ObjectId;
 use smithay_client_toolkit::reexports::client::globals::registry_queue_init;
-use smithay_client_toolkit::reexports::client::protocol::wl_output::WlOutput;
-use smithay_client_toolkit::reexports::client::{Connection, EventQueue};
+use smithay_client_toolkit::reexports::client::protocol::{wl_output::WlOutput, wl_shm};
+use smithay_client_toolkit::reexports::client::{Connection, EventQueue, QueueHandle};
 use smithay_client_toolkit::reexports::protocols::wp::fractional_scale::v1::client::wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1;
 use smithay_client_toolkit::reexports::protocols::wp::viewporter::client::wp_viewporter::WpViewporter;
 use smithay_client_toolkit::registry::RegistryState;
@@ -26,6 +26,7 @@ use tracing::{info, warn};
 pub use error::WaylandError;
 
 use crate::config::{Config, Theme};
+use crate::render::Frame;
 use handlers::NoEvents;
 use scale::Scale;
 use surface::OutputSurface;
@@ -45,6 +46,8 @@ pub struct Wayland {
     surfaces: Vec<OutputSurface>,
     closed: Vec<WlOutput>,
     ready: bool,
+    queue: QueueHandle<Self>,
+    format: wl_shm::Format,
 }
 
 impl Wayland {
@@ -86,26 +89,47 @@ impl Wayland {
             surfaces: Vec::new(),
             closed: Vec::new(),
             ready: false,
+            queue: qh.clone(),
+            format: wl_shm::Format::Argb8888,
         };
-        // outputs send their names and sizes in answer to being bound
+        // outputs send their names and sizes, and shm its formats, in answer
+        // to being bound
         queue.roundtrip(&mut wayland)?;
+        if wayland.shm.formats().contains(&wl_shm::Format::Abgr8888) {
+            wayland.format = wl_shm::Format::Abgr8888;
+        }
+        info!("wayland: drawing into {:?} buffers", wayland.format);
         wayland.ready = true;
         wayland.reconcile(&qh, None);
         Ok((wayland, queue))
     }
 
-    /// dispatches wayland events on `handle`'s loop; `D` gives access to self
+    /// dispatches wayland events on `handle`'s loop, then calls `after` so
+    /// surfaces whose frame callback arrived can draw; `D` gives access to self
     pub fn insert_source<D: AsMut<Self> + 'static>(
         &self,
         queue: EventQueue<Self>,
         handle: &LoopHandle<'static, D>,
+        mut after: impl FnMut(&mut D) + 'static,
     ) -> Result<RegistrationToken, calloop::Error> {
         let source = WaylandSource::new(self.connection.clone(), queue);
         handle
-            .insert_source(source, |(), queue, data| {
-                queue.dispatch_pending(data.as_mut())
+            .insert_source(source, move |(), queue, data| {
+                let dispatched = queue.dispatch_pending(data.as_mut());
+                after(data);
+                dispatched
             })
             .map_err(|err| err.error)
+    }
+
+    /// shows `frame` on every surface that is ready for it; returns how many
+    /// committed a new buffer
+    pub fn render(&mut self, frame: &Frame<'_>) -> usize {
+        let mut drawn = 0;
+        for surface in &mut self.surfaces {
+            drawn += usize::from(surface.render(frame, &self.shm, &self.queue));
+        }
+        drawn
     }
 
     /// explains an event loop failure when the compositor connection is what
@@ -127,14 +151,15 @@ impl Wayland {
         }
     }
 
-    fn scale_changed(&mut self, surface: &ObjectId, scale: Scale) {
-        let shm = &self.shm;
-        if let Some(surface) = self
-            .surfaces
+    fn surface_mut(&mut self, surface: &ObjectId) -> Option<&mut OutputSurface> {
+        self.surfaces
             .iter_mut()
             .find(|candidate| candidate.surface_id() == *surface)
-        {
-            surface.set_scale(scale, shm);
+    }
+
+    fn scale_changed(&mut self, surface: &ObjectId, scale: Scale) {
+        if let Some(surface) = self.surface_mut(surface) {
+            surface.set_scale(scale);
         }
     }
 }

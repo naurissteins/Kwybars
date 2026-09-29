@@ -7,7 +7,7 @@ mod logging;
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use calloop::EventLoop;
 use calloop::ping::make_ping;
@@ -64,7 +64,6 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
         Some(waker),
     )?;
     let motion = Motion::new(Arc::clone(capture.frames()), dynamics, frame_time);
-    info!("bars are computed but not drawn yet; surfaces show a placeholder fill");
 
     let mut event_loop: EventLoop<'static, App> = EventLoop::try_new()?;
     let mut app = App {
@@ -79,8 +78,13 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
             app.running = false;
         })
         .map_err(|err| err.error)?;
-    animation::insert_wake(&handle, wake)?;
-    app.wayland.insert_source(queue, &handle)?;
+    handle
+        .insert_source(wake, |(), (), app| {
+            app.animation.wake();
+            app.render();
+        })
+        .map_err(|err| err.error)?;
+    app.wayland.insert_source(queue, &handle, App::render)?;
 
     let result = dispatch(&mut event_loop, &mut app);
     // teardown order: the audio thread, then surfaces and buffers, then the
@@ -98,9 +102,12 @@ struct App {
     wayland: Wayland,
 }
 
-impl AsMut<Animation> for App {
-    fn as_mut(&mut self) -> &mut Animation {
-        &mut self.animation
+impl App {
+    /// steps the bars if a frame is due and lets ready surfaces draw it
+    fn render(&mut self) {
+        let frame = self.animation.frame(Instant::now());
+        let drawn = self.wayland.render(&frame);
+        self.animation.drawn(drawn);
     }
 }
 
@@ -113,7 +120,8 @@ impl AsMut<Wayland> for App {
 /// runs the loop until a signal asks to stop
 fn dispatch(event_loop: &mut EventLoop<'static, App>, app: &mut App) -> Result<(), AppError> {
     // a frame may have arrived before anyone asked to be woken
-    app.animation.wake(&event_loop.handle());
+    app.animation.wake();
+    app.render();
     while app.running {
         if let Err(err) = event_loop.dispatch(None, app) {
             // name the compositor when the connection is what failed
