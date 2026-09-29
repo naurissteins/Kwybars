@@ -60,20 +60,23 @@ impl OutputSurface {
 
     /// lays out the bars for `size`; false when nothing on screen changes
     fn layout(&mut self, frame: &Frame<'_>, size: (u32, u32)) -> bool {
-        let edge = self.config.overlay.position;
-        let painter = match &mut self.painter {
-            Some(painter) => painter,
-            None => self.painter.insert(Painter::new(
+        let scale = self.scale.factor();
+        if !self
+            .painter
+            .as_ref()
+            .is_some_and(|painter| painter.fits(size, scale))
+        {
+            self.painter = Some(Painter::new(
                 &self.config,
                 frame.heights.len(),
                 size,
+                scale,
                 self.order,
-            )),
-        };
-        if painter.size() != size {
-            painter.resize(size, edge);
+            ));
         }
-        painter.layout(frame.heights)
+        self.painter
+            .as_mut()
+            .is_some_and(|painter| painter.layout(frame.heights))
     }
 
     fn draw(

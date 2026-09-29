@@ -11,6 +11,14 @@ pub enum Scale {
 }
 
 impl Scale {
+    /// buffer pixels per logical pixel
+    pub fn factor(self) -> f32 {
+        match self {
+            Self::Fractional(scale) => scale as f32 / FRACTIONAL_DENOMINATOR as f32,
+            Self::Integer(scale) => scale.max(1) as f32,
+        }
+    }
+
     /// buffer size in physical pixels for a logical surface size
     pub fn buffer_size(self, logical: (u32, u32)) -> (u32, u32) {
         let scale = |extent: u32| -> u32 {

@@ -3,64 +3,73 @@
 #[cfg(test)]
 mod tests;
 
-use tiny_skia::{Color, Paint, Rect};
+use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::damage::{self, PixelRect};
-use super::pattern::Pattern;
-use super::{ByteOrder, Canvas};
-use crate::config::{Rgba, SurfaceConfig};
+use super::fill::Fill;
+use super::line::LineLayout;
+use super::{ByteOrder, Canvas, PixelRect};
+use crate::config::SurfaceConfig;
 
-/// the bars one buffer holds, so a reused buffer is only patched
+/// source of painter ids, so buffers know which geometry drew them
+static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+
+/// the bar extents one buffer holds, so a reused buffer is only patched
 #[derive(Debug, Clone, Default)]
 pub struct BufferContents {
-    bars: Vec<Option<Rect>>,
-    /// false for a new buffer, whose pixels are unknown
-    valid: bool,
+    extents: Vec<f32>,
+    /// the painter that drew them; 0 for a new buffer, whose pixels are unknown
+    painter: u64,
 }
 
 /// lays out bars for one surface and paints the difference into buffers
 #[derive(Debug)]
 pub struct Painter {
-    pattern: Pattern,
-    paint: Paint<'static>,
-    size: (u32, u32),
-    next: Vec<Option<Rect>>,
-    shown: Vec<Option<Rect>>,
+    id: u64,
+    layout: LineLayout,
+    fill: Fill,
+    scale: f32,
+    /// bar extents to draw next
+    next: Vec<f32>,
+    /// bar extents on screen, what the compositor's damage is relative to
+    shown: Vec<f32>,
     shown_valid: bool,
 }
 
 impl Painter {
-    /// allocates everything; later calls do not allocate
-    pub fn new(config: &SurfaceConfig, bars: usize, size: (u32, u32), order: ByteOrder) -> Self {
-        let mut paint = Paint::default();
-        paint.set_color(color(config, order));
-        paint.anti_alias = true;
+    /// allocates everything for a buffer of `size` at `scale` buffer pixels
+    /// per logical pixel; later calls do not allocate
+    pub fn new(
+        config: &SurfaceConfig,
+        bars: usize,
+        size: (u32, u32),
+        scale: f32,
+        order: ByteOrder,
+    ) -> Self {
+        let edge = config.overlay.position;
+        let layout = LineLayout::new(&config.visualizer, edge, size, scale, bars);
+        let fill = Fill::new(config, edge, size, bars, order);
         Self {
-            pattern: Pattern::new(config.overlay.position, size, bars),
-            paint,
-            size,
-            next: vec![None; bars],
-            shown: vec![None; bars],
+            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+            next: vec![0.0; layout.bars()],
+            shown: vec![0.0; layout.bars()],
+            layout,
+            fill,
+            scale,
             shown_valid: false,
         }
     }
 
-    pub fn size(&self) -> (u32, u32) {
-        self.size
-    }
-
-    /// a new buffer size; everything is redrawn and damaged
-    pub fn resize(&mut self, size: (u32, u32), edge: crate::config::Edge) {
-        self.pattern = Pattern::new(edge, size, self.next.len());
-        self.size = size;
-        self.shown_valid = false;
+    /// whether this painter was laid out for `size` and `scale`
+    pub fn fits(&self, size: (u32, u32), scale: f32) -> bool {
+        self.layout.size() == size && self.scale == scale
     }
 
     /// lays out `heights`; false when the result matches what is shown
     pub fn layout(&mut self, heights: &[f32]) -> bool {
-        for (index, bar) in self.next.iter_mut().enumerate() {
-            let value = heights.get(index).copied().unwrap_or(0.0);
-            *bar = self.pattern.bar(index, value);
+        for (index, extent) in self.next.iter_mut().enumerate() {
+            *extent = self
+                .layout
+                .extent(heights.get(index).copied().unwrap_or(0.0));
         }
         !self.shown_valid || self.next != self.shown
     }
@@ -68,36 +77,29 @@ impl Painter {
     /// empty contents sized for this painter's bars, for a new buffer
     pub fn new_contents(&self) -> BufferContents {
         BufferContents {
-            bars: vec![None; self.next.len()],
-            valid: false,
+            extents: vec![0.0; self.next.len()],
+            painter: 0,
         }
     }
 
     /// brings `canvas`, which holds `contents`, up to the laid out bars
     pub fn paint(&self, canvas: &mut Canvas<'_>, contents: &mut BufferContents) {
-        let size = canvas.size();
-        if !contents.valid || contents.bars.len() != self.next.len() {
-            let full = PixelRect::full(size);
-            canvas.clear(full);
-            for rect in self.next.iter().flatten() {
-                canvas.fill(*rect, &self.paint);
+        // a buffer drawn with other geometry, or never, is drawn whole
+        if contents.painter != self.id || contents.extents.len() != self.next.len() {
+            canvas.clear(PixelRect::full(canvas.size()));
+            for (index, extent) in self.next.iter().enumerate() {
+                if let Some(area) = self.layout.area(index, *extent) {
+                    self.layout.paint(canvas, index, *extent, area, &self.fill);
+                }
             }
-            contents.bars.clone_from(&self.next);
-            contents.valid = true;
+            contents.extents.clone_from(&self.next);
+            contents.painter = self.id;
             return;
         }
-        for (held, next) in contents.bars.iter_mut().zip(&self.next) {
-            // neighbours never share pixels, so each bar is patched alone
-            if let Some(area) = damage::change(*held, *next, size) {
+        for (index, (held, next)) in contents.extents.iter_mut().zip(&self.next).enumerate() {
+            if let Some(area) = self.layout.change(index, *held, *next) {
                 canvas.clear(area);
-                // only the part of the bar inside the cleared band is drawn,
-                // so translucent colors are never blended twice
-                let visible = next
-                    .zip(area.to_rect())
-                    .and_then(|(rect, area)| rect.intersect(&area));
-                if let Some(rect) = visible {
-                    canvas.fill(rect, &self.paint);
-                }
+                self.layout.paint(canvas, index, *next, area, &self.fill);
                 *held = *next;
             }
         }
@@ -107,27 +109,15 @@ impl Painter {
     /// then records the laid out bars as shown
     pub fn present(&mut self, mut each: impl FnMut(PixelRect)) {
         if self.shown_valid {
-            for (shown, next) in self.shown.iter().zip(&self.next) {
-                if let Some(area) = damage::change(*shown, *next, self.size) {
+            for (index, (shown, next)) in self.shown.iter().zip(&self.next).enumerate() {
+                if let Some(area) = self.layout.change(index, *shown, *next) {
                     each(area);
                 }
             }
         } else {
-            each(PixelRect::full(self.size));
+            each(PixelRect::full(self.layout.size()));
         }
         self.shown.copy_from_slice(&self.next);
         self.shown_valid = true;
     }
-}
-
-/// the first theme color, else the configured bar color, in `order`
-fn color(config: &SurfaceConfig, order: ByteOrder) -> Color {
-    let Rgba { r, g, b, a } = config
-        .theme_colors
-        .map_or(config.visualizer.color_rgba, |colors| colors[0]);
-    let (r, b) = match order {
-        ByteOrder::Rgba => (r, b),
-        ByteOrder::Bgra => (b, r),
-    };
-    Color::from_rgba(r, g, b, a).unwrap_or(Color::WHITE)
 }
