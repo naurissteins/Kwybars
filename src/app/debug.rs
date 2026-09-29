@@ -1,14 +1,16 @@
 //! `kwybars debug ...` runners
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use calloop::EventLoop;
-use calloop::signals::{Signal, Signals};
+use calloop::signals::Signals;
 use calloop::timer::{TimeoutAction, Timer};
 
-use super::{AppError, RunOptions, load_config, logging};
+use super::{AppError, RunOptions, block_signals, frame_time, load_config, logging};
 use crate::audio::capture::{Capture, CaptureSettings, StatusSnapshot};
 use crate::audio::dynamics::{Dynamics, DynamicsConfig};
+use crate::audio::motion::Motion;
 use crate::audio::spectrum::SpectrumConfig;
 use crate::xdg;
 
@@ -21,11 +23,15 @@ const METER_REFRESH: Duration = Duration::from_millis(50);
 pub fn audio(mut show: impl FnMut(&StatusSnapshot)) -> Result<(), AppError> {
     // must run before any thread is spawned, see `logging::init`
     logging::init(&xdg::process_env).report();
+    let signals = block_signals()?;
     let settings = CaptureSettings {
         interval: METER_ANALYSIS,
         spectrum: SpectrumConfig::default(),
     };
-    watch(settings, METER_REFRESH, |capture| show(&capture.status()))
+    let capture = Capture::spawn(settings, None)?;
+    watch(signals, capture, METER_REFRESH, |capture| {
+        show(&capture.status());
+    })
 }
 
 /// analyzes audio with the configured bars and tuning and passes bar heights
@@ -40,43 +46,30 @@ pub fn spectrum(
 ) -> Result<(), AppError> {
     logging::init(&xdg::process_env).report();
     let loaded = load_config(options)?;
-    let framerate = loaded.config.visualizer.framerate.max(1);
-    let frame_time = Duration::from_secs_f32(1.0 / framerate as f32);
+    let signals = block_signals()?;
+    let frame_time = frame_time(loaded.config.visualizer.framerate);
     let spectrum = SpectrumConfig::from_config(&loaded.config);
-    let mut dynamics = Dynamics::new(spectrum.bars, DynamicsConfig::from_config(&loaded.config));
-    let mut latest = vec![0.0; spectrum.bars];
-    let mut last_frame: Option<Instant> = None;
+    let dynamics = Dynamics::new(spectrum.bars, DynamicsConfig::from_config(&loaded.config));
     let settings = CaptureSettings {
         interval: frame_time,
         spectrum,
     };
-    watch(settings, frame_time, |capture| {
-        let now = Instant::now();
-        let dt = last_frame
-            .map_or(frame_time, |last| now - last)
-            .as_secs_f32();
-        last_frame = Some(now);
-        let frame = capture.frames().read_into(&mut latest);
-        dynamics.update((!frame.silent).then_some(latest.as_slice()), dt);
-        show(
-            dynamics.heights(),
-            &capture.status(),
-            dynamics.effective_gain(),
-        );
+    let capture = Capture::spawn(settings, None)?;
+    let mut motion = Motion::new(Arc::clone(capture.frames()), dynamics, frame_time);
+    // redraws even while silent, so the status line stays live
+    watch(signals, capture, frame_time, |capture| {
+        motion.advance(Instant::now());
+        show(motion.heights(), &capture.status(), motion.gain());
     })
 }
 
-/// runs capture until SIGINT or SIGTERM, calling `on_tick` every `refresh`
+/// calls `on_tick` every `refresh` until SIGINT or SIGTERM, then stops `capture`
 fn watch(
-    settings: CaptureSettings,
+    signals: Signals,
+    capture: Capture,
     refresh: Duration,
     mut on_tick: impl FnMut(&Capture),
 ) -> Result<(), AppError> {
-    // blocks these signals in this thread; the capture thread spawned next
-    // inherits the mask, so the signalfd below is the only receiver
-    let signals = Signals::new(&[Signal::SIGINT, Signal::SIGTERM])?;
-    let capture = Capture::spawn(settings)?;
-
     // the loop borrows `capture`, so it lives in its own scope
     {
         let mut event_loop: EventLoop<'_, bool> = EventLoop::try_new()?;

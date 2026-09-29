@@ -8,6 +8,8 @@ pub struct FrameSlot {
     sequence: AtomicU64,
     bars: Box<[AtomicU32]>,
     silent: AtomicBool,
+    /// the reader went idle and wants to hear about the next publish
+    wake_wanted: AtomicBool,
 }
 
 /// what [`FrameSlot::read_into`] found
@@ -24,6 +26,7 @@ impl FrameSlot {
             sequence: AtomicU64::new(0),
             bars: (0..bars).map(|_| AtomicU32::new(0)).collect(),
             silent: AtomicBool::new(true),
+            wake_wanted: AtomicBool::new(false),
         }
     }
 
@@ -36,21 +39,30 @@ impl FrameSlot {
     }
 
     /// stores a new frame of sound; must only be called from one thread
-    pub fn publish(&self, values: &[f32]) {
+    ///
+    /// returns true when the reader asked to be woken, see [`Self::request_wake`]
+    pub fn publish(&self, values: &[f32]) -> bool {
         self.write(|slot| {
             for (bar, value) in slot.bars.iter().zip(values) {
                 bar.store(value.to_bits(), Ordering::Relaxed);
             }
             slot.silent.store(false, Ordering::Relaxed);
-        });
+        })
     }
 
     /// marks the capture as silent; must only be called from one thread
-    pub fn publish_silence(&self) {
-        self.write(|slot| slot.silent.store(true, Ordering::Relaxed));
+    ///
+    /// returns true when the reader asked to be woken, see [`Self::request_wake`]
+    pub fn publish_silence(&self) -> bool {
+        self.write(|slot| slot.silent.store(true, Ordering::Relaxed))
     }
 
-    fn write(&self, store: impl FnOnce(&Self)) {
+    /// whether the newest frame is silence
+    pub fn is_silent(&self) -> bool {
+        self.silent.load(Ordering::Relaxed)
+    }
+
+    fn write(&self, store: impl FnOnce(&Self)) -> bool {
         let start = self.sequence.load(Ordering::Relaxed);
         self.sequence
             .store(start.wrapping_add(1), Ordering::Relaxed);
@@ -58,6 +70,23 @@ impl FrameSlot {
         store(self);
         self.sequence
             .store(start.wrapping_add(2), Ordering::Release);
+        // pairs with the fence in `request_wake`: either this sees the
+        // request or the reader sees the new sequence
+        fence(Ordering::SeqCst);
+        self.wake_wanted.load(Ordering::Relaxed) && self.wake_wanted.swap(false, Ordering::Relaxed)
+    }
+
+    /// asks the writer to report its next publish, for a reader that stops
+    /// polling; returns false without asking when a frame newer than `seen`
+    /// is already there
+    pub fn request_wake(&self, seen: u64) -> bool {
+        self.wake_wanted.store(true, Ordering::Relaxed);
+        fence(Ordering::SeqCst);
+        if self.frame_number() == seen {
+            return true;
+        }
+        self.wake_wanted.store(false, Ordering::Relaxed);
+        false
     }
 
     /// frames published so far, for cheap change detection
@@ -116,6 +145,25 @@ mod tests {
     }
 
     #[test]
+    fn only_a_requested_wake_is_reported() {
+        let slot = FrameSlot::new(1);
+        assert!(!slot.publish(&[0.5]));
+        assert!(slot.request_wake(1));
+        assert!(slot.publish(&[0.6]));
+        // the request is used up by one publish
+        assert!(!slot.publish_silence());
+    }
+
+    #[test]
+    fn a_stale_reader_is_not_put_to_sleep() {
+        let slot = FrameSlot::new(1);
+        slot.publish(&[0.5]);
+        slot.publish(&[0.6]);
+        assert!(!slot.request_wake(1));
+        assert!(!slot.publish(&[0.7]));
+    }
+
+    #[test]
     fn concurrent_readers_never_see_a_torn_frame() {
         let slot = Arc::new(FrameSlot::new(64));
         let done = Arc::new(AtomicBool::new(false));
@@ -142,5 +190,45 @@ mod tests {
         }
         assert!(writer.join().is_ok());
         assert!(reads > 0);
+    }
+
+    #[test]
+    fn no_publish_after_a_wake_request_goes_unreported() {
+        const FRAMES: u32 = 50_000;
+        let slot = Arc::new(FrameSlot::new(1));
+        let woken = Arc::new(AtomicBool::new(false));
+        let done = Arc::new(AtomicBool::new(false));
+        let writer = {
+            let (slot, woken, done) = (Arc::clone(&slot), Arc::clone(&woken), Arc::clone(&done));
+            std::thread::spawn(move || {
+                for round in 0..FRAMES {
+                    if slot.publish(&[round as f32]) {
+                        woken.store(true, Ordering::Release);
+                    }
+                }
+                done.store(true, Ordering::Release);
+            })
+        };
+        let mut out = [0.0_f32];
+        let mut sleeps = 0_u32;
+        loop {
+            let seen = slot.read_into(&mut out).number;
+            if seen == u64::from(FRAMES) {
+                break;
+            }
+            if slot.request_wake(seen) {
+                sleeps += 1;
+                // a newer frame will come, so it has to be reported
+                while !woken.swap(false, Ordering::Acquire) {
+                    if done.load(Ordering::Acquire) {
+                        assert!(woken.swap(false, Ordering::Acquire), "lost wake");
+                        break;
+                    }
+                    std::hint::spin_loop();
+                }
+            }
+        }
+        assert!(writer.join().is_ok());
+        assert!(sleeps > 0);
     }
 }

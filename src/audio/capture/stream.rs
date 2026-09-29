@@ -11,20 +11,15 @@ use pipewire::keys;
 use pipewire::main_loop::MainLoopRc;
 use pipewire::properties::properties;
 use pipewire::spa::param::ParamType;
-use pipewire::spa::param::audio::AudioInfoRaw;
 use pipewire::spa::pod::Pod;
 use pipewire::spa::utils::Direction;
 use pipewire::stream::{StreamFlags, StreamListener, StreamRc, StreamState};
 use tracing::{debug, warn};
 
+use super::analysis::StreamData;
 use super::format;
-use super::ring::SampleRing;
 use super::status::CaptureState;
 use super::{CaptureSettings, Shared};
-use crate::audio::pipeline::Pipeline;
-
-/// seconds of audio the ring holds
-const RING_SECONDS: usize = 1;
 
 /// a pipewire session that could not be set up
 #[derive(Debug, thiserror::Error)]
@@ -100,7 +95,7 @@ impl Session {
                         lost.set(true);
                         mainloop.quit();
                     }
-                    data.shared.status.set_state(state_of(&new));
+                    data.state_changed(state_of(&new));
                 }
             })
             .process(|stream, data| {
@@ -114,7 +109,7 @@ impl Session {
                             .min(bytes.len());
                         let start = (offset as usize).min(end);
                         if let Some(samples) = bytes.get(start..end) {
-                            data.ring.push_le_bytes(samples);
+                            data.push_le_bytes(samples);
                         }
                     }
                 }
@@ -154,92 +149,6 @@ fn state_of(state: &StreamState) -> CaptureState {
         StreamState::Paused => CaptureState::Idle,
         StreamState::Connecting | StreamState::Unconnected | StreamState::Error(_) => {
             CaptureState::Connecting
-        }
-    }
-}
-
-/// state owned by the stream callbacks, all on the capture thread
-struct StreamData {
-    shared: Arc<Shared>,
-    settings: CaptureSettings,
-    format: AudioInfoRaw,
-    ring: SampleRing,
-    /// created when the format is known
-    pipeline: Option<Pipeline>,
-    channels: u64,
-    /// ring position the last analysis stopped at
-    cursor: u64,
-    last_tick: Option<Instant>,
-    /// silence was already published, nothing to send until sound returns
-    silence_published: bool,
-}
-
-impl StreamData {
-    fn new(shared: Arc<Shared>, settings: CaptureSettings) -> Self {
-        Self {
-            shared,
-            settings,
-            format: AudioInfoRaw::default(),
-            ring: SampleRing::default(),
-            pipeline: None,
-            channels: 1,
-            cursor: 0,
-            last_tick: None,
-            silence_published: false,
-        }
-    }
-
-    /// resizes buffers for a newly negotiated format; not called per buffer
-    fn format_changed(&mut self, param: &Pod) {
-        if self.format.parse(param).is_err() {
-            return;
-        }
-        let (rate, channels) = (self.format.rate(), self.format.channels());
-        debug!("capture format: {rate} Hz, {channels} channels, f32");
-        self.shared.status.set_format(rate, channels);
-        self.channels = u64::from(channels.max(1));
-        self.ring
-            .reset(rate as usize * channels as usize * RING_SECONDS);
-        self.cursor = 0;
-        self.pipeline = (rate > 0 && channels > 0)
-            .then(|| Pipeline::new(rate, channels, &self.settings.spectrum));
-    }
-
-    /// analyzes new samples at most once per interval; must not allocate
-    fn tick(&mut self, now: Instant) {
-        if self
-            .last_tick
-            .is_some_and(|last| now.duration_since(last) < self.settings.interval)
-        {
-            return;
-        }
-        self.last_tick = Some(now);
-
-        let mut peak = 0.0_f32;
-        let pipeline = &mut self.pipeline;
-        self.cursor = self.ring.read_since(self.cursor, |sample| {
-            peak = peak.max(sample.abs());
-            if let Some(pipeline) = pipeline.as_mut() {
-                pipeline.push_interleaved(sample);
-            }
-        });
-
-        let status = &self.shared.status;
-        status.set_peak(peak);
-        status.set_frames(self.ring.written() / self.channels);
-        let Some(pipeline) = self.pipeline.as_mut() else {
-            return;
-        };
-        match pipeline.analyze(peak) {
-            Some(values) => {
-                self.shared.frames.publish(values);
-                self.silence_published = false;
-            }
-            None if !self.silence_published => {
-                self.shared.frames.publish_silence();
-                self.silence_published = true;
-            }
-            None => {}
         }
     }
 }

@@ -1,5 +1,6 @@
 //! pipewire capture of the default sink monitor on a dedicated thread
 
+mod analysis;
 mod format;
 mod ring;
 mod status;
@@ -11,6 +12,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+use calloop::ping::Ping;
 use pipewire::channel::Sender;
 use tracing::error;
 
@@ -34,6 +36,23 @@ pub struct CaptureSettings {
 struct Shared {
     status: CaptureStatus,
     frames: Arc<FrameSlot>,
+    /// wakes the reader's loop when it asked for the next frame
+    waker: Option<Ping>,
+}
+
+impl Shared {
+    /// publishes a spectrum, or silence unless the slot already holds it;
+    /// only the capture thread calls this
+    fn publish(&self, values: Option<&[f32]>) {
+        let wake = match values {
+            Some(values) => self.frames.publish(values),
+            None if !self.frames.is_silent() => self.frames.publish_silence(),
+            None => false,
+        };
+        if wake && let Some(waker) = &self.waker {
+            waker.ping();
+        }
+    }
 }
 
 /// the capture thread could not be started
@@ -49,11 +68,13 @@ pub struct Capture {
 }
 
 impl Capture {
-    /// starts capturing and analyzing
-    pub fn spawn(settings: CaptureSettings) -> Result<Self, CaptureError> {
+    /// starts capturing and analyzing; `waker` is pinged when a reader that
+    /// asked through [`FrameSlot::request_wake`] has a new frame
+    pub fn spawn(settings: CaptureSettings, waker: Option<Ping>) -> Result<Self, CaptureError> {
         let shared = Arc::new(Shared {
             status: CaptureStatus::default(),
             frames: Arc::new(FrameSlot::new(settings.spectrum.bars.max(1))),
+            waker,
         });
         let (commands, receiver) = pipewire::channel::channel();
         let thread_shared = Arc::clone(&shared);
