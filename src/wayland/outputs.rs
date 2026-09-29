@@ -59,9 +59,13 @@ impl Wayland {
             .unzip();
         let names: Vec<Option<&str>> = infos.iter().map(|info| info.name.as_deref()).collect();
         let selection = selection::select(&self.config.overlay, &names);
+        // outputs come and go often, so a warning is logged once while it holds
         for warning in &selection.warnings {
-            warn!("{warning}");
+            if !self.warned.contains(warning) {
+                warn!("{warning}");
+            }
         }
+        self.warned = selection.warnings;
         let wanted: Vec<_> = selection
             .targets
             .iter()

@@ -50,6 +50,8 @@ pub struct Wayland {
     theme: Option<Theme>,
     surfaces: Vec<OutputSurface>,
     closed: Vec<WlOutput>,
+    /// output selection warnings already logged
+    warned: Vec<String>,
     ready: bool,
     queue: QueueHandle<Self>,
     format: wl_shm::Format,
@@ -93,6 +95,7 @@ impl Wayland {
             theme,
             surfaces: Vec::new(),
             closed: Vec::new(),
+            warned: Vec::new(),
             ready: false,
             queue: qh.clone(),
             format: wl_shm::Format::Argb8888,
