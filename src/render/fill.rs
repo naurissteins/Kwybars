@@ -26,7 +26,10 @@ impl Fill {
         let stops: &[Rgba] = match &config.theme_colors {
             Some(colors) if direction == GradientDirection::Vertical => {
                 let colors = (0..bars)
-                    .map(|bar| order.pack(colors[bar_color_index(bar, bars, colors.len())]))
+                    .map(|bar| {
+                        let index = bar_color_index(bar, bars, colors.len());
+                        order.pack(colors.get(index).copied().unwrap_or(visualizer.color_rgba))
+                    })
                     .collect();
                 return Self::Bars(colors);
             }

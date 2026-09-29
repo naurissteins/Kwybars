@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use calloop::ping::make_ping;
+use calloop::ping::{Ping, make_ping};
 use calloop::signals::{Signal, Signals};
 use calloop::timer::{TimeoutAction, Timer};
 use calloop::{EventLoop, LoopHandle, RegistrationToken};
@@ -59,17 +59,8 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
     let theme = loaded.theme.as_ref().map(|loaded| loaded.theme.clone());
     let (wayland, queue) = Wayland::connect(config.clone(), theme)?;
     let (waker, wake) = make_ping().map_err(calloop::Error::from)?;
+    let (capture, motion) = start_audio(config, waker)?;
     let frame_time = frame_time(config.visualizer.framerate);
-    let spectrum = SpectrumConfig::from_config(config);
-    let dynamics = Dynamics::new(spectrum.bars, DynamicsConfig::from_config(config));
-    let capture = Capture::spawn(
-        CaptureSettings {
-            interval: frame_time,
-            spectrum,
-        },
-        Some(waker),
-    )?;
-    let motion = Motion::new(Arc::clone(capture.frames()), dynamics, frame_time);
 
     let mut event_loop: EventLoop<'static, App> = EventLoop::try_new()?;
     let handle = event_loop.handle();
@@ -186,6 +177,20 @@ fn dispatch(event_loop: &mut EventLoop<'static, App>, app: &mut App) -> Result<(
         }
     }
     Ok(())
+}
+
+/// starts capturing and the bar motion that follows it
+fn start_audio(config: &Config, waker: Ping) -> Result<(Capture, Motion), AppError> {
+    let frame_time = frame_time(config.visualizer.framerate);
+    let spectrum = SpectrumConfig::from_config(config);
+    let dynamics = Dynamics::new(spectrum.bars, DynamicsConfig::from_config(config));
+    let settings = CaptureSettings {
+        interval: frame_time,
+        spectrum,
+    };
+    let capture = Capture::spawn(settings, Some(waker))?;
+    let motion = Motion::new(Arc::clone(capture.frames()), dynamics, frame_time);
+    Ok((capture, motion))
 }
 
 fn block_signals() -> Result<Signals, AppError> {

@@ -13,7 +13,7 @@ use pipewire::properties::properties;
 use pipewire::spa::param::ParamType;
 use pipewire::spa::pod::Pod;
 use pipewire::spa::utils::Direction;
-use pipewire::stream::{StreamFlags, StreamListener, StreamRc, StreamState};
+use pipewire::stream::{Stream, StreamFlags, StreamListener, StreamRc, StreamState};
 use tracing::{debug, warn};
 
 use super::Shared;
@@ -79,44 +79,7 @@ impl Session {
         };
         let stream = StreamRc::new(core.clone(), "kwybars", props)?;
         let data = StreamData::new(Arc::clone(shared), Rc::clone(tuning));
-        let stream_listener = stream
-            .add_local_listener_with_user_data(data)
-            .param_changed(|_, data, id, param| {
-                if let Some(param) = param
-                    && id == ParamType::Format.as_raw()
-                {
-                    data.format_changed(param);
-                }
-            })
-            .state_changed({
-                let (mainloop, lost) = (mainloop.clone(), Rc::clone(&lost));
-                move |_, data, _old, new| {
-                    if let StreamState::Error(message) = &new {
-                        warn!("pipewire stream error: {message}");
-                        lost.set(true);
-                        mainloop.quit();
-                    }
-                    data.state_changed(state_of(&new));
-                }
-            })
-            .process(|stream, data| {
-                if let Some(mut buffer) = stream.dequeue_buffer()
-                    && let Some(chunk) = buffer.datas_mut().first_mut()
-                {
-                    let (offset, size) = (chunk.chunk().offset(), chunk.chunk().size());
-                    if let Some(bytes) = chunk.data() {
-                        let end = (offset as usize)
-                            .saturating_add(size as usize)
-                            .min(bytes.len());
-                        let start = (offset as usize).min(end);
-                        if let Some(samples) = bytes.get(start..end) {
-                            data.push_le_bytes(samples);
-                        }
-                    }
-                }
-                data.tick(Instant::now());
-            })
-            .register()?;
+        let stream_listener = listen(&stream, data, mainloop, &lost)?;
 
         let format = format::enum_format().map_err(SessionError::Format)?;
         let pod = Pod::from_bytes(&format)
@@ -141,6 +104,60 @@ impl Session {
     /// whether the connection ended because of an error
     pub fn lost(&self) -> bool {
         self.lost.get()
+    }
+}
+
+/// registers the callbacks that feed `data` from the stream
+fn listen(
+    stream: &StreamRc,
+    data: StreamData,
+    mainloop: &MainLoopRc,
+    lost: &Rc<Cell<bool>>,
+) -> Result<StreamListener<StreamData>, pipewire::Error> {
+    stream
+        .add_local_listener_with_user_data(data)
+        .param_changed(|_, data, id, param| {
+            if let Some(param) = param
+                && id == ParamType::Format.as_raw()
+            {
+                data.format_changed(param);
+            }
+        })
+        .state_changed({
+            let (mainloop, lost) = (mainloop.clone(), Rc::clone(lost));
+            move |_, data, _old, new| {
+                if let StreamState::Error(message) = &new {
+                    warn!("pipewire stream error: {message}");
+                    lost.set(true);
+                    mainloop.quit();
+                }
+                data.state_changed(state_of(&new));
+            }
+        })
+        .process(|stream, data| {
+            copy_buffer(stream, data);
+            data.tick(Instant::now());
+        })
+        .register()
+}
+
+/// moves the next buffer's samples into the ring
+fn copy_buffer(stream: &Stream, data: &mut StreamData) {
+    let Some(mut buffer) = stream.dequeue_buffer() else {
+        return;
+    };
+    let Some(chunk) = buffer.datas_mut().first_mut() else {
+        return;
+    };
+    let (offset, size) = (chunk.chunk().offset(), chunk.chunk().size());
+    if let Some(bytes) = chunk.data() {
+        let end = (offset as usize)
+            .saturating_add(size as usize)
+            .min(bytes.len());
+        let start = (offset as usize).min(end);
+        if let Some(samples) = bytes.get(start..end) {
+            data.push_le_bytes(samples);
+        }
     }
 }
 

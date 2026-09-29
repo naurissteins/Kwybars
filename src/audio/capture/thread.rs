@@ -53,19 +53,7 @@ pub(super) fn run(
     let stop = Rc::new(Cell::new(false));
     let _commands = commands.attach(mainloop.loop_(), {
         let (mainloop, stop, tuning) = (mainloop.clone(), Rc::clone(&stop), Rc::clone(&tuning));
-        move |command| match command {
-            Command::Stop => {
-                stop.set(true);
-                mainloop.quit();
-            }
-            Command::Reconfigure { settings, frames } => {
-                debug!("capture: new analysis settings {settings:?}");
-                let mut tuning = tuning.borrow_mut();
-                tuning.settings = settings;
-                tuning.frames = frames;
-                tuning.generation += 1;
-            }
-        }
+        move |command| obey(command, &mainloop, &stop, &tuning)
     });
 
     let mut retry = FIRST_RETRY;
@@ -100,6 +88,22 @@ pub(super) fn run(
         }
     }
     status.set_state(CaptureState::Stopped);
+}
+
+fn obey(command: Command, mainloop: &MainLoopRc, stop: &Cell<bool>, tuning: &RefCell<Tuning>) {
+    match command {
+        Command::Stop => {
+            stop.set(true);
+            mainloop.quit();
+        }
+        Command::Reconfigure { settings, frames } => {
+            debug!("capture: new analysis settings {settings:?}");
+            let mut tuning = tuning.borrow_mut();
+            tuning.settings = settings;
+            tuning.frames = frames;
+            tuning.generation += 1;
+        }
+    }
 }
 
 /// runs the loop for `delay` so a stop request still gets through

@@ -8,8 +8,10 @@ mod visibility;
 
 use std::time::Duration;
 
-use smithay_client_toolkit::compositor::{CompositorState, Region};
-use smithay_client_toolkit::reexports::client::protocol::{wl_output::WlOutput, wl_shm};
+use smithay_client_toolkit::compositor::CompositorState;
+use smithay_client_toolkit::reexports::client::protocol::{
+    wl_output::WlOutput, wl_shm, wl_surface::WlSurface,
+};
 use smithay_client_toolkit::reexports::client::{Proxy, QueueHandle, backend::ObjectId};
 use smithay_client_toolkit::reexports::protocols::wp::fractional_scale::v1::client::{
     wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1,
@@ -20,7 +22,7 @@ use smithay_client_toolkit::reexports::protocols::wp::viewporter::client::{
 };
 use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::shell::wlr_layer::{LayerShell, LayerSurface};
-use tracing::{debug, info, warn};
+use tracing::debug;
 
 use super::Wayland;
 use super::handlers::{NoEvents, ScaleData};
@@ -30,7 +32,7 @@ use crate::activity::Fade;
 use crate::config::SurfaceConfig;
 use crate::render::{ByteOrder, Painter};
 use buffers::BufferRing;
-use layer::{place, shell_layer};
+use layer::create_layer;
 
 /// layer-shell namespace compositors can match rules on
 const NAMESPACE: &str = "kwybars";
@@ -83,43 +85,8 @@ impl OutputSurface {
     ) -> Self {
         let placement = Placement::new(&config.overlay, config.visualizer.layout);
         let wl_surface = globals.compositor.create_surface(qh);
-        let (viewport, fractional_scale) = match (globals.viewporter, globals.fractional) {
-            (Some(viewporter), Some(fractional)) => (
-                Some(viewporter.get_viewport(&wl_surface, qh, NoEvents)),
-                Some(fractional.get_fractional_scale(
-                    &wl_surface,
-                    qh,
-                    ScaleData {
-                        surface: wl_surface.id(),
-                    },
-                )),
-            ),
-            _ => (None, None),
-        };
-        let layer = globals.layer_shell.create_layer_surface(
-            qh,
-            wl_surface,
-            shell_layer(placement.layer),
-            Some(NAMESPACE),
-            Some(output),
-        );
-        place(&layer, &placement);
-        // an empty input region lets every click through to what is below
-        match Region::new(globals.compositor) {
-            Ok(region) => layer
-                .wl_surface()
-                .set_input_region(Some(region.wl_region())),
-            Err(err) => warn!("could not make {label} click-through: {err}"),
-        }
-        // nothing is committed until audio plays, see `visibility`
-        info!(
-            "overlay on {label}: {:?} layer, anchors {:?}, margins {:?}, size {}x{} (0 stretches)",
-            placement.layer,
-            placement.anchors,
-            placement.margins,
-            placement.width,
-            placement.height
-        );
+        let (viewport, fractional_scale) = scale_objects(globals, qh, &wl_surface);
+        let layer = create_layer(globals, qh, wl_surface, output, &placement, &label);
 
         Self {
             output: output.clone(),
@@ -221,6 +188,24 @@ impl OutputSurface {
             .surface_size(self.configured?, self.output_size);
         Some((logical, self.scale.buffer_size(logical)))
     }
+}
+
+/// the viewport and fractional scale objects, when the compositor has both
+fn scale_objects(
+    globals: &Globals<'_>,
+    qh: &QueueHandle<Wayland>,
+    wl_surface: &WlSurface,
+) -> (Option<WpViewport>, Option<WpFractionalScaleV1>) {
+    let (Some(viewporter), Some(fractional)) = (globals.viewporter, globals.fractional) else {
+        return (None, None);
+    };
+    let data = ScaleData {
+        surface: wl_surface.id(),
+    };
+    (
+        Some(viewporter.get_viewport(wl_surface, qh, NoEvents)),
+        Some(fractional.get_fractional_scale(wl_surface, qh, data)),
+    )
 }
 
 impl Drop for OutputSurface {
