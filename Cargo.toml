@@ -14,6 +14,7 @@ pipewire = "0.10"
 realfft = "3.5"
 serde = { version = "1", features = ["derive"] }
 serde_ignored = "0.1"
+smithay-client-toolkit = { version = "0.21", default-features = false, features = ["calloop"] }
 thiserror = "2"
 time = { version = "0.3", features = ["local-offset", "macros"] }
 toml = { version = "1.1", default-features = false, features = ["parse", "serde", "std"] }

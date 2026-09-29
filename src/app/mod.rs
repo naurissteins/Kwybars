@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use calloop::EventLoop;
-use calloop::ping::{PingSource, make_ping};
+use calloop::ping::make_ping;
 use calloop::signals::{Signal, Signals};
 use tracing::{info, warn};
 
@@ -20,6 +20,7 @@ use crate::audio::capture::{Capture, CaptureSettings};
 use crate::audio::dynamics::{Dynamics, DynamicsConfig};
 use crate::audio::motion::Motion;
 use crate::audio::spectrum::SpectrumConfig;
+use crate::wayland::Wayland;
 use crate::{config, xdg};
 use animation::Animation;
 
@@ -48,6 +49,9 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
     );
 
     let signals = block_signals()?;
+    // before the audio thread starts, so a compositor without layer shell fails fast
+    let theme = loaded.theme.as_ref().map(|loaded| loaded.theme.clone());
+    let (wayland, queue) = Wayland::connect(config.clone(), theme)?;
     let (waker, wake) = make_ping().map_err(calloop::Error::from)?;
     let frame_time = frame_time(config.visualizer.framerate);
     let spectrum = SpectrumConfig::from_config(config);
@@ -60,29 +64,14 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
         Some(waker),
     )?;
     let motion = Motion::new(Arc::clone(capture.frames()), dynamics, frame_time);
-    warn!("surfaces are not implemented yet in this build: bars are computed but not drawn");
+    info!("bars are computed but not drawn yet; surfaces show a placeholder fill");
 
-    let result = run_loop(signals, wake, Animation::new(motion, frame_time));
-    // teardown order: the audio thread first, then surfaces and wayland
-    capture.stop();
-    info!("kwybars stopped");
-    result
-}
-
-/// state the main loop callbacks share
-struct App {
-    running: bool,
-    animation: Animation,
-}
-
-impl AsMut<Animation> for App {
-    fn as_mut(&mut self) -> &mut Animation {
-        &mut self.animation
-    }
-}
-
-fn run_loop(signals: Signals, wake: PingSource, animation: Animation) -> Result<(), AppError> {
     let mut event_loop: EventLoop<'static, App> = EventLoop::try_new()?;
+    let mut app = App {
+        running: true,
+        animation: Animation::new(motion, frame_time),
+        wayland,
+    };
     let handle = event_loop.handle();
     handle
         .insert_source(signals, |event, (), app| {
@@ -91,15 +80,46 @@ fn run_loop(signals: Signals, wake: PingSource, animation: Animation) -> Result<
         })
         .map_err(|err| err.error)?;
     animation::insert_wake(&handle, wake)?;
+    app.wayland.insert_source(queue, &handle)?;
 
-    let mut app = App {
-        running: true,
-        animation,
-    };
+    let result = dispatch(&mut event_loop, &mut app);
+    // teardown order: the audio thread, then surfaces and buffers, then the
+    // connection, which closes when the loop and its wayland source drop
+    capture.stop();
+    app.wayland.shutdown();
+    info!("kwybars stopped");
+    result
+}
+
+/// state the main loop callbacks share
+struct App {
+    running: bool,
+    animation: Animation,
+    wayland: Wayland,
+}
+
+impl AsMut<Animation> for App {
+    fn as_mut(&mut self) -> &mut Animation {
+        &mut self.animation
+    }
+}
+
+impl AsMut<Wayland> for App {
+    fn as_mut(&mut self) -> &mut Wayland {
+        &mut self.wayland
+    }
+}
+
+/// runs the loop until a signal asks to stop
+fn dispatch(event_loop: &mut EventLoop<'static, App>, app: &mut App) -> Result<(), AppError> {
     // a frame may have arrived before anyone asked to be woken
-    app.animation.wake(&handle);
+    app.animation.wake(&event_loop.handle());
     while app.running {
-        event_loop.dispatch(None, &mut app)?;
+        if let Err(err) = event_loop.dispatch(None, app) {
+            // name the compositor when the connection is what failed
+            app.wayland.check_connection()?;
+            return Err(err.into());
+        }
     }
     Ok(())
 }
