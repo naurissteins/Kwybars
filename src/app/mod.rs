@@ -4,8 +4,9 @@ mod animation;
 pub mod debug;
 mod error;
 mod logging;
+mod reload;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -22,6 +23,8 @@ use crate::audio::capture::{Capture, CaptureSettings};
 use crate::audio::dynamics::{Dynamics, DynamicsConfig};
 use crate::audio::motion::Motion;
 use crate::audio::spectrum::SpectrumConfig;
+use crate::config::{Config, Theme};
+use crate::reload::Reloader;
 use crate::wayland::Wayland;
 use crate::{config, xdg};
 use animation::Animation;
@@ -40,7 +43,8 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
     info!("kwybars {} starting", env!("CARGO_PKG_VERSION"));
     log.report();
 
-    let loaded = load_config(&options)?;
+    let config_path = config_path(&options)?;
+    let loaded = load_config(&config_path)?;
     let config = &loaded.config;
     info!(
         "config: layout {:?}, {} bars at {} fps, {} output override(s)",
@@ -69,6 +73,7 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
 
     let mut event_loop: EventLoop<'static, App> = EventLoop::try_new()?;
     let handle = event_loop.handle();
+    let reloader = reload::start(&handle, config_path, &loaded);
     let mut app = App {
         running: true,
         animation: Animation::new(motion, frame_time),
@@ -76,6 +81,11 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
         timer: None,
         handle: handle.clone(),
         wayland,
+        capture,
+        reloader,
+        config: loaded.config,
+        theme: loaded.theme.map(|loaded| loaded.theme),
+        warnings: loaded.warnings,
     };
     handle
         .insert_source(signals, |event, (), app| {
@@ -91,7 +101,7 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
     let result = dispatch(&mut event_loop, &mut app);
     // teardown order: the audio thread, then surfaces and buffers, then the
     // connection, which closes when the loop and its wayland source drop
-    capture.stop();
+    app.capture.shutdown();
     app.wayland.shutdown();
     info!("kwybars stopped");
     result
@@ -106,6 +116,11 @@ struct App {
     timer: Option<(RegistrationToken, Instant)>,
     handle: LoopHandle<'static, App>,
     wayland: Wayland,
+    capture: Capture,
+    reloader: Option<Reloader>,
+    config: Config,
+    theme: Option<Theme>,
+    warnings: Vec<String>,
 }
 
 impl App {
@@ -182,13 +197,17 @@ fn frame_time(framerate: u32) -> Duration {
     Duration::from_secs(1) / framerate.max(1)
 }
 
-/// resolves and loads the config, logging where everything came from
-fn load_config(options: &RunOptions) -> Result<config::Loaded, AppError> {
-    let config_path = match &options.config_path {
+/// `--config`, else the default location
+fn config_path(options: &RunOptions) -> Result<PathBuf, AppError> {
+    Ok(match &options.config_path {
         Some(path) => path.clone(),
         None => config::default_path(&xdg::process_env)?,
-    };
-    let loaded = config::load(&config_path, &xdg::process_env)?;
+    })
+}
+
+/// loads the config, logging where everything came from
+fn load_config(config_path: &Path) -> Result<config::Loaded, AppError> {
+    let loaded = config::load(config_path, &xdg::process_env)?;
     match loaded.source {
         config::Source::File => info!("config path: {} (found)", config_path.display()),
         config::Source::Defaults => info!(

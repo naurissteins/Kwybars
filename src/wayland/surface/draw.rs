@@ -68,7 +68,7 @@ impl OutputSurface {
         if !self
             .painter
             .as_ref()
-            .is_some_and(|painter| painter.fits(size, scale))
+            .is_some_and(|painter| painter.fits(size, scale, frame.heights.len()))
         {
             self.painter = Some(Painter::new(
                 &self.config,

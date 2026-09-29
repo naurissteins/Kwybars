@@ -7,7 +7,7 @@ use calloop::EventLoop;
 use calloop::signals::Signals;
 use calloop::timer::{TimeoutAction, Timer};
 
-use super::{AppError, RunOptions, block_signals, frame_time, load_config, logging};
+use super::{AppError, RunOptions, block_signals, config_path, frame_time, load_config, logging};
 use crate::audio::capture::{Capture, CaptureSettings, StatusSnapshot};
 use crate::audio::dynamics::{Dynamics, DynamicsConfig};
 use crate::audio::motion::Motion;
@@ -45,7 +45,7 @@ pub fn spectrum(
     mut show: impl FnMut(&[f32], &StatusSnapshot, f32),
 ) -> Result<(), AppError> {
     logging::init(&xdg::process_env).report();
-    let loaded = load_config(options)?;
+    let loaded = load_config(&config_path(options)?)?;
     let signals = block_signals()?;
     let frame_time = frame_time(loaded.config.visualizer.framerate);
     let spectrum = SpectrumConfig::from_config(&loaded.config);

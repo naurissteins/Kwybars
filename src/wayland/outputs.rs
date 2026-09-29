@@ -3,13 +3,43 @@
 use smithay_client_toolkit::reexports::client::protocol::wl_output::WlOutput;
 use smithay_client_toolkit::reexports::client::{Proxy, QueueHandle};
 use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
+use std::time::Instant;
+
 use tracing::{info, warn};
 
 use super::Wayland;
 use super::selection;
 use super::surface::{Globals, OutputSurface};
+use crate::config::{Config, Theme};
 
 impl Wayland {
+    /// takes a reloaded config and theme: surfaces are updated in place where
+    /// the protocol allows, then outputs are selected again
+    pub fn reconfigure(&mut self, config: Config, theme: Option<Theme>, now: Instant) {
+        self.config = config;
+        self.theme = theme;
+        let qh = self.queue.clone();
+        for index in 0..self.surfaces.len() {
+            let Some(surface) = self.surfaces.get_mut(index) else {
+                continue;
+            };
+            let entry = surface.entry();
+            let output_entry = entry.and_then(|entry| self.config.overlay.outputs.get(entry));
+            if surface.reconfigure(self.config.surface(output_entry, self.theme.as_ref()), now) {
+                continue;
+            }
+            info!("moving the overlay on {} to another layer", surface.label());
+            let output = surface.output().clone();
+            let replacement = self.create_surface(&qh, &output, entry);
+            if let Some(slot) = self.surfaces.get_mut(index) {
+                *slot = replacement;
+            }
+        }
+        // drops surfaces no longer selected, adds new ones, and gives every
+        // surface its output size
+        self.reconcile(&qh, None);
+    }
+
     /// creates and removes surfaces so the selected outputs have one each;
     /// `gone` is an output that is being removed
     pub(super) fn reconcile(&mut self, qh: &QueueHandle<Self>, gone: Option<&WlOutput>) {

@@ -25,6 +25,7 @@ pub struct BufferContents {
 #[derive(Debug)]
 pub struct Painter {
     id: u64,
+    bars: usize,
     layout: LineLayout,
     base: Fill,
     fill: Fill,
@@ -49,6 +50,7 @@ impl Painter {
         let base = Fill::new(config, edge, size, bars, order);
         Self {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+            bars,
             next: vec![0.0; layout.bars()],
             opacity: u8::MAX,
             shown: vec![0.0; layout.bars()],
@@ -62,8 +64,8 @@ impl Painter {
     }
 
     /// whether this painter was laid out for `size` and `scale`
-    pub fn fits(&self, size: (u32, u32), scale: f32) -> bool {
-        self.layout.size() == size && self.scale == scale
+    pub fn fits(&self, size: (u32, u32), scale: f32, bars: usize) -> bool {
+        self.layout.size() == size && self.scale == scale && self.bars == bars
     }
 
     /// lays out `heights` at `opacity` out of 255; false when the result

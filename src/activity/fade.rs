@@ -22,6 +22,16 @@ impl Fade {
         }
     }
 
+    /// takes new durations, continuing from the opacity at `now`
+    pub fn set_durations(&mut self, fade_in: Duration, fade_out: Duration, now: Instant) {
+        if self.since.is_some() {
+            self.from = self.opacity(now);
+            self.since = Some(now);
+        }
+        self.fade_in = fade_in;
+        self.fade_out = fade_out;
+    }
+
     /// whether the opacity is heading for 1
     pub fn is_visible(&self) -> bool {
         self.visible
@@ -126,5 +136,16 @@ mod tests {
         fade.set_visible(false, start);
         assert_eq!(fade.opacity(start), 0.0);
         assert!(!fade.is_fading(start));
+    }
+
+    #[test]
+    fn new_durations_continue_from_the_current_opacity() {
+        let start = Instant::now();
+        let mut fade = Fade::new(ms(100), ms(100));
+        fade.set_visible(true, start);
+        fade.set_durations(ms(1_000), ms(100), start + ms(50));
+        let later = fade.opacity(start + ms(550));
+        assert!((later - 1.0).abs() < 1e-3, "{later}");
+        assert!(fade.is_fading(start + ms(500)));
     }
 }

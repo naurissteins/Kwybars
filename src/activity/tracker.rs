@@ -25,6 +25,13 @@ impl ActivityTracker {
         }
     }
 
+    /// takes new settings, keeping the state and any pending flip
+    pub fn reconfigure(&mut self, config: &ActivityConfig) {
+        let state = (self.active, self.since);
+        *self = Self::new(config);
+        (self.active, self.since) = state;
+    }
+
     pub fn is_active(&self) -> bool {
         self.active
     }
@@ -130,5 +137,21 @@ mod tests {
         assert!(tracker.update(start, 0.1));
         assert!(tracker.update(start, 0.05));
         assert_eq!(tracker.deadline(), None);
+    }
+
+    #[test]
+    fn reconfiguring_keeps_the_state_and_the_pending_flip() {
+        let start = Instant::now();
+        let mut tracker = tracker(0, 300);
+        tracker.update(start, 0.5);
+        tracker.update(start + ms(100), 0.0);
+        tracker.reconfigure(&ActivityConfig {
+            threshold: 0.1,
+            activate_delay_ms: 0,
+            deactivate_delay_ms: 1_000,
+        });
+        assert!(tracker.is_active());
+        assert_eq!(tracker.deadline(), Some(start + ms(1_100)));
+        assert!(!tracker.update(start + ms(500), 0.0));
     }
 }

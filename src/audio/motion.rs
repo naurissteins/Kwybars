@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use super::dynamics::Dynamics;
+use super::dynamics::{Dynamics, DynamicsConfig};
 use super::frame::FrameSlot;
 
 /// reads frames from the capture thread and moves the bars towards them
@@ -32,6 +32,14 @@ impl Motion {
             last_advance: None,
             frame_time,
         }
+    }
+
+    pub fn set_dynamics(&mut self, config: DynamicsConfig) {
+        self.dynamics.set_config(config);
+    }
+
+    pub fn set_frame_time(&mut self, frame_time: Duration) {
+        self.frame_time = frame_time;
     }
 
     /// reads the newest frame and moves the bars to where they are at now

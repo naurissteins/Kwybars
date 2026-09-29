@@ -40,6 +40,23 @@ impl Animation {
         }
     }
 
+    pub fn motion_mut(&mut self) -> &mut Motion {
+        &mut self.motion
+    }
+
+    /// swaps in `motion`, for a new bar count; the next frame starts from it
+    pub fn set_motion(&mut self, motion: Motion) {
+        self.motion = motion;
+        self.ticking = false;
+        self.next_due = None;
+    }
+
+    pub fn set_frame_time(&mut self, frame_time: Duration) {
+        self.frame_time = frame_time;
+        self.slack = frame_time / 4;
+        self.motion.set_frame_time(frame_time);
+    }
+
     /// peak sample level of the newest audio frame, 0 while silent
     pub fn level(&mut self) -> f32 {
         self.motion.level()

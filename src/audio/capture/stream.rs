@@ -16,10 +16,11 @@ use pipewire::spa::utils::Direction;
 use pipewire::stream::{StreamFlags, StreamListener, StreamRc, StreamState};
 use tracing::{debug, warn};
 
+use super::Shared;
 use super::analysis::StreamData;
 use super::format;
 use super::status::CaptureState;
-use super::{CaptureSettings, Shared};
+use super::tuning::SharedTuning;
 
 /// a pipewire session that could not be set up
 #[derive(Debug, thiserror::Error)]
@@ -46,7 +47,7 @@ impl Session {
     pub fn start(
         mainloop: &MainLoopRc,
         shared: &Arc<Shared>,
-        settings: &CaptureSettings,
+        tuning: &SharedTuning,
     ) -> Result<Self, SessionError> {
         let context = ContextRc::new(mainloop, None)?;
         let core = context.connect_rc(None)?;
@@ -77,7 +78,7 @@ impl Session {
             *keys::APP_NAME => "Kwybars",
         };
         let stream = StreamRc::new(core.clone(), "kwybars", props)?;
-        let data = StreamData::new(Arc::clone(shared), settings.clone());
+        let data = StreamData::new(Arc::clone(shared), Rc::clone(tuning));
         let stream_listener = stream
             .add_local_listener_with_user_data(data)
             .param_changed(|_, data, id, param| {

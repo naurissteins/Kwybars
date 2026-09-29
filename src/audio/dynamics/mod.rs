@@ -72,6 +72,15 @@ impl Dynamics {
         }
     }
 
+    /// keeps the bars and the learned gain, switching auto sensitivity on
+    /// warms the gain up again
+    pub fn set_config(&mut self, config: DynamicsConfig) {
+        if config.auto_sensitivity && !self.config.auto_sensitivity {
+            self.warming_up = true;
+        }
+        self.config = config;
+    }
+
     /// advances by `dt` seconds; `raw` is one amplitude per bar, `None` for
     /// silence, which lets the bars fall without moving the gain
     pub fn update(&mut self, raw: Option<&[f32]>, dt: f32) -> &[f32] {

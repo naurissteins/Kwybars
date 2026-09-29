@@ -1,6 +1,6 @@
 //! the capture thread: owns the pipewire loop and reconnects when needed
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,7 +11,9 @@ use tracing::{debug, error, info, warn};
 
 use super::status::CaptureState;
 use super::stream::Session;
+use super::tuning::Tuning;
 use super::{CaptureSettings, Shared};
+use crate::audio::frame::FrameSlot;
 
 const FIRST_RETRY: Duration = Duration::from_secs(1);
 const MAX_RETRY: Duration = Duration::from_secs(30);
@@ -19,10 +21,19 @@ const MAX_RETRY: Duration = Duration::from_secs(30);
 /// requests from the owning thread
 pub enum Command {
     Stop,
+    Reconfigure {
+        settings: CaptureSettings,
+        frames: Arc<FrameSlot>,
+    },
 }
 
 /// runs until [`Command::Stop`]; pipewire outages are retried with backoff
-pub(super) fn run(commands: Receiver<Command>, shared: Arc<Shared>, settings: CaptureSettings) {
+pub(super) fn run(
+    commands: Receiver<Command>,
+    shared: Arc<Shared>,
+    settings: CaptureSettings,
+    frames: Arc<FrameSlot>,
+) {
     let status = &shared.status;
     pipewire::init();
     let mainloop = match MainLoopRc::new(None) {
@@ -34,12 +45,26 @@ pub(super) fn run(commands: Receiver<Command>, shared: Arc<Shared>, settings: Ca
         }
     };
 
+    let tuning = Rc::new(RefCell::new(Tuning {
+        settings,
+        frames,
+        generation: 0,
+    }));
     let stop = Rc::new(Cell::new(false));
     let _commands = commands.attach(mainloop.loop_(), {
-        let (mainloop, stop) = (mainloop.clone(), Rc::clone(&stop));
-        move |Command::Stop| {
-            stop.set(true);
-            mainloop.quit();
+        let (mainloop, stop, tuning) = (mainloop.clone(), Rc::clone(&stop), Rc::clone(&tuning));
+        move |command| match command {
+            Command::Stop => {
+                stop.set(true);
+                mainloop.quit();
+            }
+            Command::Reconfigure { settings, frames } => {
+                debug!("capture: new analysis settings {settings:?}");
+                let mut tuning = tuning.borrow_mut();
+                tuning.settings = settings;
+                tuning.frames = frames;
+                tuning.generation += 1;
+            }
         }
     });
 
@@ -47,7 +72,7 @@ pub(super) fn run(commands: Receiver<Command>, shared: Arc<Shared>, settings: Ca
     let mut reported_unavailable = false;
     while !stop.get() {
         status.set_state(CaptureState::Connecting);
-        match Session::start(&mainloop, &shared, &settings) {
+        match Session::start(&mainloop, &shared, &tuning) {
             Ok(session) => {
                 info!("capturing the default output through pipewire");
                 reported_unavailable = false;
@@ -57,7 +82,7 @@ pub(super) fn run(commands: Receiver<Command>, shared: Arc<Shared>, settings: Ca
                     warn!("lost the pipewire connection, reconnecting");
                 }
                 // no stream, no sound, whether or not a state change said so
-                shared.publish(None, 0.0);
+                shared.publish(&tuning.borrow().frames, None, 0.0);
             }
             Err(err) => {
                 status.set_state(CaptureState::Unavailable);

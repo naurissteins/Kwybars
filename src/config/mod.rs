@@ -24,7 +24,7 @@ mod tests;
 pub use activity::ActivityConfig;
 pub use audio::AudioConfig;
 pub use color::{ColorParseError, Rgba};
-pub use colors::ColorOverrides;
+pub use colors::{COLORS_FILE, ColorOverrides};
 pub use error::ConfigError;
 pub use image::ImageOverlayConfig;
 pub use load::{Loaded, Source, load};

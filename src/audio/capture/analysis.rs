@@ -7,9 +7,10 @@ use pipewire::spa::param::audio::AudioInfoRaw;
 use pipewire::spa::pod::Pod;
 use tracing::debug;
 
+use super::Shared;
 use super::ring::SampleRing;
 use super::status::CaptureState;
-use super::{CaptureSettings, Shared};
+use super::tuning::SharedTuning;
 use crate::audio::pipeline::Pipeline;
 
 /// seconds of audio the ring holds
@@ -18,7 +19,8 @@ const RING_SECONDS: usize = 1;
 /// everything the callbacks of one stream share, all on the capture thread
 pub(super) struct StreamData {
     shared: Arc<Shared>,
-    settings: CaptureSettings,
+    tuning: SharedTuning,
+    generation: u64,
     format: AudioInfoRaw,
     ring: SampleRing,
     /// created when the format is known
@@ -30,11 +32,16 @@ pub(super) struct StreamData {
 }
 
 impl StreamData {
-    pub(super) fn new(shared: Arc<Shared>, settings: CaptureSettings) -> Self {
+    pub(super) fn new(shared: Arc<Shared>, tuning: SharedTuning) -> Self {
+        let (interval, generation) = {
+            let tuning = tuning.borrow();
+            (tuning.settings.interval, tuning.generation)
+        };
         Self {
-            pacing: Pacing::new(settings.interval),
+            pacing: Pacing::new(interval),
             shared,
-            settings,
+            tuning,
+            generation,
             format: AudioInfoRaw::default(),
             ring: SampleRing::default(),
             pipeline: None,
@@ -55,15 +62,38 @@ impl StreamData {
         self.ring
             .reset(rate as usize * channels as usize * RING_SECONDS);
         self.cursor = 0;
+        self.build_pipeline();
+    }
+
+    /// allocates the pipeline for the negotiated format and current tuning
+    fn build_pipeline(&mut self) {
+        let (rate, channels) = (self.format.rate(), self.format.channels());
+        let tuning = self.tuning.borrow();
         self.pipeline = (rate > 0 && channels > 0)
-            .then(|| Pipeline::new(rate, channels, &self.settings.spectrum));
+            .then(|| Pipeline::new(rate, channels, &tuning.settings.spectrum));
+    }
+
+    /// picks up new settings; allocates only when they changed
+    fn retune(&mut self) {
+        let (generation, interval) = {
+            let tuning = self.tuning.borrow();
+            (tuning.generation, tuning.settings.interval)
+        };
+        if generation == self.generation {
+            return;
+        }
+        self.generation = generation;
+        self.pacing = Pacing::new(interval);
+        if self.pipeline.is_some() {
+            self.build_pipeline();
+        }
     }
 
     /// a stream that stops delivering audio counts as silence
     pub(super) fn state_changed(&mut self, state: CaptureState) {
         self.shared.status.set_state(state);
         if state != CaptureState::Streaming {
-            self.shared.publish(None, 0.0);
+            self.shared.publish(&self.tuning.borrow().frames, None, 0.0);
         }
     }
 
@@ -73,6 +103,7 @@ impl StreamData {
 
     /// analyzes new samples at most once per interval; must not allocate
     pub(super) fn tick(&mut self, now: Instant) {
+        self.retune();
         if !self.pacing.due(now) {
             return;
         }
@@ -89,7 +120,8 @@ impl StreamData {
         status.set_peak(peak);
         status.set_frames(self.ring.written() / self.channels);
         if let Some(pipeline) = self.pipeline.as_mut() {
-            self.shared.publish(pipeline.analyze(peak), peak);
+            let frames = &self.tuning.borrow().frames;
+            self.shared.publish(frames, pipeline.analyze(peak), peak);
         }
     }
 }

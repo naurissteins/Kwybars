@@ -3,6 +3,7 @@
 mod buffers;
 mod draw;
 mod layer;
+mod settings;
 mod visibility;
 
 use std::time::Duration;
@@ -158,6 +159,11 @@ impl OutputSurface {
     /// whether this surface is the one `output` and `entry` ask for
     pub fn is_for(&self, output: &WlOutput, entry: Option<usize>) -> bool {
         self.output == *output && self.entry == entry
+    }
+
+    /// the `[[overlay.outputs]]` entry this surface was selected by
+    pub fn entry(&self) -> Option<usize> {
+        self.entry
     }
 
     pub fn is_layer(&self, layer: &LayerSurface) -> bool {
