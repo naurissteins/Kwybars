@@ -8,14 +8,18 @@ mod scale;
 mod selection;
 mod surface;
 
+use std::time::Instant;
+
 use smithay_client_toolkit::compositor::CompositorState;
 use smithay_client_toolkit::output::OutputState;
 use smithay_client_toolkit::reexports::calloop::{LoopHandle, RegistrationToken};
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
-use smithay_client_toolkit::reexports::client::backend::ObjectId;
+use smithay_client_toolkit::reexports::client::backend::{self, ObjectId};
 use smithay_client_toolkit::reexports::client::globals::registry_queue_init;
 use smithay_client_toolkit::reexports::client::protocol::{wl_output::WlOutput, wl_shm};
-use smithay_client_toolkit::reexports::client::{Connection, EventQueue, QueueHandle};
+use smithay_client_toolkit::reexports::client::{
+    Connection, DispatchError, EventQueue, QueueHandle,
+};
 use smithay_client_toolkit::reexports::protocols::wp::fractional_scale::v1::client::wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1;
 use smithay_client_toolkit::reexports::protocols::wp::viewporter::client::wp_viewporter::WpViewporter;
 use smithay_client_toolkit::registry::RegistryState;
@@ -25,6 +29,7 @@ use tracing::{info, warn};
 
 pub use error::WaylandError;
 
+use crate::activity::Presence;
 use crate::config::{Config, Theme};
 use crate::render::Frame;
 use handlers::NoEvents;
@@ -104,22 +109,36 @@ impl Wayland {
         Ok((wayland, queue))
     }
 
-    /// dispatches wayland events on `handle`'s loop, then calls `after` so
-    /// surfaces whose frame callback arrived can draw; `D` gives access to self
     pub fn insert_source<D: AsMut<Self> + 'static>(
         &self,
         queue: EventQueue<Self>,
         handle: &LoopHandle<'static, D>,
         mut after: impl FnMut(&mut D) + 'static,
     ) -> Result<RegistrationToken, calloop::Error> {
+        let connection = self.connection.clone();
         let source = WaylandSource::new(self.connection.clone(), queue);
         handle
             .insert_source(source, move |(), queue, data| {
                 let dispatched = queue.dispatch_pending(data.as_mut());
+                if let Some(err) = connection.protocol_error() {
+                    return Err(DispatchError::Backend(backend::WaylandError::Protocol(err)));
+                }
                 after(data);
                 dispatched
             })
             .map_err(|err| err.error)
+    }
+
+    /// fades every surface towards `active` at `now`, mapping and unmapping
+    /// them as needed
+    pub fn set_active(&mut self, active: bool, now: Instant) -> Presence {
+        let mut presence = Presence::default();
+        for surface in &mut self.surfaces {
+            surface.set_active(active, now);
+            presence.shown |= surface.is_shown();
+            presence.fading |= surface.is_fading(now);
+        }
+        presence
     }
 
     /// shows `frame` on every surface that is ready for it; returns how many
@@ -132,8 +151,6 @@ impl Wayland {
         drawn
     }
 
-    /// explains an event loop failure when the compositor connection is what
-    /// failed: a protocol error, or a socket that no longer accepts requests
     pub fn check_connection(&self) -> Result<(), WaylandError> {
         if let Some(err) = self.connection.protocol_error() {
             return Err(WaylandError::Lost(err.to_string()));

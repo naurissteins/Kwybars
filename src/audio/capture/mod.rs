@@ -26,7 +26,6 @@ use thread::Command;
 /// how captured audio is analyzed
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CaptureSettings {
-    /// new audio is analyzed at most once per interval
     pub interval: Duration,
     pub spectrum: SpectrumConfig,
 }
@@ -41,11 +40,9 @@ struct Shared {
 }
 
 impl Shared {
-    /// publishes a spectrum, or silence unless the slot already holds it;
-    /// only the capture thread calls this
-    fn publish(&self, values: Option<&[f32]>) {
+    fn publish(&self, values: Option<&[f32]>, level: f32) {
         let wake = match values {
-            Some(values) => self.frames.publish(values),
+            Some(values) => self.frames.publish(values, level),
             None if !self.frames.is_silent() => self.frames.publish_silence(),
             None => false,
         };
@@ -68,8 +65,6 @@ pub struct Capture {
 }
 
 impl Capture {
-    /// starts capturing and analyzing; `waker` is pinged when a reader that
-    /// asked through [`FrameSlot::request_wake`] has a new frame
     pub fn spawn(settings: CaptureSettings, waker: Option<Ping>) -> Result<Self, CaptureError> {
         let shared = Arc::new(Shared {
             status: CaptureStatus::default(),

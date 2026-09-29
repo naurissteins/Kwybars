@@ -63,7 +63,7 @@ impl StreamData {
     pub(super) fn state_changed(&mut self, state: CaptureState) {
         self.shared.status.set_state(state);
         if state != CaptureState::Streaming {
-            self.shared.publish(None);
+            self.shared.publish(None, 0.0);
         }
     }
 
@@ -89,7 +89,7 @@ impl StreamData {
         status.set_peak(peak);
         status.set_frames(self.ring.written() / self.channels);
         if let Some(pipeline) = self.pipeline.as_mut() {
-            self.shared.publish(pipeline.analyze(peak));
+            self.shared.publish(pipeline.analyze(peak), peak);
         }
     }
 }

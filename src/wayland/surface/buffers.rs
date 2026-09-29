@@ -50,6 +50,14 @@ impl BufferRing {
         }
     }
 
+    /// drops every buffer and the pool; the compositor keeps any it still
+    /// holds until it releases them
+    pub fn release(&mut self) {
+        self.slots.clear();
+        self.pool = None;
+        self.size = (0, 0);
+    }
+
     pub fn acquire(
         &mut self,
         shm: &Shm,

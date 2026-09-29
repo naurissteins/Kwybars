@@ -17,7 +17,7 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 #[derive(Debug, Clone, Default)]
 pub struct BufferContents {
     extents: Vec<f32>,
-    /// the painter that drew them; 0 for a new buffer, whose pixels are unknown
+    opacity: u8,
     painter: u64,
 }
 
@@ -26,18 +26,17 @@ pub struct BufferContents {
 pub struct Painter {
     id: u64,
     layout: LineLayout,
+    base: Fill,
     fill: Fill,
     scale: f32,
-    /// bar extents to draw next
     next: Vec<f32>,
-    /// bar extents on screen, what the compositor's damage is relative to
+    opacity: u8,
     shown: Vec<f32>,
+    shown_opacity: u8,
     shown_valid: bool,
 }
 
 impl Painter {
-    /// allocates everything for a buffer of `size` at `scale` buffer pixels
-    /// per logical pixel; later calls do not allocate
     pub fn new(
         config: &SurfaceConfig,
         bars: usize,
@@ -47,13 +46,16 @@ impl Painter {
     ) -> Self {
         let edge = config.overlay.position;
         let layout = LineLayout::new(&config.visualizer, edge, size, scale, bars);
-        let fill = Fill::new(config, edge, size, bars, order);
+        let base = Fill::new(config, edge, size, bars, order);
         Self {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             next: vec![0.0; layout.bars()],
+            opacity: u8::MAX,
             shown: vec![0.0; layout.bars()],
+            shown_opacity: u8::MAX,
             layout,
-            fill,
+            fill: base.clone(),
+            base,
             scale,
             shown_valid: false,
         }
@@ -64,20 +66,26 @@ impl Painter {
         self.layout.size() == size && self.scale == scale
     }
 
-    /// lays out `heights`; false when the result matches what is shown
-    pub fn layout(&mut self, heights: &[f32]) -> bool {
+    /// lays out `heights` at `opacity` out of 255; false when the result
+    /// matches what is shown
+    pub fn layout(&mut self, heights: &[f32], opacity: u8) -> bool {
         for (index, extent) in self.next.iter_mut().enumerate() {
             *extent = self
                 .layout
                 .extent(heights.get(index).copied().unwrap_or(0.0));
         }
-        !self.shown_valid || self.next != self.shown
+        if opacity != self.opacity {
+            self.fill.fade_from(&self.base, opacity);
+            self.opacity = opacity;
+        }
+        !self.shown_valid || self.next != self.shown || self.opacity != self.shown_opacity
     }
 
     /// empty contents sized for this painter's bars, for a new buffer
     pub fn new_contents(&self) -> BufferContents {
         BufferContents {
             extents: vec![0.0; self.next.len()],
+            opacity: 0,
             painter: 0,
         }
     }
@@ -93,11 +101,20 @@ impl Painter {
                 }
             }
             contents.extents.clone_from(&self.next);
+            contents.opacity = self.opacity;
             contents.painter = self.id;
             return;
         }
+        // a new opacity changes every bar pixel, but nothing outside the bars
+        let faded = contents.opacity != self.opacity;
+        contents.opacity = self.opacity;
         for (index, (held, next)) in contents.extents.iter_mut().zip(&self.next).enumerate() {
-            if let Some(area) = self.layout.change(index, *held, *next) {
+            let area = if faded {
+                self.layout.area(index, held.max(*next))
+            } else {
+                self.layout.change(index, *held, *next)
+            };
+            if let Some(area) = area {
                 canvas.clear(area);
                 self.layout.paint(canvas, index, *next, area, &self.fill);
                 *held = *next;
@@ -109,8 +126,14 @@ impl Painter {
     /// then records the laid out bars as shown
     pub fn present(&mut self, mut each: impl FnMut(PixelRect)) {
         if self.shown_valid {
+            let faded = self.shown_opacity != self.opacity;
             for (index, (shown, next)) in self.shown.iter().zip(&self.next).enumerate() {
-                if let Some(area) = self.layout.change(index, *shown, *next) {
+                let area = if faded {
+                    self.layout.area(index, shown.max(*next))
+                } else {
+                    self.layout.change(index, *shown, *next)
+                };
+                if let Some(area) = area {
                     each(area);
                 }
             }
@@ -118,6 +141,7 @@ impl Painter {
             each(PixelRect::full(self.layout.size()));
         }
         self.shown.copy_from_slice(&self.next);
+        self.shown_opacity = self.opacity;
         self.shown_valid = true;
     }
 }

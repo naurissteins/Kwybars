@@ -2,6 +2,10 @@
 
 mod buffers;
 mod draw;
+mod layer;
+mod visibility;
+
+use std::time::Duration;
 
 use smithay_client_toolkit::compositor::{CompositorState, Region};
 use smithay_client_toolkit::reexports::client::protocol::{wl_output::WlOutput, wl_shm};
@@ -14,18 +18,18 @@ use smithay_client_toolkit::reexports::protocols::wp::viewporter::client::{
     wp_viewport::WpViewport, wp_viewporter::WpViewporter,
 };
 use smithay_client_toolkit::shell::WaylandSurface;
-use smithay_client_toolkit::shell::wlr_layer::{
-    Anchor, KeyboardInteractivity, Layer as ShellLayer, LayerShell, LayerSurface,
-};
+use smithay_client_toolkit::shell::wlr_layer::{LayerShell, LayerSurface};
 use tracing::{debug, info, warn};
 
 use super::Wayland;
 use super::handlers::{NoEvents, ScaleData};
-use super::placement::{Anchors, Placement};
+use super::placement::Placement;
 use super::scale::Scale;
-use crate::config::{Layer, SurfaceConfig};
+use crate::activity::Fade;
+use crate::config::SurfaceConfig;
 use crate::render::{ByteOrder, Painter};
 use buffers::BufferRing;
+use layer::{place, shell_layer};
 
 /// layer-shell namespace compositors can match rules on
 const NAMESPACE: &str = "kwybars";
@@ -61,6 +65,10 @@ pub struct OutputSurface {
     frame_pending: bool,
     drawn: Option<u64>,
     failed: bool,
+
+    fade: Fade,
+    /// committed since creation or the last unmap, so mapped or about to be
+    shown: bool,
 }
 
 impl OutputSurface {
@@ -94,12 +102,7 @@ impl OutputSurface {
             Some(NAMESPACE),
             Some(output),
         );
-        layer.set_anchor(anchor(placement.anchors));
-        let margins = placement.margins;
-        layer.set_margin(margins.top, margins.right, margins.bottom, margins.left);
-        layer.set_size(placement.width, placement.height);
-        layer.set_exclusive_zone(0);
-        layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+        place(&layer, &placement);
         // an empty input region lets every click through to what is below
         match Region::new(globals.compositor) {
             Ok(region) => layer
@@ -107,8 +110,7 @@ impl OutputSurface {
                 .set_input_region(Some(region.wl_region())),
             Err(err) => warn!("could not make {label} click-through: {err}"),
         }
-        // the first commit has no buffer and asks for a configure
-        layer.commit();
+        // nothing is committed until audio plays, see `visibility`
         info!(
             "overlay on {label}: {:?} layer, anchors {:?}, margins {:?}, size {}x{} (0 stretches)",
             placement.layer,
@@ -122,7 +124,6 @@ impl OutputSurface {
             output: output.clone(),
             entry,
             label,
-            config,
             placement,
             layer,
             scale: if viewport.is_some() {
@@ -145,6 +146,12 @@ impl OutputSurface {
             frame_pending: false,
             drawn: None,
             failed: false,
+            fade: Fade::new(
+                Duration::from_millis(config.overlay.fade_in_ms),
+                Duration::from_millis(config.overlay.fade_out_ms),
+            ),
+            shown: false,
+            config,
         }
     }
 
@@ -220,21 +227,4 @@ impl Drop for OutputSurface {
             fractional_scale.destroy();
         }
     }
-}
-
-fn shell_layer(layer: Layer) -> ShellLayer {
-    match layer {
-        Layer::Background => ShellLayer::Background,
-        Layer::Bottom => ShellLayer::Bottom,
-        Layer::Top => ShellLayer::Top,
-    }
-}
-
-fn anchor(anchors: Anchors) -> Anchor {
-    let mut anchor = Anchor::empty();
-    anchor.set(Anchor::TOP, anchors.top);
-    anchor.set(Anchor::BOTTOM, anchors.bottom);
-    anchor.set(Anchor::LEFT, anchors.left);
-    anchor.set(Anchor::RIGHT, anchors.right);
-    anchor
 }

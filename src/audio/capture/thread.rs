@@ -57,7 +57,7 @@ pub(super) fn run(commands: Receiver<Command>, shared: Arc<Shared>, settings: Ca
                     warn!("lost the pipewire connection, reconnecting");
                 }
                 // no stream, no sound, whether or not a state change said so
-                shared.publish(None);
+                shared.publish(None, 0.0);
             }
             Err(err) => {
                 status.set_state(CaptureState::Unavailable);

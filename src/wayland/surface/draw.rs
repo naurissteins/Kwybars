@@ -16,6 +16,9 @@ use crate::wayland::scale::Scale;
 
 impl OutputSurface {
     pub fn render(&mut self, frame: &Frame<'_>, shm: &Shm, qh: &QueueHandle<Wayland>) -> bool {
+        if !self.shown {
+            return false;
+        }
         // attaching a buffer before the first configure is a protocol error
         let Some((logical, size)) = self.sizes() else {
             return false;
@@ -61,6 +64,7 @@ impl OutputSurface {
     /// lays out the bars for `size`; false when nothing on screen changes
     fn layout(&mut self, frame: &Frame<'_>, size: (u32, u32)) -> bool {
         let scale = self.scale.factor();
+        let opacity = (self.fade.opacity(frame.time) * 255.0).round() as u8;
         if !self
             .painter
             .as_ref()
@@ -76,7 +80,7 @@ impl OutputSurface {
         }
         self.painter
             .as_mut()
-            .is_some_and(|painter| painter.layout(frame.heights))
+            .is_some_and(|painter| painter.layout(frame.heights, opacity))
     }
 
     fn draw(

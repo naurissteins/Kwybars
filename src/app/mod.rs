@@ -9,13 +9,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use calloop::EventLoop;
 use calloop::ping::make_ping;
 use calloop::signals::{Signal, Signals};
+use calloop::timer::{TimeoutAction, Timer};
+use calloop::{EventLoop, LoopHandle, RegistrationToken};
 use tracing::{info, warn};
 
 pub use error::AppError;
 
+use crate::activity::ActivityTracker;
 use crate::audio::capture::{Capture, CaptureSettings};
 use crate::audio::dynamics::{Dynamics, DynamicsConfig};
 use crate::audio::motion::Motion;
@@ -27,7 +29,7 @@ use animation::Animation;
 /// options for running the overlay
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RunOptions {
-    /// config path from `--config`; `None` means the default location
+    /// config path from `--config`, `None` means the default location
     pub config_path: Option<PathBuf>,
 }
 
@@ -66,12 +68,15 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
     let motion = Motion::new(Arc::clone(capture.frames()), dynamics, frame_time);
 
     let mut event_loop: EventLoop<'static, App> = EventLoop::try_new()?;
+    let handle = event_loop.handle();
     let mut app = App {
         running: true,
         animation: Animation::new(motion, frame_time),
+        activity: ActivityTracker::new(&config.activity),
+        timer: None,
+        handle: handle.clone(),
         wayland,
     };
-    let handle = event_loop.handle();
     handle
         .insert_source(signals, |event, (), app| {
             info!("received {:?}, shutting down", event.signal());
@@ -79,10 +84,7 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
         })
         .map_err(|err| err.error)?;
     handle
-        .insert_source(wake, |(), (), app| {
-            app.animation.wake();
-            app.render();
-        })
+        .insert_source(wake, |(), (), app| app.render())
         .map_err(|err| err.error)?;
     app.wayland.insert_source(queue, &handle, App::render)?;
 
@@ -99,15 +101,55 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
 struct App {
     running: bool,
     animation: Animation,
+    activity: ActivityTracker,
+    /// the pending activity deadline timer and when it fires
+    timer: Option<(RegistrationToken, Instant)>,
+    handle: LoopHandle<'static, App>,
     wayland: Wayland,
 }
 
 impl App {
-    /// steps the bars if a frame is due and lets ready surfaces draw it
+    /// follows the audio level, shows or hides the surfaces, steps the bars
+    /// if a frame is due, and lets ready surfaces draw it
     fn render(&mut self) {
-        let frame = self.animation.frame(Instant::now());
+        let now = Instant::now();
+        let level = self.animation.level();
+        if self.activity.update(now, level) {
+            info!(
+                "audio {}",
+                if self.activity.is_active() {
+                    "active, showing"
+                } else {
+                    "inactive, hiding"
+                }
+            );
+        }
+        let presence = self.wayland.set_active(self.activity.is_active(), now);
+        let frame = self.animation.frame(now, presence);
         let drawn = self.wayland.render(&frame);
         self.animation.drawn(drawn);
+        self.watch_deadline();
+    }
+
+    fn watch_deadline(&mut self) {
+        let Some(deadline) = self.activity.deadline() else {
+            return;
+        };
+        if self.timer.is_some_and(|(_, at)| at <= deadline) {
+            return;
+        }
+        if let Some((token, _)) = self.timer.take() {
+            self.handle.remove(token);
+        }
+        let timer = Timer::from_deadline(deadline);
+        match self.handle.insert_source(timer, |_, (), app| {
+            app.timer = None;
+            app.render();
+            TimeoutAction::Drop
+        }) {
+            Ok(token) => self.timer = Some((token, deadline)),
+            Err(err) => warn!("could not wait for the activity delay: {}", err.error),
+        }
     }
 }
 
@@ -120,7 +162,6 @@ impl AsMut<Wayland> for App {
 /// runs the loop until a signal asks to stop
 fn dispatch(event_loop: &mut EventLoop<'static, App>, app: &mut App) -> Result<(), AppError> {
     // a frame may have arrived before anyone asked to be woken
-    app.animation.wake();
     app.render();
     while app.running {
         if let Err(err) = event_loop.dispatch(None, app) {
@@ -132,9 +173,6 @@ fn dispatch(event_loop: &mut EventLoop<'static, App>, app: &mut App) -> Result<(
     Ok(())
 }
 
-/// blocks SIGINT and SIGTERM in this thread and returns a source for them;
-/// threads spawned afterwards inherit the mask, so the source is the only
-/// receiver
 fn block_signals() -> Result<Signals, AppError> {
     Ok(Signals::new(&[Signal::SIGINT, Signal::SIGTERM])?)
 }

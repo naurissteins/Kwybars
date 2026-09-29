@@ -13,7 +13,7 @@ pub enum Fill {
 }
 
 impl Fill {
-    /// the color source for bars growing out of `edge` in a buffer of `size`
+    /// the color source for bars growing out of edge in a buffer of size
     pub fn new(
         config: &SurfaceConfig,
         edge: Edge,
@@ -87,6 +87,30 @@ impl Fill {
                 }
             }
             _ => out.fill(self.color(bar, x0, y)),
+        }
+    }
+}
+
+impl Fill {
+    /// becomes `base` at `opacity` out of 255; `base` must be a clone of this
+    /// fill, so the tables match and nothing is allocated
+    pub fn fade_from(&mut self, base: &Self, opacity: u8) {
+        let scale = |colors: &mut [[u8; 4]], base: &[[u8; 4]]| {
+            for (color, base) in colors.iter_mut().zip(base) {
+                for (channel, value) in color.iter_mut().zip(base) {
+                    // premultiplied, so every channel scales alike
+                    *channel = ((u16::from(*value) * u16::from(opacity) + 127) / 255) as u8;
+                }
+            }
+        };
+        match (self, base) {
+            (Self::Solid(color), Self::Solid(base)) => {
+                scale(std::slice::from_mut(color), std::slice::from_ref(base));
+            }
+            (Self::Columns(colors), Self::Columns(base))
+            | (Self::Rows(colors), Self::Rows(base))
+            | (Self::Bars(colors), Self::Bars(base)) => scale(colors, base),
+            _ => {}
         }
     }
 }
@@ -190,6 +214,23 @@ mod tests {
         );
         let left = Fill::new(&config, Edge::Left, (3, 6), 4, ByteOrder::Rgba);
         assert!(matches!(&left, Fill::Rows(rows) if rows.len() == 6));
+    }
+
+    #[test]
+    fn fading_scales_every_premultiplied_channel() {
+        let config = surface(ColorMode::Gradient, GradientDirection::Horizontal, false);
+        let base = Fill::new(&config, Edge::Bottom, (4, 4), 4, ByteOrder::Rgba);
+        let mut faded = base.clone();
+        faded.fade_from(&base, 128);
+        let (Fill::Columns(base_colors), Fill::Columns(colors)) = (&base, &faded) else {
+            panic!("expected columns");
+        };
+        assert_eq!(base_colors[0], [223, 0, 32, 255]);
+        assert_eq!(colors[0], [112, 0, 16, 128]);
+        faded.fade_from(&base, 255);
+        assert_eq!(faded, base);
+        faded.fade_from(&base, 0);
+        assert_eq!(faded.color(0, 0, 0), [0; 4]);
     }
 
     #[test]

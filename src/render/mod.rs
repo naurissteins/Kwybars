@@ -11,6 +11,8 @@ pub use canvas::Canvas;
 pub use damage::PixelRect;
 pub use painter::{BufferContents, Painter};
 
+use std::time::Instant;
+
 use crate::config::Rgba;
 
 /// byte order of a pixel in memory
@@ -39,6 +41,7 @@ impl ByteOrder {
 pub struct Frame<'a> {
     pub heights: &'a [f32],
     pub generation: u64,
+    pub time: Instant,
     pub animating: bool,
 }
 

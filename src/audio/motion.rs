@@ -11,11 +11,10 @@ use super::frame::FrameSlot;
 pub struct Motion {
     frames: Arc<FrameSlot>,
     dynamics: Dynamics,
-    /// newest spectrum read from the slot, the target between audio updates
     latest: Vec<f32>,
-    /// number of the newest frame read
     seen: u64,
     silent: bool,
+    level: f32,
     last_advance: Option<Instant>,
     frame_time: Duration,
 }
@@ -29,12 +28,13 @@ impl Motion {
             dynamics,
             seen: 0,
             silent: true,
+            level: 0.0,
             last_advance: None,
             frame_time,
         }
     }
 
-    /// reads the newest frame and moves the bars to where they are at `now`
+    /// reads the newest frame and moves the bars to where they are at now
     pub fn advance(&mut self, now: Instant) -> &[f32] {
         self.refresh();
         let dt = self
@@ -50,9 +50,6 @@ impl Motion {
         !self.silent || !self.dynamics.at_rest()
     }
 
-    /// reads the newest frame and stops when nothing moves, asking the
-    /// capture thread to wake the caller on its next frame; false means keep
-    /// advancing
     pub fn rest(&mut self) -> bool {
         self.refresh();
         if self.is_moving() || !self.frames.request_wake(self.seen) {
@@ -62,11 +59,23 @@ impl Motion {
         true
     }
 
+    pub fn wait(&mut self) -> bool {
+        self.refresh();
+        self.last_advance = None;
+        self.frames.request_wake(self.seen)
+    }
+
+    /// peak sample level of the newest frame, 0 while silent
+    pub fn level(&mut self) -> f32 {
+        self.refresh();
+        self.level
+    }
+
     pub fn heights(&self) -> &[f32] {
         self.dynamics.heights()
     }
 
-    /// gain applied to the spectrum, including `sensitivity`
+    /// gain applied to the spectrum, including sensitivity
     pub fn gain(&self) -> f32 {
         self.dynamics.effective_gain()
     }
@@ -83,6 +92,7 @@ impl Motion {
         let info = self.frames.read_into(&mut self.latest);
         self.seen = info.number;
         self.silent = info.silent;
+        self.level = info.level;
     }
 }
 
@@ -112,7 +122,7 @@ mod tests {
     fn follows_the_latest_frame_between_updates() {
         let (frames, mut motion) = motion(2);
         let start = Instant::now();
-        frames.publish(&[0.5, 0.25]);
+        frames.publish(&[0.5, 0.25], 0.5);
         assert_eq!(motion.advance(start), &[0.5, 0.25]);
         // no new audio: the last spectrum stays the target
         assert_eq!(motion.advance(start + FRAME), &[0.5, 0.25]);
@@ -123,7 +133,7 @@ mod tests {
     fn rests_only_after_silence_and_the_fall() {
         let (frames, mut motion) = motion(1);
         let mut now = Instant::now();
-        frames.publish(&[1.0]);
+        frames.publish(&[1.0], 0.5);
         motion.advance(now);
         assert!(!motion.rest());
         frames.publish_silence();
@@ -139,7 +149,7 @@ mod tests {
         }
         assert_eq!(motion.heights(), &[0.0]);
         // the next frame is reported and restarts the motion
-        assert!(frames.publish(&[0.3]));
+        assert!(frames.publish(&[0.3], 0.5));
         assert!(!motion.rest());
     }
 
@@ -148,9 +158,24 @@ mod tests {
         let (frames, mut motion) = motion(1);
         frames.publish_silence();
         motion.advance(Instant::now());
-        frames.publish(&[0.4]);
+        frames.publish(&[0.4], 0.5);
         assert!(!motion.rest());
-        assert!(!frames.publish(&[0.4]));
+        assert!(!frames.publish(&[0.4], 0.5));
+    }
+
+    #[test]
+    fn waiting_reports_the_level_and_asks_for_the_next_frame() {
+        let (frames, mut motion) = motion(1);
+        assert_eq!(motion.level(), 0.0);
+        frames.publish(&[0.4], 0.2);
+        assert_eq!(motion.level(), 0.2);
+        // still moving towards the frame, but a waiting reader is woken anyway
+        assert!(motion.wait());
+        assert!(frames.publish(&[0.4], 0.3));
+        frames.publish_silence();
+        assert_eq!(motion.level(), 0.0);
+        assert!(motion.wait());
+        assert!(frames.publish(&[0.4], 0.3));
     }
 
     #[test]
@@ -159,7 +184,7 @@ mod tests {
         let before = (motion.latest.as_ptr(), motion.heights().as_ptr());
         let mut now = Instant::now();
         for round in 0..100 {
-            frames.publish(&[round as f32 / 100.0; 4]);
+            frames.publish(&[round as f32 / 100.0; 4], 0.5);
             now += FRAME;
             motion.advance(now);
         }
