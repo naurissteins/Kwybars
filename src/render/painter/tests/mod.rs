@@ -1,3 +1,7 @@
+mod dots;
+
+use std::time::Instant;
+
 use super::{BufferContents, Painter};
 use crate::config::{
     ColorMode, Config, Edge, FrameMirrorMode, GradientDirection, Layout, LineMode,
@@ -41,11 +45,11 @@ fn assert_fading_patching_matches(surface: &SurfaceConfig, frames: &[[f32; 6]], 
     let mut data = vec![0x5A_u8; (SIZE.0 * SIZE.1 * 4) as usize];
     let mut contents = patched.new_contents();
     for (heights, opacity) in frames.iter().zip(opacities.iter().cycle()) {
-        patched.layout(heights, *opacity);
+        patched.layout(heights, *opacity, Instant::now());
         paint(&patched, &mut data, &mut contents);
 
         let mut fresh = Painter::new(surface, 6, SIZE, 1.0, ByteOrder::Rgba);
-        fresh.layout(heights, *opacity);
+        fresh.layout(heights, *opacity, Instant::now());
         let mut expected = blank();
         let mut fresh_contents = fresh.new_contents();
         paint(&fresh, &mut expected, &mut fresh_contents);
@@ -132,39 +136,39 @@ fn patching_matches_a_fresh_paint_while_fading() {
 #[test]
 fn a_new_opacity_damages_every_bar_whole() {
     let mut painter = Painter::new(&config(|_| {}), 6, SIZE, 1.0, ByteOrder::Rgba);
-    painter.layout(&[0.5; 6], 255);
+    painter.layout(&[0.5; 6], 255, Instant::now());
     painter.present(|_| {});
-    assert!(painter.layout(&[0.5; 6], 128));
+    assert!(painter.layout(&[0.5; 6], 128, Instant::now()));
     let mut areas = Vec::new();
     painter.present(|area| areas.push(area));
     assert_eq!(areas.len(), 6);
     assert!(areas.iter().all(|area| (area.y, area.height) == (30, 30)));
-    assert!(!painter.layout(&[0.5; 6], 128));
+    assert!(!painter.layout(&[0.5; 6], 128, Instant::now()));
 }
 
 #[test]
 fn damage_covers_only_what_moved() {
     let mut painter = Painter::new(&config(|_| {}), 6, SIZE, 1.0, ByteOrder::Rgba);
-    painter.layout(&[0.5; 6], 255);
+    painter.layout(&[0.5; 6], 255, Instant::now());
     let mut areas = Vec::new();
     painter.present(|area| areas.push(area));
     assert_eq!(areas, vec![PixelRect::full(SIZE)]);
 
     let mut heights = [0.5; 6];
     heights[2] = 0.75;
-    assert!(painter.layout(&heights, 255));
+    assert!(painter.layout(&heights, 255, Instant::now()));
     areas.clear();
     painter.present(|area| areas.push(area));
     assert_eq!(areas.len(), 1);
     // bar 2 grew from 30 to 45 of 60 pixels: rows 15..30 only
     assert_eq!((areas[0].y, areas[0].height), (15, 15));
-    assert!(!painter.layout(&heights, 255));
+    assert!(!painter.layout(&heights, 255, Instant::now()));
 }
 
 #[test]
 fn silent_bars_keep_a_small_stub() {
     let mut painter = Painter::new(&config(|_| {}), 6, SIZE, 1.5, ByteOrder::Rgba);
-    painter.layout(&[0.0; 6], 255);
+    painter.layout(&[0.0; 6], 255, Instant::now());
     let mut data = blank();
     paint(&painter, &mut data, &mut painter.new_contents());
     let lit = |y: u32| (0..SIZE.0).any(|x| data[((y * SIZE.0 + x) * 4 + 3) as usize] > 0);
@@ -179,7 +183,7 @@ fn painting_does_not_reallocate() {
     let mut contents = painter.new_contents();
     let before = (painter.next.as_ptr(), painter.shown.as_ptr());
     for step in 0..50 {
-        painter.layout(&[step as f32 / 50.0; 6], (step * 5) as u8);
+        painter.layout(&[step as f32 / 50.0; 6], (step * 5) as u8, Instant::now());
         paint(&painter, &mut data, &mut contents);
         painter.present(|_| {});
     }
@@ -232,7 +236,7 @@ fn mirror_halves_are_mirror_images() {
             c.visualizer.bar_corner_radius = 1.0;
         });
         let mut painter = Painter::new(&surface, 6, SIZE, 1.0, ByteOrder::Rgba);
-        painter.layout(&[0.3, 0.9, 0.05, 0.47, 1.0, 0.2], 255);
+        painter.layout(&[0.3, 0.9, 0.05, 0.47, 1.0, 0.2], 255, Instant::now());
         let mut data = blank();
         paint(&painter, &mut data, &mut painter.new_contents());
         let alpha = |x: u32, y: u32| data[((y * SIZE.0 + x) * 4 + 3) as usize];
@@ -325,7 +329,7 @@ fn frame_palette_follows_the_value_each_edge_shows() {
     });
     surface.theme_colors = Some(colors);
     let mut painter = Painter::new(&surface, 6, SIZE, 1.0, ByteOrder::Rgba);
-    painter.layout(&[1.0; 6], 255);
+    painter.layout(&[1.0; 6], 255, Instant::now());
     let mut data = blank();
     paint(&painter, &mut data, &mut painter.new_contents());
     let pixel = |x: u32, y: u32| {

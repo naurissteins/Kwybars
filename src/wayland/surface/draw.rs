@@ -80,7 +80,7 @@ impl OutputSurface {
         }
         self.painter
             .as_mut()
-            .is_some_and(|painter| painter.layout(frame.heights, opacity))
+            .is_some_and(|painter| painter.layout(frame.heights, opacity, frame.time))
     }
 
     fn draw(

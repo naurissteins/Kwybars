@@ -1,38 +1,42 @@
 //! the layout a surface draws, chosen from its layout key
 
+mod shape;
+
 use std::ops::Range;
 
+use super::dots::DotLayout;
 use super::fill::{Axis, Fill};
 use super::line::LineLayout;
-use super::{Canvas, PixelRect, frame, mirror};
+use super::{ByteOrder, Canvas, PixelRect, Pose, frame, mirror};
 use crate::config::{Config, Layout, SurfaceConfig};
+use shape::Shape;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Geometry {
     size: (u32, u32),
     parts: Vec<Part>,
     elements: usize,
+    drifting: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 struct Part {
-    layout: LineLayout,
+    shape: Shape,
     values: Range<usize>,
-    axis: Axis,
     first: usize,
 }
 
 impl Geometry {
     pub fn new(config: &SurfaceConfig, size: (u32, u32), scale: f32, bars: usize) -> Self {
         let visualizer = &config.visualizer;
+        let edge = config.overlay.position;
         let mut parts = Vec::new();
         let mut first = 0;
-        let mut push = |layout: LineLayout, values: Range<usize>, axis: Axis| {
+        let mut push = |shape: Shape, values: Range<usize>| {
             let count = values.len();
             parts.push(Part {
-                layout,
+                shape,
                 values,
-                axis,
                 first,
             });
             first += count;
@@ -41,39 +45,33 @@ impl Geometry {
             Layout::Mirror => {
                 let (halves, axis) = mirror::strips(config, size, scale);
                 for strip in halves {
-                    push(
-                        LineLayout::new(visualizer, strip, size, scale, bars),
-                        0..bars,
-                        axis,
-                    );
+                    let layout = LineLayout::new(visualizer, strip, size, scale, bars);
+                    push(Shape::Strip(layout, axis), 0..bars);
                 }
             }
             Layout::Frame => {
                 for part in frame::parts(config, size, scale, bars) {
                     let count = part.values.len();
                     let layout = LineLayout::new(visualizer, part.strip, size, scale, count);
-                    push(layout, part.values, part.axis);
+                    push(Shape::Strip(layout, part.axis), part.values);
                 }
             }
-            Layout::Line
-            | Layout::Wave
-            | Layout::Radial
-            | Layout::Polygon
-            | Layout::Particle
-            | Layout::Floating => {
-                let edge = config.overlay.position;
+            Layout::Particle | Layout::Floating => {
+                let drifting = visualizer.layout == Layout::Floating;
+                let dots = DotLayout::new(visualizer, edge, size, scale, bars, drifting);
+                push(Shape::Dots(dots), 0..bars);
+            }
+            Layout::Line | Layout::Wave | Layout::Radial | Layout::Polygon => {
                 let line = LineLayout::along(visualizer, edge, size, scale, bars);
-                push(
-                    line,
-                    0..bars,
-                    Axis::along(edge, visualizer.gradient_direction, size),
-                );
+                let axis = Axis::along(edge, visualizer.gradient_direction, size);
+                push(Shape::Strip(line, axis), 0..bars);
             }
         }
         Self {
             size,
             parts,
             elements: first,
+            drifting: visualizer.layout == Layout::Floating,
         }
     }
 
@@ -85,9 +83,17 @@ impl Geometry {
         self.elements
     }
 
-    /// the gradient line of each part, in part order
-    pub fn axes(&self) -> impl Iterator<Item = Axis> + '_ {
-        self.parts.iter().map(|part| part.axis)
+    /// whether elements drift on their own and need a [`super::dots::Drift`]
+    pub fn drifting(&self) -> bool {
+        self.drifting
+    }
+
+    /// the colors of each part, in part order
+    pub fn fills(&self, config: &SurfaceConfig, bars: usize, order: ByteOrder) -> Vec<Fill> {
+        self.parts
+            .iter()
+            .map(|part| part.shape.fill(config, self.size, bars, order))
+            .collect()
     }
 
     /// the bar value `element` shows
@@ -96,33 +102,37 @@ impl Geometry {
             .map_or(0, |(_, part, local)| part.values.start + local)
     }
 
-    pub fn animates(&self) -> bool {
-        false
-    }
-
-    /// how far `element` reaches at `value` in `0.0..=1.0`, in pixels
-    pub fn extent(&self, element: usize, value: f32) -> f32 {
+    /// `element` at `value` in `0.0..=1.0`, lifted `lift` from its edge
+    pub fn pose(&self, element: usize, value: f32, lift: f32) -> Pose {
         self.find(element)
-            .map_or(0.0, |(_, part, _)| part.layout.extent(value))
+            .map_or(Pose::default(), |(_, part, local)| {
+                part.shape.pose(local, value, lift)
+            })
     }
 
-    /// every pixel of `element` at `extent`
-    pub fn area(&self, element: usize, extent: f32) -> Option<PixelRect> {
+    /// every pixel of `element` at `pose`
+    pub fn area(&self, element: usize, pose: Pose) -> Option<PixelRect> {
         let (_, part, local) = self.find(element)?;
-        part.layout.area(local, extent)
+        part.shape.area(local, pose)
     }
 
     /// the pixels that differ between `element` at `old` and at `new`
-    pub fn change(&self, element: usize, old: f32, new: f32) -> Option<PixelRect> {
+    pub fn change(&self, element: usize, old: Pose, new: Pose) -> Option<PixelRect> {
         let (_, part, local) = self.find(element)?;
-        part.layout.change(local, old, new)
+        part.shape.change(local, old, new)
+    }
+
+    /// every pixel of `element` at either pose
+    pub fn cover(&self, element: usize, a: Pose, b: Pose) -> Option<PixelRect> {
+        let (_, part, local) = self.find(element)?;
+        part.shape.cover(local, a, b)
     }
 
     pub fn paint(
         &self,
         canvas: &mut Canvas<'_>,
         element: usize,
-        extent: f32,
+        pose: Pose,
         clip: PixelRect,
         fills: &[Fill],
     ) {
@@ -131,7 +141,7 @@ impl Geometry {
         };
         if let Some(fill) = fills.get(index) {
             let color = part.values.start + local;
-            part.layout.paint(canvas, local, color, extent, clip, fill);
+            part.shape.paint(canvas, local, color, pose, clip, fill);
         }
     }
 
@@ -146,7 +156,10 @@ impl Geometry {
 
 /// whether layout has its own drawing yet
 pub fn is_ported(layout: Layout) -> bool {
-    matches!(layout, Layout::Line | Layout::Mirror | Layout::Frame)
+    matches!(
+        layout,
+        Layout::Line | Layout::Mirror | Layout::Frame | Layout::Particle | Layout::Floating
+    )
 }
 
 /// one warning per table that asks for a layout not drawn yet

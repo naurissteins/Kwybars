@@ -4,19 +4,21 @@
 mod tests;
 
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Instant;
 
+use super::dots::Drift;
 use super::fill::Fill;
 use super::geometry::Geometry;
-use super::{ByteOrder, Canvas, PixelRect};
+use super::{ByteOrder, Canvas, PixelRect, Pose};
 use crate::config::SurfaceConfig;
 
 /// source of painter ids, so buffers know which geometry drew them
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
-/// the bar extents one buffer holds, so a reused buffer is only patched
+/// the element poses one buffer holds, so a reused buffer is only patched
 #[derive(Debug, Clone, Default)]
 pub struct BufferContents {
-    extents: Vec<f32>,
+    poses: Vec<Pose>,
     opacity: u8,
     painter: u64,
 }
@@ -29,10 +31,11 @@ pub struct Painter {
     layout: Geometry,
     bases: Vec<Fill>,
     fills: Vec<Fill>,
+    drift: Option<Drift>,
     scale: f32,
-    next: Vec<f32>,
+    next: Vec<Pose>,
     opacity: u8,
-    shown: Vec<f32>,
+    shown: Vec<Pose>,
     shown_opacity: u8,
     shown_valid: bool,
 }
@@ -46,16 +49,14 @@ impl Painter {
         order: ByteOrder,
     ) -> Self {
         let layout = Geometry::new(config, size, scale, bars);
-        let bases: Vec<Fill> = layout
-            .axes()
-            .map(|axis| Fill::new(config, axis, size, bars, order))
-            .collect();
+        let bases = layout.fills(config, bars, order);
         Self {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             bars,
-            next: vec![0.0; layout.elements()],
+            drift: layout.drifting().then(|| Drift::new(bars)),
+            next: vec![Pose::default(); layout.elements()],
             opacity: u8::MAX,
-            shown: vec![0.0; layout.elements()],
+            shown: vec![Pose::default(); layout.elements()],
             shown_opacity: u8::MAX,
             layout,
             fills: bases.clone(),
@@ -72,13 +73,18 @@ impl Painter {
 
     /// whether shown surfaces need frames with the bars at rest
     pub fn animates(&self) -> bool {
-        self.layout.animates()
+        self.drift.as_ref().is_some_and(|drift| !drift.settled())
     }
 
-    pub fn layout(&mut self, heights: &[f32], opacity: u8) -> bool {
-        for (element, extent) in self.next.iter_mut().enumerate() {
-            let value = heights.get(self.layout.bar(element)).copied();
-            *extent = self.layout.extent(element, value.unwrap_or(0.0));
+    pub fn layout(&mut self, heights: &[f32], opacity: u8, now: Instant) -> bool {
+        if let Some(drift) = &mut self.drift {
+            drift.step(heights, now);
+        }
+        for (element, pose) in self.next.iter_mut().enumerate() {
+            let bar = self.layout.bar(element);
+            let value = heights.get(bar).copied().unwrap_or(0.0);
+            let lift = self.drift.as_ref().map_or(0.0, |drift| drift.lift(bar));
+            *pose = self.layout.pose(element, value, lift);
         }
         if opacity != self.opacity {
             for (fill, base) in self.fills.iter_mut().zip(&self.bases) {
@@ -92,23 +98,23 @@ impl Painter {
     /// empty contents sized for this painter's bars, for a new buffer
     pub fn new_contents(&self) -> BufferContents {
         BufferContents {
-            extents: vec![0.0; self.next.len()],
+            poses: vec![Pose::default(); self.next.len()],
             opacity: 0,
             painter: 0,
         }
     }
 
-    /// brings `canvas`, which holds `contents`, up to the laid out bars
+    /// brings canvas, which holds contents, up to the laid out bars
     pub fn paint(&self, canvas: &mut Canvas<'_>, contents: &mut BufferContents) {
         // a buffer drawn with other geometry, or never, is drawn whole
-        if contents.painter != self.id || contents.extents.len() != self.next.len() {
+        if contents.painter != self.id || contents.poses.len() != self.next.len() {
             canvas.clear(PixelRect::full(canvas.size()));
-            for (index, extent) in self.next.iter().enumerate() {
-                if let Some(area) = self.layout.area(index, *extent) {
-                    self.layout.paint(canvas, index, *extent, area, &self.fills);
+            for (index, pose) in self.next.iter().enumerate() {
+                if let Some(area) = self.layout.area(index, *pose) {
+                    self.layout.paint(canvas, index, *pose, area, &self.fills);
                 }
             }
-            contents.extents.clone_from(&self.next);
+            contents.poses.clone_from(&self.next);
             contents.opacity = self.opacity;
             contents.painter = self.id;
             return;
@@ -116,9 +122,9 @@ impl Painter {
         // a new opacity changes every bar pixel, but nothing outside the bars
         let faded = contents.opacity != self.opacity;
         contents.opacity = self.opacity;
-        for (index, (held, next)) in contents.extents.iter_mut().zip(&self.next).enumerate() {
+        for (index, (held, next)) in contents.poses.iter_mut().zip(&self.next).enumerate() {
             let area = if faded {
-                self.layout.area(index, held.max(*next))
+                self.layout.cover(index, *held, *next)
             } else {
                 self.layout.change(index, *held, *next)
             };
@@ -135,7 +141,7 @@ impl Painter {
             let faded = self.shown_opacity != self.opacity;
             for (index, (shown, next)) in self.shown.iter().zip(&self.next).enumerate() {
                 let area = if faded {
-                    self.layout.area(index, shown.max(*next))
+                    self.layout.cover(index, *shown, *next)
                 } else {
                     self.layout.change(index, *shown, *next)
                 };

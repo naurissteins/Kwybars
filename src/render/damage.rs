@@ -37,6 +37,17 @@ impl PixelRect {
         })
     }
 
+    /// the smallest rectangle holding both
+    pub fn union(self, other: Self) -> Self {
+        let (x, y) = (self.x.min(other.x), self.y.min(other.y));
+        Self {
+            x,
+            y,
+            width: self.right().max(other.right()) - x,
+            height: self.bottom().max(other.bottom()) - y,
+        }
+    }
+
     pub fn right(self) -> u32 {
         self.x + self.width
     }
@@ -72,5 +83,13 @@ mod tests {
         );
         assert_eq!(PixelRect::covering((200.0, 0.0, 210.0, 10.0), size), None);
         assert_eq!(PixelRect::covering((3.0, 3.0, 3.0, 9.0), size), None);
+    }
+
+    #[test]
+    fn union_holds_both() {
+        assert_eq!(
+            pixels(2, 10, 4, 6).union(pixels(3, 1, 1, 2)),
+            pixels(2, 1, 4, 15)
+        );
     }
 }

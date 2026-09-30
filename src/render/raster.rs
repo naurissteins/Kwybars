@@ -38,19 +38,19 @@ pub fn fill(canvas: &mut Canvas<'_>, shape: RoundedRect, clip: PixelRect, fill: 
     for y in y0..y1 {
         let row_top = y as f32;
         let cy = overlap(row_top, shape.top, shape.bottom);
-        let corner_row =
-            radius > 0.0 && (row_top < shape.top + radius || row_top + 1.0 > shape.bottom - radius);
-        let inset = if corner_row { radius } else { 0.0 };
-        // columns fully inside horizontally and clear of the corners
-        let inner_start = ((shape.left + inset).ceil().max(0.0) as u32).clamp(x0, x1);
-        let inner_end = ((shape.right - inset).floor().max(0.0) as u32).clamp(inner_start, x1);
+        let (reach, full) = columns(&shape, radius, row_top);
+        let to_column = |edge: f32| edge.max(0.0) as u32;
+        let inner_start = to_column(full.0.ceil()).clamp(x0, x1);
+        let inner_end = to_column(full.1.floor()).clamp(inner_start, x1);
+        let start = to_column(reach.0.floor()).clamp(x0, inner_start);
+        let end = to_column(reach.1.ceil()).clamp(inner_end, x1);
 
-        let span = canvas.span(y, x0, x1);
-        let (before, rest) = span.split_at_mut((inner_start - x0) as usize);
+        let span = canvas.span(y, start, end);
+        let (before, rest) = span.split_at_mut((inner_start - start) as usize);
         let (inner, after) = rest.split_at_mut((inner_end - inner_start) as usize);
         for (pixel, x) in before
             .iter_mut()
-            .zip(x0..)
+            .zip(start..)
             .chain(after.iter_mut().zip(inner_end..))
         {
             let coverage = edge_coverage(&shape, radius, x as f32, row_top, cy);
@@ -67,7 +67,31 @@ pub fn fill(canvas: &mut Canvas<'_>, shape: RoundedRect, clip: PixelRect, fill: 
     }
 }
 
-/// coverage of the pixel at `x`, `y` outside the plain interior
+fn columns(shape: &RoundedRect, radius: f32, row_top: f32) -> ((f32, f32), (f32, f32)) {
+    let plain = (shape.left, shape.right);
+    let corner_row =
+        radius > 0.0 && (row_top < shape.top + radius || row_top + 1.0 > shape.bottom - radius);
+    if !corner_row {
+        return (plain, plain);
+    }
+    let py = row_top + 0.5;
+    // max/min rather than clamp, which panics on crossed bounds
+    let dy = (py - py.max(shape.top + radius).min(shape.bottom - radius)).abs();
+    let chord = |r: f32| {
+        if dy < r {
+            (r * r - dy * dy).sqrt()
+        } else {
+            0.0
+        }
+    };
+    let (inner, outer) = (chord((radius - 0.5).max(0.0)), chord(radius + 0.5));
+    let (left, right) = (shape.left + radius, shape.right - radius);
+    (
+        (left - outer - 0.5, right + outer + 0.5),
+        (left - inner - 0.5, right + inner + 0.5),
+    )
+}
+
 fn edge_coverage(shape: &RoundedRect, radius: f32, x: f32, y: f32, cy: f32) -> f32 {
     let rect = overlap(x, shape.left, shape.right) * cy;
     if radius <= 0.0 {
@@ -85,7 +109,6 @@ fn edge_coverage(shape: &RoundedRect, radius: f32, x: f32, y: f32, cy: f32) -> f
     rect.min((radius - distance + 0.5).clamp(0.0, 1.0))
 }
 
-/// how much of the unit interval starting at `start` lies inside `low..high`
 fn overlap(start: f32, low: f32, high: f32) -> f32 {
     ((start + 1.0).min(high) - start.max(low)).clamp(0.0, 1.0)
 }
@@ -103,7 +126,7 @@ fn blend(pixel: &mut [u8; 4], color: [u8; 4], coverage: f32) {
 
 #[cfg(test)]
 mod tests {
-    use super::{RoundedRect, fill};
+    use super::{RoundedRect, blend, edge_coverage, fill, overlap};
     use crate::render::fill::Fill;
     use crate::render::{Canvas, PixelRect};
 
@@ -162,6 +185,54 @@ mod tests {
             assert_eq!(corner, alpha(&data, 20, y, x));
         }
         assert!(alpha(&data, 20, 2, 2) > 0 && alpha(&data, 20, 2, 2) < 255);
+    }
+
+    fn reference(shape: RoundedRect, size: (u32, u32)) -> Vec<u8> {
+        let mut data = vec![0_u8; (size.0 * size.1 * 4) as usize];
+        let radius = shape
+            .radius
+            .min((shape.right - shape.left) * 0.5)
+            .min((shape.bottom - shape.top) * 0.5);
+        for y in 0..size.1 {
+            let cy = overlap(y as f32, shape.top, shape.bottom);
+            for x in 0..size.0 {
+                let coverage = edge_coverage(&shape, radius, x as f32, y as f32, cy);
+                let at = ((y * size.0 + x) * 4) as usize;
+                let mut pixel = [0; 4];
+                blend(&mut pixel, [255; 4], coverage);
+                data[at..at + 4].copy_from_slice(&pixel);
+            }
+        }
+        data
+    }
+
+    #[test]
+    fn rows_match_sampling_every_pixel() {
+        let size = (40, 40);
+        let shapes = [
+            // circles, whole and at sub-pixel offsets
+            rect(2.0, 3.0, 32.0, 33.0, 15.0),
+            rect(4.3, 5.7, 25.1, 26.5, 10.4),
+            rect(10.5, 10.5, 12.5, 12.5, 1.0),
+            rect(7.2, 7.9, 8.0, 8.7, 0.4),
+            // rounded bars, tall and short
+            rect(3.0, 1.25, 17.0, 38.0, 7.0),
+            rect(20.4, 30.6, 35.9, 36.1, 6.0),
+            rect(1.0, 1.0, 39.0, 20.0, 3.3),
+        ];
+        for shape in shapes {
+            let drawn = render(shape, size, PixelRect::full(size));
+            let expected = reference(shape, size);
+            for (index, (a, b)) in drawn.iter().zip(&expected).enumerate() {
+                let pixel = (index / 4) as u32;
+                assert!(
+                    a.abs_diff(*b) <= 1,
+                    "{shape:?} at {}, {}: {a} vs {b}",
+                    pixel % size.0,
+                    pixel / size.0
+                );
+            }
+        }
     }
 
     #[test]

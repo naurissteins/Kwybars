@@ -2,6 +2,7 @@
 
 pub mod canvas;
 pub mod damage;
+pub mod dots;
 pub mod fill;
 pub mod frame;
 pub mod geometry;
@@ -37,6 +38,12 @@ impl ByteOrder {
             Self::Bgra => [b, g, r, a],
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Pose {
+    pub extent: f32,
+    pub shift: f32,
 }
 
 /// what every surface should show next

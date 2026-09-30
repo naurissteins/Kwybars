@@ -1,23 +1,15 @@
-//! where each bar pixel's color comes from, following the legacy layouts
-
 use super::ByteOrder;
 use crate::config::{ColorMode, Edge, GradientDirection, Rgba, SurfaceConfig};
 
-/// the line a gradient runs along, in buffer pixels; pixels before `start`
-/// or past its end take the end colors
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Axis {
-    /// along x, one color per column; else along y, one per row
     pub columns: bool,
     pub start: f32,
     pub length: f32,
-    /// the first stop is at the end
     pub reversed: bool,
 }
 
 impl Axis {
-    /// `line`: across the whole buffer, a vertical gradient starting at the
-    /// bars' base on `edge`
     pub fn along(edge: Edge, direction: GradientDirection, (width, height): (u32, u32)) -> Self {
         let along_bars = matches!(edge, Edge::Bottom | Edge::Top);
         let columns = along_bars == (direction == GradientDirection::Horizontal);
@@ -41,7 +33,7 @@ pub enum Fill {
 }
 
 impl Fill {
-    /// the color source for a buffer of `size`, gradients running along `axis`
+    /// the color source for a buffer of size, gradients running along axis
     pub fn new(
         config: &SurfaceConfig,
         axis: Axis,
@@ -86,7 +78,30 @@ impl Fill {
         }
     }
 
-    /// the color of bar `bar` at pixel `x`, `y`
+    pub fn per_bar(config: &SurfaceConfig, bars: usize, order: ByteOrder) -> Self {
+        let visualizer = &config.visualizer;
+        let (first, last) = (visualizer.color_rgba, visualizer.color2_rgba);
+        let colors = match &config.theme_colors {
+            Some(colors) => (0..bars)
+                .map(|bar| {
+                    let index = bar_color_index(bar, bars, colors.len());
+                    order.pack(colors.get(index).copied().unwrap_or(first))
+                })
+                .collect(),
+            None if visualizer.color_mode == ColorMode::Solid || bars <= 1 => {
+                return Self::Solid(order.pack(first));
+            }
+            None => (0..bars)
+                .map(|bar| {
+                    let t = bar as f32 / (bars - 1) as f32;
+                    order.pack(gradient(&[first, last], t))
+                })
+                .collect(),
+        };
+        Self::Bars(colors)
+    }
+
+    /// the color of bar bar at pixel x, y
     #[inline]
     pub fn color(&self, bar: usize, x: u32, y: u32) -> [u8; 4] {
         let pick = |table: &[[u8; 4]], index: usize| table.get(index).copied().unwrap_or([0; 4]);
@@ -100,7 +115,6 @@ impl Fill {
 }
 
 impl Fill {
-    /// writes the colors of bar `bar` for row `y` from column `x0` into `out`
     #[inline]
     pub fn span(&self, bar: usize, x0: u32, y: u32, out: &mut [[u8; 4]]) {
         match self {
@@ -117,8 +131,6 @@ impl Fill {
 }
 
 impl Fill {
-    /// becomes `base` at `opacity` out of 255; `base` must be a clone of this
-    /// fill, so the tables match and nothing is allocated
     pub fn fade_from(&mut self, base: &Self, opacity: u8) {
         let scale = |colors: &mut [[u8; 4]], base: &[[u8; 4]]| {
             for (color, base) in colors.iter_mut().zip(base) {
@@ -140,8 +152,6 @@ impl Fill {
     }
 }
 
-/// which of `color_count` palette colors bar `bar_index` of `bar_count` gets,
-/// in even blocks
 pub fn bar_color_index(bar_index: usize, bar_count: usize, color_count: usize) -> usize {
     if bar_count == 0 || color_count == 0 {
         return 0;
@@ -149,7 +159,6 @@ pub fn bar_color_index(bar_index: usize, bar_count: usize, color_count: usize) -
     (bar_index.saturating_mul(color_count) / bar_count).min(color_count - 1)
 }
 
-/// evenly spaced `stops` sampled at `t` in `0.0..=1.0`
 fn gradient(stops: &[Rgba], t: f32) -> Rgba {
     let Some(last) = stops.len().checked_sub(1) else {
         return Rgba::new(0.0, 0.0, 0.0, 0.0);
@@ -298,6 +307,30 @@ mod tests {
         assert_eq!(faded, base);
         faded.fade_from(&base, 0);
         assert_eq!(faded.color(0, 0, 0), [0; 4]);
+    }
+
+    #[test]
+    fn dots_take_one_color_each() {
+        let gradient = surface(ColorMode::Gradient, GradientDirection::Horizontal, false);
+        let Fill::Bars(colors) = Fill::per_bar(&gradient, 3, ByteOrder::Rgba) else {
+            panic!("expected a color per dot");
+        };
+        assert_eq!(
+            colors,
+            vec![[255, 0, 0, 255], [128, 0, 128, 255], [0, 0, 255, 255]]
+        );
+        let solid = surface(ColorMode::Solid, GradientDirection::Horizontal, false);
+        assert_eq!(
+            Fill::per_bar(&solid, 3, ByteOrder::Rgba),
+            Fill::Solid([255, 0, 0, 255])
+        );
+        // a theme ignores the gradient direction
+        let themed = surface(ColorMode::Solid, GradientDirection::Horizontal, true);
+        let (red, blue) = ([255, 0, 0, 255], [0, 0, 255, 255]);
+        assert_eq!(
+            Fill::per_bar(&themed, 4, ByteOrder::Rgba),
+            Fill::Bars(vec![red, red, blue, blue])
+        );
     }
 
     #[test]
