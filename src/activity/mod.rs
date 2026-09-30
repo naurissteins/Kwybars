@@ -10,4 +10,13 @@ pub use tracker::ActivityTracker;
 pub struct Presence {
     pub shown: bool,
     pub fading: bool,
+    /// a shown surface's drawing changes with the bars at rest
+    pub animated: bool,
+}
+
+impl Presence {
+    /// frames are needed even with the bars at rest
+    pub fn restless(&self) -> bool {
+        self.fading || self.animated
+    }
 }

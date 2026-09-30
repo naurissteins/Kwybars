@@ -7,6 +7,7 @@ use tracing::debug;
 
 use super::OutputSurface;
 use super::layer::place;
+use crate::render::Painter;
 
 impl OutputSurface {
     pub fn set_active(&mut self, active: bool, now: Instant) {
@@ -26,6 +27,11 @@ impl OutputSurface {
     /// whether the opacity still changes after `now`
     pub fn is_fading(&self, now: Instant) -> bool {
         self.shown && self.fade.is_fading(now)
+    }
+
+    /// shown and drawing something that moves on its own
+    pub fn is_animated(&self) -> bool {
+        self.shown && self.painter.as_ref().is_some_and(Painter::animates)
     }
 
     fn map(&mut self) {

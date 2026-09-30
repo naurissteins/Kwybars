@@ -6,7 +6,7 @@ mod tests;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::fill::Fill;
-use super::line::LineLayout;
+use super::geometry::Geometry;
 use super::{ByteOrder, Canvas, PixelRect};
 use crate::config::SurfaceConfig;
 
@@ -26,7 +26,7 @@ pub struct BufferContents {
 pub struct Painter {
     id: u64,
     bars: usize,
-    layout: LineLayout,
+    layout: Geometry,
     base: Fill,
     fill: Fill,
     scale: f32,
@@ -46,7 +46,7 @@ impl Painter {
         order: ByteOrder,
     ) -> Self {
         let edge = config.overlay.position;
-        let layout = LineLayout::new(&config.visualizer, edge, size, scale, bars);
+        let layout = Geometry::new(&config.visualizer, edge, size, scale, bars);
         let base = Fill::new(config, edge, size, bars, order);
         Self {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
@@ -66,6 +66,11 @@ impl Painter {
     /// whether this painter was laid out for `size` and `scale`
     pub fn fits(&self, size: (u32, u32), scale: f32, bars: usize) -> bool {
         self.layout.size() == size && self.scale == scale && self.bars == bars
+    }
+
+    /// whether shown surfaces need frames with the bars at rest
+    pub fn animates(&self) -> bool {
+        self.layout.animates()
     }
 
     /// lays out `heights` at `opacity` out of 255; false when the result

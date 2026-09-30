@@ -140,6 +140,7 @@ impl Wayland {
             surface.set_active(active, now);
             presence.shown |= surface.is_shown();
             presence.fading |= surface.is_fading(now);
+            presence.animated |= surface.is_animated();
         }
         presence
     }

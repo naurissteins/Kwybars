@@ -17,6 +17,7 @@ use crate::audio::motion::Motion;
 use crate::audio::spectrum::SpectrumConfig;
 use crate::config::{Loaded, Source};
 use crate::reload::{Reloaded, Reloader, Scope};
+use crate::render::geometry;
 
 pub(super) fn start(
     handle: &LoopHandle<'static, App>,
@@ -99,7 +100,10 @@ impl App {
     }
 
     /// rebuilds only what the new config changes
-    fn apply(&mut self, loaded: Loaded) {
+    fn apply(&mut self, mut loaded: Loaded) {
+        loaded
+            .warnings
+            .extend(geometry::unported_warnings(&loaded.config));
         for warning in &loaded.warnings {
             if !self.warnings.contains(warning) {
                 warn!("{warning}");
