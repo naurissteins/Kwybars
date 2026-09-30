@@ -24,6 +24,7 @@ pub fn strips(config: &SurfaceConfig, size: (u32, u32), scale: f32) -> ([Strip; 
         edge,
         region,
         min_extent: MIN_EXTENT,
+        mode: visualizer.line_mode,
     };
     let halves = if horizontal {
         let center = active.y + active.height * 0.5;

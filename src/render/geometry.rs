@@ -1,52 +1,79 @@
 //! the layout a surface draws, chosen from its layout key
 
+use std::ops::Range;
+
 use super::fill::{Axis, Fill};
 use super::line::LineLayout;
-use super::{Canvas, PixelRect, mirror};
+use super::{Canvas, PixelRect, frame, mirror};
 use crate::config::{Config, Layout, SurfaceConfig};
 
-/// bar geometry for one buffer size, in buffer pixels: one or more strips
-/// of bars, each drawing every bar
 #[derive(Debug, Clone, PartialEq)]
 pub struct Geometry {
     size: (u32, u32),
-    bars: usize,
-    strips: Vec<LineLayout>,
+    parts: Vec<Part>,
+    elements: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct Part {
+    layout: LineLayout,
+    values: Range<usize>,
     axis: Axis,
+    first: usize,
 }
 
 impl Geometry {
-    /// lays out bars bars for the surface's layout, layouts not ported yet
-    /// are drawn as line
     pub fn new(config: &SurfaceConfig, size: (u32, u32), scale: f32, bars: usize) -> Self {
         let visualizer = &config.visualizer;
-        let (strips, axis) = match visualizer.layout {
+        let mut parts = Vec::new();
+        let mut first = 0;
+        let mut push = |layout: LineLayout, values: Range<usize>, axis: Axis| {
+            let count = values.len();
+            parts.push(Part {
+                layout,
+                values,
+                axis,
+                first,
+            });
+            first += count;
+        };
+        match visualizer.layout {
             Layout::Mirror => {
                 let (halves, axis) = mirror::strips(config, size, scale);
-                let strips = halves
-                    .into_iter()
-                    .map(|strip| LineLayout::new(visualizer, strip, size, scale, bars))
-                    .collect();
-                (strips, axis)
+                for strip in halves {
+                    push(
+                        LineLayout::new(visualizer, strip, size, scale, bars),
+                        0..bars,
+                        axis,
+                    );
+                }
+            }
+            Layout::Frame => {
+                for part in frame::parts(config, size, scale, bars) {
+                    let count = part.values.len();
+                    let layout = LineLayout::new(visualizer, part.strip, size, scale, count);
+                    push(layout, part.values, part.axis);
+                }
             }
             Layout::Line
             | Layout::Wave
-            | Layout::Frame
             | Layout::Radial
             | Layout::Polygon
             | Layout::Particle
             | Layout::Floating => {
                 let edge = config.overlay.position;
                 let line = LineLayout::along(visualizer, edge, size, scale, bars);
-                let axis = Axis::along(edge, visualizer.gradient_direction, size);
-                (vec![line], axis)
+                push(
+                    line,
+                    0..bars,
+                    Axis::along(edge, visualizer.gradient_direction, size),
+                );
             }
-        };
+        }
         Self {
             size,
-            bars,
-            strips,
-            axis,
+            parts,
+            elements: first,
         }
     }
 
@@ -55,66 +82,71 @@ impl Geometry {
     }
 
     pub fn elements(&self) -> usize {
-        self.strips.len() * self.bars
+        self.elements
     }
 
-    /// the bar element `element` shows
+    /// the gradient line of each part, in part order
+    pub fn axes(&self) -> impl Iterator<Item = Axis> + '_ {
+        self.parts.iter().map(|part| part.axis)
+    }
+
+    /// the bar value `element` shows
     pub fn bar(&self, element: usize) -> usize {
-        element.checked_rem(self.bars).unwrap_or(0)
+        self.find(element)
+            .map_or(0, |(_, part, local)| part.values.start + local)
     }
 
-    /// the line gradients run along
-    pub fn axis(&self) -> Axis {
-        self.axis
-    }
-
-    /// whether the drawing changes over time with the bars at rest, such as
-    /// a rotation, so shown surfaces keep getting frames
     pub fn animates(&self) -> bool {
         false
     }
 
-    /// how far element `element` reaches at `value` in `0.0..=1.0`, in pixels
+    /// how far `element` reaches at `value` in `0.0..=1.0`, in pixels
     pub fn extent(&self, element: usize, value: f32) -> f32 {
-        self.strip(element)
-            .map_or(0.0, |(strip, _)| strip.extent(value))
+        self.find(element)
+            .map_or(0.0, |(_, part, _)| part.layout.extent(value))
     }
 
-    /// every pixel of element at extent
+    /// every pixel of `element` at `extent`
     pub fn area(&self, element: usize, extent: f32) -> Option<PixelRect> {
-        let (strip, bar) = self.strip(element)?;
-        strip.area(bar, extent)
+        let (_, part, local) = self.find(element)?;
+        part.layout.area(local, extent)
     }
 
-    /// the pixels that differ between element at old and at new
+    /// the pixels that differ between `element` at `old` and at `new`
     pub fn change(&self, element: usize, old: f32, new: f32) -> Option<PixelRect> {
-        let (strip, bar) = self.strip(element)?;
-        strip.change(bar, old, new)
+        let (_, part, local) = self.find(element)?;
+        part.layout.change(local, old, new)
     }
 
-    /// draws element at extent inside clip, which must be clear
     pub fn paint(
         &self,
         canvas: &mut Canvas<'_>,
         element: usize,
         extent: f32,
         clip: PixelRect,
-        fill: &Fill,
+        fills: &[Fill],
     ) {
-        if let Some((strip, bar)) = self.strip(element) {
-            strip.paint(canvas, bar, extent, clip, fill);
+        let Some((index, part, local)) = self.find(element) else {
+            return;
+        };
+        if let Some(fill) = fills.get(index) {
+            let color = part.values.start + local;
+            part.layout.paint(canvas, local, color, extent, clip, fill);
         }
     }
 
-    fn strip(&self, element: usize) -> Option<(&LineLayout, usize)> {
-        let strip = self.strips.get(element.checked_div(self.bars)?)?;
-        Some((strip, self.bar(element)))
+    /// the part holding `element`, its index, and the element's bar in it
+    fn find(&self, element: usize) -> Option<(usize, &Part, usize)> {
+        self.parts.iter().enumerate().find_map(|(index, part)| {
+            let local = element.checked_sub(part.first)?;
+            (local < part.values.len()).then_some((index, part, local))
+        })
     }
 }
 
 /// whether layout has its own drawing yet
 pub fn is_ported(layout: Layout) -> bool {
-    matches!(layout, Layout::Line | Layout::Mirror)
+    matches!(layout, Layout::Line | Layout::Mirror | Layout::Frame)
 }
 
 /// one warning per table that asks for a layout not drawn yet

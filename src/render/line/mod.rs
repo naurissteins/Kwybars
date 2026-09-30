@@ -46,6 +46,7 @@ impl LineLayout {
             edge,
             region: Region::whole(size),
             min_extent: LINE_MIN_EXTENT,
+            mode: visualizer.line_mode,
         };
         Self::new(visualizer, strip, size, scale, bars)
     }
@@ -67,7 +68,7 @@ impl LineLayout {
         };
         let length = length.max(0.0) as u32;
         let depth = depth.max(0.0);
-        let mode = match visualizer.line_mode {
+        let mode = match strip.mode {
             LineMode::Continuous => Mode::Continuous,
             LineMode::Split => Mode::Split {
                 center_gap: visualizer.line_split_gap as f32 * scale,
@@ -134,12 +135,13 @@ impl LineLayout {
         self.band(index, from, old.max(new))
     }
 
-    /// draws bar `index` at `extent`, touching only pixels inside `clip`,
-    /// which must be clear
+    /// draws bar `index` at `extent` in palette color `color`, touching only
+    /// pixels inside `clip`, which must be clear
     pub fn paint(
         &self,
         canvas: &mut Canvas<'_>,
         index: usize,
+        color: usize,
         extent: f32,
         clip: PixelRect,
         fill: &Fill,
@@ -147,7 +149,7 @@ impl LineLayout {
         match self.segments {
             None => {
                 if let Some(shape) = self.shape(index, 0.0, extent) {
-                    raster::fill(canvas, shape, clip, fill, index);
+                    raster::fill(canvas, shape, clip, fill, color);
                 }
             }
             Some((length, gap)) => {
@@ -156,7 +158,7 @@ impl LineLayout {
                 while start < extent {
                     let end = (start + length).min(extent);
                     if let Some(shape) = self.shape(index, start, end) {
-                        raster::fill(canvas, shape, clip, fill, index);
+                        raster::fill(canvas, shape, clip, fill, color);
                     }
                     start += step;
                 }

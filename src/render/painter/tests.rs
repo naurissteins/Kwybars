@@ -1,7 +1,7 @@
 use super::{BufferContents, Painter};
 use crate::config::{
-    ColorMode, Config, Edge, GradientDirection, Layout, LineMode, MirrorOrientation, Rgba,
-    SurfaceConfig,
+    ColorMode, Config, Edge, FrameMirrorMode, GradientDirection, Layout, LineMode,
+    MirrorOrientation, Rgba, SurfaceConfig,
 };
 use crate::render::{ByteOrder, Canvas, PixelRect};
 
@@ -254,4 +254,93 @@ fn mirror_halves_are_mirror_images() {
             assert!((0..width).all(|x| alpha(x, height / 2) == 0));
         }
     }
+}
+
+fn frame(mode: FrameMirrorMode, edit: impl FnOnce(&mut Config)) -> SurfaceConfig {
+    config(|c| {
+        c.visualizer.layout = Layout::Frame;
+        c.visualizer.frame_edges = vec![Edge::Top, Edge::Right, Edge::Bottom, Edge::Left];
+        c.visualizer.frame_mirror_mode = mode;
+        c.visualizer.bar_width = 4;
+        c.visualizer.gap = 2;
+        c.overlay.anchor_margin = 1;
+        c.overlay.margin_left = 2;
+        c.overlay.margin_right = 2;
+        c.overlay.margin_top = 1;
+        c.overlay.margin_bottom = 1;
+        c.overlay.height = 14;
+        c.overlay.width = 16;
+        edit(c);
+    })
+}
+
+#[test]
+fn frame_patching_matches_a_fresh_paint() {
+    let opacities = [255, 200, 200, 90, 255, 255];
+    for mode in [
+        FrameMirrorMode::Off,
+        FrameMirrorMode::All,
+        FrameMirrorMode::Pairs,
+    ] {
+        let rounded = frame(mode, |c| {
+            c.visualizer.bar_corner_radius = 3.0;
+            c.visualizer.color_mode = ColorMode::Gradient;
+            c.visualizer.color_rgba = Rgba::new(0.2, 0.6, 1.0, 0.5);
+            c.visualizer.color2_rgba = Rgba::new(1.0, 0.3, 0.1, 0.8);
+        });
+        let mut themed = frame(mode, |c| {
+            c.visualizer.segmented_bars = true;
+            c.visualizer.segment_length = 3;
+            c.visualizer.segment_gap = 1;
+            c.visualizer.gradient_direction = GradientDirection::Vertical;
+        });
+        themed.theme_colors = Some([
+            Rgba::new(1.0, 0.0, 0.0, 1.0),
+            Rgba::new(0.0, 1.0, 0.0, 1.0),
+            Rgba::new(0.0, 0.0, 1.0, 1.0),
+            Rgba::new(1.0, 1.0, 0.0, 1.0),
+            Rgba::new(0.0, 1.0, 1.0, 1.0),
+            Rgba::new(1.0, 0.0, 1.0, 1.0),
+        ]);
+        assert_fading_patching_matches(&rounded, &FRAMES, &opacities);
+        assert_patching_matches(&themed, &FRAMES);
+    }
+}
+
+#[test]
+fn frame_palette_follows_the_value_each_edge_shows() {
+    // six bars over four edges: top shows 0..1, right 1..3, bottom 3..4,
+    // left 4..6, and a theme gives bar n palette color n
+    let colors = [
+        Rgba::new(1.0, 0.0, 0.0, 1.0),
+        Rgba::new(0.0, 1.0, 0.0, 1.0),
+        Rgba::new(0.0, 0.0, 1.0, 1.0),
+        Rgba::new(1.0, 1.0, 0.0, 1.0),
+        Rgba::new(0.0, 1.0, 1.0, 1.0),
+        Rgba::new(1.0, 0.0, 1.0, 1.0),
+    ];
+    let mut surface = frame(FrameMirrorMode::Off, |c| {
+        c.visualizer.gradient_direction = GradientDirection::Vertical;
+        c.visualizer.bar_corner_radius = 0.0;
+    });
+    surface.theme_colors = Some(colors);
+    let mut painter = Painter::new(&surface, 6, SIZE, 1.0, ByteOrder::Rgba);
+    painter.layout(&[1.0; 6], 255);
+    let mut data = blank();
+    paint(&painter, &mut data, &mut painter.new_contents());
+    let pixel = |x: u32, y: u32| {
+        let at = ((y * SIZE.0 + x) * 4) as usize;
+        [data[at], data[at + 1], data[at + 2]]
+    };
+    // the one bar of the top and of the bottom edge is centered at x = 60,
+    // clear of the side edges
+    assert_eq!(pixel(60, 5), [255, 0, 0]);
+    assert_eq!(pixel(60, SIZE.1 - 5), [255, 255, 0]);
+    // the right edge shows bars 1 and 2, green and blue
+    let right: Vec<[u8; 3]> = (0..SIZE.1)
+        .map(|y| pixel(SIZE.0 - 5, y))
+        .filter(|color| *color != [0, 0, 0])
+        .collect();
+    assert!(right.contains(&[0, 255, 0]) && right.contains(&[0, 0, 255]));
+    assert!(!right.contains(&[255, 0, 0]));
 }

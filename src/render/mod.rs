@@ -3,6 +3,7 @@
 pub mod canvas;
 pub mod damage;
 pub mod fill;
+pub mod frame;
 pub mod geometry;
 pub mod line;
 pub mod mirror;

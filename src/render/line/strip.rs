@@ -1,6 +1,6 @@
 //! where a strip of bars sits in the buffer
 
-use crate::config::Edge;
+use crate::config::{Edge, LineMode};
 
 /// a rectangle of the buffer, in buffer pixels
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -28,4 +28,6 @@ pub struct Strip {
     pub edge: Edge,
     pub region: Region,
     pub min_extent: f32,
+    /// continuous or split around a center gap
+    pub mode: LineMode,
 }

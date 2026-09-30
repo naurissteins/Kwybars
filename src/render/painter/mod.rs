@@ -27,8 +27,8 @@ pub struct Painter {
     id: u64,
     bars: usize,
     layout: Geometry,
-    base: Fill,
-    fill: Fill,
+    bases: Vec<Fill>,
+    fills: Vec<Fill>,
     scale: f32,
     next: Vec<f32>,
     opacity: u8,
@@ -46,7 +46,10 @@ impl Painter {
         order: ByteOrder,
     ) -> Self {
         let layout = Geometry::new(config, size, scale, bars);
-        let base = Fill::new(config, layout.axis(), size, bars, order);
+        let bases: Vec<Fill> = layout
+            .axes()
+            .map(|axis| Fill::new(config, axis, size, bars, order))
+            .collect();
         Self {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             bars,
@@ -55,8 +58,8 @@ impl Painter {
             shown: vec![0.0; layout.elements()],
             shown_opacity: u8::MAX,
             layout,
-            fill: base.clone(),
-            base,
+            fills: bases.clone(),
+            bases,
             scale,
             shown_valid: false,
         }
@@ -72,15 +75,15 @@ impl Painter {
         self.layout.animates()
     }
 
-    /// lays out `heights` at `opacity` out of 255; false when the result
-    /// matches what is shown
     pub fn layout(&mut self, heights: &[f32], opacity: u8) -> bool {
         for (element, extent) in self.next.iter_mut().enumerate() {
             let value = heights.get(self.layout.bar(element)).copied();
             *extent = self.layout.extent(element, value.unwrap_or(0.0));
         }
         if opacity != self.opacity {
-            self.fill.fade_from(&self.base, opacity);
+            for (fill, base) in self.fills.iter_mut().zip(&self.bases) {
+                fill.fade_from(base, opacity);
+            }
             self.opacity = opacity;
         }
         !self.shown_valid || self.next != self.shown || self.opacity != self.shown_opacity
@@ -102,7 +105,7 @@ impl Painter {
             canvas.clear(PixelRect::full(canvas.size()));
             for (index, extent) in self.next.iter().enumerate() {
                 if let Some(area) = self.layout.area(index, *extent) {
-                    self.layout.paint(canvas, index, *extent, area, &self.fill);
+                    self.layout.paint(canvas, index, *extent, area, &self.fills);
                 }
             }
             contents.extents.clone_from(&self.next);
@@ -121,14 +124,12 @@ impl Painter {
             };
             if let Some(area) = area {
                 canvas.clear(area);
-                self.layout.paint(canvas, index, *next, area, &self.fill);
+                self.layout.paint(canvas, index, *next, area, &self.fills);
                 *held = *next;
             }
         }
     }
 
-    /// calls `each` with every area that differs from what is on screen,
-    /// then records the laid out bars as shown
     pub fn present(&mut self, mut each: impl FnMut(PixelRect)) {
         if self.shown_valid {
             let faded = self.shown_opacity != self.opacity;
