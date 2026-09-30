@@ -1,6 +1,8 @@
+mod cost;
 mod dots;
+mod radial;
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use super::{BufferContents, Painter};
 use crate::config::{
@@ -57,6 +59,23 @@ fn assert_fading_patching_matches(surface: &SurfaceConfig, frames: &[[f32; 6]], 
             data == expected,
             "patched pixels differ at {heights:?}, opacity {opacity}"
         );
+    }
+}
+
+/// frames 16 ms apart, compared with a whole paint of the same layout
+pub(super) fn assert_timed_patching_matches(surface: &SurfaceConfig, opacities: &[u8]) {
+    let mut painter = Painter::new(surface, 6, SIZE, 1.0, ByteOrder::Rgba);
+    let mut data = vec![0x5A_u8; (SIZE.0 * SIZE.1 * 4) as usize];
+    let mut contents = painter.new_contents();
+    let start = Instant::now();
+    let frames = FRAMES.iter().chain(&FRAMES).chain(&[[0.0; 6]; 8]);
+    for (frame, (heights, opacity)) in frames.zip(opacities.iter().cycle()).enumerate() {
+        let now = start + Duration::from_millis(16 * frame as u64);
+        painter.layout(heights, *opacity, now);
+        paint(&painter, &mut data, &mut contents);
+        let mut expected = blank();
+        paint(&painter, &mut expected, &mut painter.new_contents());
+        assert!(data == expected, "patched pixels differ at frame {frame}");
     }
 }
 

@@ -7,6 +7,7 @@ use std::ops::Range;
 use super::dots::DotLayout;
 use super::fill::{Axis, Fill};
 use super::line::LineLayout;
+use super::radial::RadialLayout;
 use super::{ByteOrder, Canvas, PixelRect, Pose, frame, mirror};
 use crate::config::{Config, Layout, SurfaceConfig};
 use shape::Shape;
@@ -61,7 +62,11 @@ impl Geometry {
                 let dots = DotLayout::new(visualizer, edge, size, scale, bars, drifting);
                 push(Shape::Dots(dots), 0..bars);
             }
-            Layout::Line | Layout::Wave | Layout::Radial | Layout::Polygon => {
+            Layout::Radial => {
+                let radial = RadialLayout::new(visualizer, size, scale, bars);
+                push(Shape::Radial(radial), 0..bars);
+            }
+            Layout::Line | Layout::Wave | Layout::Polygon => {
                 let line = LineLayout::along(visualizer, edge, size, scale, bars);
                 let axis = Axis::along(edge, visualizer.gradient_direction, size);
                 push(Shape::Strip(line, axis), 0..bars);
@@ -102,12 +107,33 @@ impl Geometry {
             .map_or(0, |(_, part, local)| part.values.start + local)
     }
 
-    /// `element` at `value` in `0.0..=1.0`, lifted `lift` from its edge
-    pub fn pose(&self, element: usize, value: f32, lift: f32) -> Pose {
+    pub fn pose(&self, element: usize, value: f32, lift: f32, turn: f32) -> Pose {
         self.find(element)
             .map_or(Pose::default(), |(_, part, local)| {
-                part.shape.pose(local, value, lift)
+                part.shape.pose(local, value, lift, turn)
             })
+    }
+
+    /// radians the layout has turned seconds after it first showed
+    pub fn turn(&self, seconds: f64) -> f32 {
+        self.radial().map_or(0.0, |radial| radial.turn(seconds))
+    }
+
+    pub fn turning(&self) -> bool {
+        self.radial().is_some_and(RadialLayout::turning)
+    }
+
+    /// whether elements' bounds overlap, so a cleared area must be repainted
+    /// with every element in it
+    pub fn overlapping(&self) -> bool {
+        self.radial().is_some()
+    }
+
+    fn radial(&self) -> Option<&RadialLayout> {
+        self.parts.iter().find_map(|part| match &part.shape {
+            Shape::Radial(radial) => Some(radial),
+            _ => None,
+        })
     }
 
     /// every pixel of `element` at `pose`
@@ -126,6 +152,17 @@ impl Geometry {
     pub fn cover(&self, element: usize, a: Pose, b: Pose) -> Option<PixelRect> {
         let (_, part, local) = self.find(element)?;
         part.shape.cover(local, a, b)
+    }
+
+    pub fn footprint(&self, element: usize, pose: Pose) -> u64 {
+        self.find(element)
+            .map_or(0, |(_, part, local)| part.shape.footprint(local, pose))
+    }
+
+    pub fn clear(&self, canvas: &mut Canvas<'_>, element: usize, pose: Pose) {
+        if let Some((_, part, local)) = self.find(element) {
+            part.shape.clear(canvas, local, pose);
+        }
     }
 
     pub fn paint(
@@ -158,7 +195,12 @@ impl Geometry {
 pub fn is_ported(layout: Layout) -> bool {
     matches!(
         layout,
-        Layout::Line | Layout::Mirror | Layout::Frame | Layout::Particle | Layout::Floating
+        Layout::Line
+            | Layout::Mirror
+            | Layout::Frame
+            | Layout::Particle
+            | Layout::Floating
+            | Layout::Radial
     )
 }
 
@@ -191,7 +233,7 @@ mod tests {
     fn warns_once_per_table_with_an_unported_layout() {
         let mut config = Config::default();
         assert!(unported_warnings(&config).is_empty());
-        config.visualizer.layout = Layout::Radial;
+        config.visualizer.layout = Layout::Polygon;
         let mut output = OutputConfig {
             monitor: "DP-2".to_owned(),
             ..OutputConfig::default()
@@ -200,6 +242,6 @@ mod tests {
         config.overlay.outputs = vec![output, OutputConfig::default()];
         let warnings = unported_warnings(&config);
         assert_eq!(warnings.len(), 2, "{warnings:?}");
-        assert!(warnings[0].contains("Radial") && warnings[1].contains("DP-2"));
+        assert!(warnings[0].contains("Polygon") && warnings[1].contains("DP-2"));
     }
 }

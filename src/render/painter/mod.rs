@@ -32,6 +32,8 @@ pub struct Painter {
     bases: Vec<Fill>,
     fills: Vec<Fill>,
     drift: Option<Drift>,
+    /// when the layout first showed, for its turn
+    epoch: Option<Instant>,
     scale: f32,
     next: Vec<Pose>,
     opacity: u8,
@@ -54,6 +56,7 @@ impl Painter {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             bars,
             drift: layout.drifting().then(|| Drift::new(bars)),
+            epoch: None,
             next: vec![Pose::default(); layout.elements()],
             opacity: u8::MAX,
             shown: vec![Pose::default(); layout.elements()],
@@ -73,18 +76,22 @@ impl Painter {
 
     /// whether shown surfaces need frames with the bars at rest
     pub fn animates(&self) -> bool {
-        self.drift.as_ref().is_some_and(|drift| !drift.settled())
+        self.layout.turning() || self.drift.as_ref().is_some_and(|drift| !drift.settled())
     }
 
     pub fn layout(&mut self, heights: &[f32], opacity: u8, now: Instant) -> bool {
         if let Some(drift) = &mut self.drift {
             drift.step(heights, now);
         }
+        let epoch = *self.epoch.get_or_insert(now);
+        let turn = self
+            .layout
+            .turn(now.saturating_duration_since(epoch).as_secs_f64());
         for (element, pose) in self.next.iter_mut().enumerate() {
             let bar = self.layout.bar(element);
             let value = heights.get(bar).copied().unwrap_or(0.0);
             let lift = self.drift.as_ref().map_or(0.0, |drift| drift.lift(bar));
-            *pose = self.layout.pose(element, value, lift);
+            *pose = self.layout.pose(element, value, lift, turn);
         }
         if opacity != self.opacity {
             for (fill, base) in self.fills.iter_mut().zip(&self.bases) {
@@ -119,35 +126,49 @@ impl Painter {
             contents.painter = self.id;
             return;
         }
-        // a new opacity changes every bar pixel, but nothing outside the bars
         let faded = contents.opacity != self.opacity;
         contents.opacity = self.opacity;
-        for (index, (held, next)) in contents.poses.iter_mut().zip(&self.next).enumerate() {
-            let area = if faded {
-                self.layout.cover(index, *held, *next)
-            } else {
-                self.layout.change(index, *held, *next)
-            };
-            if let Some(area) = area {
+        let changes = || self.changes(&contents.poses, faded);
+        if !self.layout.overlapping() {
+            for (index, area) in changes() {
                 canvas.clear(area);
-                self.layout.paint(canvas, index, *next, area, &self.fills);
-                *held = *next;
+                if let Some(pose) = self.next.get(index) {
+                    self.layout.paint(canvas, index, *pose, area, &self.fills);
+                }
+            }
+        } else if self.redraw_is_cheaper(&contents.poses, changes()) {
+            // every drawn pixel is in some element's held footprint
+            for (index, pose) in contents.poses.iter().enumerate() {
+                self.layout.clear(canvas, index, *pose);
+            }
+            for (index, pose) in self.next.iter().enumerate() {
+                if let Some(area) = self.layout.area(index, *pose) {
+                    self.layout.paint(canvas, index, *pose, area, &self.fills);
+                }
+            }
+        } else {
+            // other elements reach into a changed area, so all are redrawn there
+            for (_, area) in changes() {
+                canvas.clear(area);
+                for (index, pose) in self.next.iter().enumerate() {
+                    let clip = self
+                        .layout
+                        .area(index, *pose)
+                        .and_then(|a| a.intersect(area));
+                    if let Some(clip) = clip {
+                        self.layout.paint(canvas, index, *pose, clip, &self.fills);
+                    }
+                }
             }
         }
+        contents.poses.copy_from_slice(&self.next);
     }
 
     pub fn present(&mut self, mut each: impl FnMut(PixelRect)) {
         if self.shown_valid {
             let faded = self.shown_opacity != self.opacity;
-            for (index, (shown, next)) in self.shown.iter().zip(&self.next).enumerate() {
-                let area = if faded {
-                    self.layout.cover(index, *shown, *next)
-                } else {
-                    self.layout.change(index, *shown, *next)
-                };
-                if let Some(area) = area {
-                    each(area);
-                }
+            for (_, area) in self.changes(&self.shown, faded) {
+                each(area);
             }
         } else {
             each(PixelRect::full(self.layout.size()));
@@ -155,5 +176,43 @@ impl Painter {
         self.shown.copy_from_slice(&self.next);
         self.shown_opacity = self.opacity;
         self.shown_valid = true;
+    }
+
+    /// whether clearing and drawing every element costs fewer pixels than
+    /// redrawing each changed area with the elements reaching into it
+    fn redraw_is_cheaper(
+        &self,
+        poses: &[Pose],
+        changes: impl Iterator<Item = (usize, PixelRect)>,
+    ) -> bool {
+        let areas: u64 = changes.map(|(_, area)| area.pixels()).sum();
+        let footprints = poses.iter().zip(&self.next).enumerate();
+        let redraw: u64 = footprints
+            .map(|(index, (held, next))| {
+                self.layout.footprint(index, *held) + self.layout.footprint(index, *next)
+            })
+            .sum();
+        redraw < areas
+    }
+
+    /// the elements whose pixels differ from poses, and where; a new
+    /// opacity changes every element pixel, but nothing outside the elements
+    fn changes<'a>(
+        &'a self,
+        poses: &'a [Pose],
+        faded: bool,
+    ) -> impl Iterator<Item = (usize, PixelRect)> + 'a {
+        poses
+            .iter()
+            .zip(&self.next)
+            .enumerate()
+            .filter_map(move |(index, (held, next))| {
+                let area = if faded {
+                    self.layout.cover(index, *held, *next)
+                } else {
+                    self.layout.change(index, *held, *next)
+                };
+                area.map(|area| (index, area))
+            })
     }
 }

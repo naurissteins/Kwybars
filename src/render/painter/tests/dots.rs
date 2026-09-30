@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use super::{FRAMES, SIZE, blank, config, paint};
+use super::{SIZE, assert_timed_patching_matches, blank, config, paint};
 use crate::config::{ColorMode, Edge, Layout, Rgba, SurfaceConfig};
 use crate::render::{ByteOrder, Painter, PixelRect};
 
@@ -16,28 +16,12 @@ fn dots(layout: Layout, edge: Edge) -> SurfaceConfig {
     })
 }
 
-fn assert_patching_matches(surface: &SurfaceConfig, opacities: &[u8]) {
-    let mut painter = Painter::new(surface, 6, SIZE, 1.0, ByteOrder::Rgba);
-    let mut data = vec![0x5A_u8; (SIZE.0 * SIZE.1 * 4) as usize];
-    let mut contents = painter.new_contents();
-    let start = Instant::now();
-    let frames = FRAMES.iter().chain(&FRAMES).chain(&[[0.0; 6]; 8]);
-    for (frame, (heights, opacity)) in frames.zip(opacities.iter().cycle()).enumerate() {
-        let now = start + Duration::from_millis(16 * frame as u64);
-        painter.layout(heights, *opacity, now);
-        paint(&painter, &mut data, &mut contents);
-        let mut expected = blank();
-        paint(&painter, &mut expected, &mut painter.new_contents());
-        assert!(data == expected, "patched pixels differ at frame {frame}");
-    }
-}
-
 #[test]
 fn dot_patching_matches_a_whole_paint() {
     for layout in [Layout::Particle, Layout::Floating] {
         for edge in [Edge::Bottom, Edge::Top, Edge::Left, Edge::Right] {
-            assert_patching_matches(&dots(layout, edge), &[255]);
-            assert_patching_matches(&dots(layout, edge), &[255, 200, 90, 90, 0, 31]);
+            assert_timed_patching_matches(&dots(layout, edge), &[255]);
+            assert_timed_patching_matches(&dots(layout, edge), &[255, 200, 90, 90, 0, 31]);
         }
     }
 }

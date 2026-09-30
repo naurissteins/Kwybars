@@ -78,10 +78,20 @@ impl Fill {
         }
     }
 
-    pub fn per_bar(config: &SurfaceConfig, bars: usize, order: ByteOrder) -> Self {
+    /// smooth_theme blends the palette from bar to bar instead of in blocks
+    pub fn per_bar(
+        config: &SurfaceConfig,
+        bars: usize,
+        order: ByteOrder,
+        smooth_theme: bool,
+    ) -> Self {
         let visualizer = &config.visualizer;
         let (first, last) = (visualizer.color_rgba, visualizer.color2_rgba);
+        let along = |bar: usize| bar as f32 / bars.saturating_sub(1).max(1) as f32;
         let colors = match &config.theme_colors {
+            Some(colors) if smooth_theme => (0..bars)
+                .map(|bar| order.pack(gradient(colors, along(bar))))
+                .collect(),
             Some(colors) => (0..bars)
                 .map(|bar| {
                     let index = bar_color_index(bar, bars, colors.len());
@@ -92,10 +102,7 @@ impl Fill {
                 return Self::Solid(order.pack(first));
             }
             None => (0..bars)
-                .map(|bar| {
-                    let t = bar as f32 / (bars - 1) as f32;
-                    order.pack(gradient(&[first, last], t))
-                })
+                .map(|bar| order.pack(gradient(&[first, last], along(bar))))
                 .collect(),
         };
         Self::Bars(colors)
@@ -115,6 +122,15 @@ impl Fill {
 }
 
 impl Fill {
+    /// the color of bar along all of row y, unless it changes along the row
+    #[inline]
+    pub fn row(&self, bar: usize, y: u32) -> Option<[u8; 4]> {
+        match self {
+            Self::Columns(_) => None,
+            _ => Some(self.color(bar, 0, y)),
+        }
+    }
+
     #[inline]
     pub fn span(&self, bar: usize, x0: u32, y: u32, out: &mut [[u8; 4]]) {
         match self {
@@ -312,7 +328,7 @@ mod tests {
     #[test]
     fn dots_take_one_color_each() {
         let gradient = surface(ColorMode::Gradient, GradientDirection::Horizontal, false);
-        let Fill::Bars(colors) = Fill::per_bar(&gradient, 3, ByteOrder::Rgba) else {
+        let Fill::Bars(colors) = Fill::per_bar(&gradient, 3, ByteOrder::Rgba, false) else {
             panic!("expected a color per dot");
         };
         assert_eq!(
@@ -321,16 +337,20 @@ mod tests {
         );
         let solid = surface(ColorMode::Solid, GradientDirection::Horizontal, false);
         assert_eq!(
-            Fill::per_bar(&solid, 3, ByteOrder::Rgba),
+            Fill::per_bar(&solid, 3, ByteOrder::Rgba, false),
             Fill::Solid([255, 0, 0, 255])
         );
         // a theme ignores the gradient direction
         let themed = surface(ColorMode::Solid, GradientDirection::Horizontal, true);
         let (red, blue) = ([255, 0, 0, 255], [0, 0, 255, 255]);
         assert_eq!(
-            Fill::per_bar(&themed, 4, ByteOrder::Rgba),
+            Fill::per_bar(&themed, 4, ByteOrder::Rgba, false),
             Fill::Bars(vec![red, red, blue, blue])
         );
+        let Fill::Bars(smooth) = Fill::per_bar(&themed, 3, ByteOrder::Rgba, true) else {
+            panic!("expected a color per bar");
+        };
+        assert_eq!(smooth, vec![red, [128, 0, 128, 255], blue]);
     }
 
     #[test]

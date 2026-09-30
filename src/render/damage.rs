@@ -48,6 +48,24 @@ impl PixelRect {
         }
     }
 
+    pub fn intersect(self, other: Self) -> Option<Self> {
+        let (x, y) = (self.x.max(other.x), self.y.max(other.y));
+        let (right, bottom) = (
+            self.right().min(other.right()),
+            self.bottom().min(other.bottom()),
+        );
+        (right > x && bottom > y).then(|| Self {
+            x,
+            y,
+            width: right - x,
+            height: bottom - y,
+        })
+    }
+
+    pub fn pixels(self) -> u64 {
+        u64::from(self.width) * u64::from(self.height)
+    }
+
     pub fn right(self) -> u32 {
         self.x + self.width
     }
@@ -83,6 +101,14 @@ mod tests {
         );
         assert_eq!(PixelRect::covering((200.0, 0.0, 210.0, 10.0), size), None);
         assert_eq!(PixelRect::covering((3.0, 3.0, 3.0, 9.0), size), None);
+    }
+
+    #[test]
+    fn intersect_keeps_the_shared_pixels() {
+        let a = pixels(2, 10, 4, 6);
+        assert_eq!(a.intersect(pixels(4, 0, 10, 12)), Some(pixels(4, 10, 2, 2)));
+        assert_eq!(a.intersect(pixels(6, 10, 3, 3)), None);
+        assert_eq!(a.pixels(), 24);
     }
 
     #[test]
