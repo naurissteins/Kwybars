@@ -1,5 +1,8 @@
 use super::{BufferContents, Painter};
-use crate::config::{ColorMode, Config, Edge, GradientDirection, LineMode, Rgba, SurfaceConfig};
+use crate::config::{
+    ColorMode, Config, Edge, GradientDirection, Layout, LineMode, MirrorOrientation, Rgba,
+    SurfaceConfig,
+};
 use crate::render::{ByteOrder, Canvas, PixelRect};
 
 const SIZE: (u32, u32) = (120, 60);
@@ -181,4 +184,74 @@ fn painting_does_not_reallocate() {
         painter.present(|_| {});
     }
     assert_eq!(before, (painter.next.as_ptr(), painter.shown.as_ptr()));
+}
+
+fn mirror(orientation: MirrorOrientation, edit: impl FnOnce(&mut Config)) -> SurfaceConfig {
+    config(|c| {
+        c.visualizer.layout = Layout::Mirror;
+        c.visualizer.mirror_orientation = orientation;
+        edit(c);
+    })
+}
+
+#[test]
+fn mirror_patching_matches_a_fresh_paint() {
+    let opacities = [255, 255, 180, 180, 40, 255];
+    for orientation in [MirrorOrientation::Horizontal, MirrorOrientation::Vertical] {
+        let rounded = mirror(orientation, |c| {
+            c.visualizer.mirror_gap = 6;
+            c.visualizer.bar_corner_radius = 20.0;
+            c.visualizer.color_mode = ColorMode::Gradient;
+            c.visualizer.color_rgba = Rgba::new(0.2, 0.6, 1.0, 0.5);
+            c.visualizer.color2_rgba = Rgba::new(1.0, 0.3, 0.1, 0.8);
+        });
+        let segmented = mirror(orientation, |c| {
+            c.visualizer.segmented_bars = true;
+            c.visualizer.segment_length = 5;
+            c.visualizer.segment_gap = 2;
+            c.visualizer.line_mode = LineMode::Split;
+            c.visualizer.line_split_gap = 10;
+        });
+        assert_fading_patching_matches(&rounded, &FRAMES, &opacities);
+        assert_patching_matches(&segmented, &FRAMES);
+    }
+}
+
+#[test]
+fn mirror_halves_are_mirror_images() {
+    for (orientation, gap) in [
+        (MirrorOrientation::Horizontal, 0),
+        (MirrorOrientation::Horizontal, 7),
+        (MirrorOrientation::Vertical, 4),
+    ] {
+        let surface = mirror(orientation, |c| {
+            c.visualizer.mirror_gap = gap;
+            c.visualizer.segmented_bars = true;
+            c.visualizer.segment_length = 4;
+            c.visualizer.segment_gap = 2;
+            c.visualizer.bar_corner_radius = 1.0;
+        });
+        let mut painter = Painter::new(&surface, 6, SIZE, 1.0, ByteOrder::Rgba);
+        painter.layout(&[0.3, 0.9, 0.05, 0.47, 1.0, 0.2], 255);
+        let mut data = blank();
+        paint(&painter, &mut data, &mut painter.new_contents());
+        let alpha = |x: u32, y: u32| data[((y * SIZE.0 + x) * 4 + 3) as usize];
+        let (width, height) = SIZE;
+        for y in 0..height {
+            for x in 0..width {
+                let mirrored = match orientation {
+                    MirrorOrientation::Horizontal => alpha(x, height - 1 - y),
+                    MirrorOrientation::Vertical => alpha(width - 1 - x, y),
+                };
+                // edge coverage may round the other way on one side
+                let difference = alpha(x, y).abs_diff(mirrored);
+                assert!(difference <= 1, "{orientation:?} gap {gap} at {x},{y}");
+            }
+        }
+        // something was drawn, and the gap stays empty
+        assert!(data.iter().any(|byte| *byte != 0));
+        if orientation == MirrorOrientation::Horizontal && gap == 7 {
+            assert!((0..width).all(|x| alpha(x, height / 2) == 0));
+        }
+    }
 }

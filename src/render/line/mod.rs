@@ -1,6 +1,8 @@
-//! the `line` layout: bars along one edge, growing away from it
+//! a strip of bars along one edge of a region, growing away from it: the
+//! whole `line` layout, and each half of `mirror`
 
 mod slots;
+mod strip;
 #[cfg(test)]
 mod tests;
 
@@ -9,15 +11,20 @@ use super::raster::{self, RoundedRect};
 use super::{Canvas, PixelRect};
 use crate::config::{Edge, LineMode, VisualizerConfig};
 use slots::Mode;
+pub use strip::{Region, Strip};
 
-/// shortest a bar gets, in logical pixels, as in the legacy overlay
-const MIN_EXTENT: f32 = 2.0;
+/// shortest a `line` bar gets, in logical pixels, as in the legacy overlay
+const LINE_MIN_EXTENT: f32 = 2.0;
 
 /// bar geometry for one buffer size, in buffer pixels
 #[derive(Debug, Clone, PartialEq)]
 pub struct LineLayout {
     edge: Edge,
     size: (u32, u32),
+    region: Region,
+    /// whole pixel where the spans start along the edge
+    origin: f32,
+    /// along the edge from `origin`
     spans: Vec<(u32, u32)>,
     depth: f32,
     min_extent: f32,
@@ -26,20 +33,40 @@ pub struct LineLayout {
 }
 
 impl LineLayout {
-    /// lays out `bars` bars; `scale` converts the config's logical pixels
-    pub fn new(
+    /// `bars` bars along `edge` of the whole buffer of `size`, as `line` draws
+    /// them; `scale` converts the config's logical pixels
+    pub fn along(
         visualizer: &VisualizerConfig,
         edge: Edge,
         size: (u32, u32),
         scale: f32,
         bars: usize,
     ) -> Self {
-        let along_x = matches!(edge, Edge::Bottom | Edge::Top);
-        let (length, depth) = if along_x {
-            (size.0, size.1)
-        } else {
-            (size.1, size.0)
+        let strip = Strip {
+            edge,
+            region: Region::whole(size),
+            min_extent: LINE_MIN_EXTENT,
         };
+        Self::new(visualizer, strip, size, scale, bars)
+    }
+
+    /// `bars` bars in `strip` of a buffer of `size`
+    pub fn new(
+        visualizer: &VisualizerConfig,
+        strip: Strip,
+        size: (u32, u32),
+        scale: f32,
+        bars: usize,
+    ) -> Self {
+        let Strip { edge, region, .. } = strip;
+        let along_x = matches!(edge, Edge::Bottom | Edge::Top);
+        let (origin, length, depth) = if along_x {
+            (region.x, region.width, region.height)
+        } else {
+            (region.y, region.height, region.width)
+        };
+        let length = length.max(0.0) as u32;
+        let depth = depth.max(0.0);
         let mode = match visualizer.line_mode {
             LineMode::Continuous => Mode::Continuous,
             LineMode::Split => Mode::Split {
@@ -68,9 +95,11 @@ impl LineLayout {
         Self {
             edge,
             size,
+            region,
+            origin: origin.round(),
             spans,
-            depth: depth as f32,
-            min_extent: (MIN_EXTENT * scale).min(depth as f32),
+            depth,
+            min_extent: (strip.min_extent * scale).min(depth),
             radius: visualizer.bar_corner_radius.max(0.0) * scale,
             segments: visualizer
                 .segmented_bars
@@ -173,13 +202,18 @@ impl LineLayout {
     /// bar `index` between `from` and `to` away from the edge as a shape
     fn shape(&self, index: usize, from: f32, to: f32) -> Option<RoundedRect> {
         let &(start, end) = self.spans.get(index)?;
-        let (start, end) = (start as f32, end as f32);
-        let (width, height) = (self.size.0 as f32, self.size.1 as f32);
+        let (start, end) = (self.origin + start as f32, self.origin + end as f32);
+        let Region {
+            x,
+            y,
+            width,
+            height,
+        } = self.region;
         let (left, top, right, bottom) = match self.edge {
-            Edge::Bottom => (start, height - to, end, height - from),
-            Edge::Top => (start, from, end, to),
-            Edge::Left => (from, start, to, end),
-            Edge::Right => (width - to, start, width - from, end),
+            Edge::Bottom => (start, y + height - to, end, y + height - from),
+            Edge::Top => (start, y + from, end, y + to),
+            Edge::Left => (x + from, start, x + to, end),
+            Edge::Right => (x + width - to, start, x + width - from, end),
         };
         Some(RoundedRect {
             left,

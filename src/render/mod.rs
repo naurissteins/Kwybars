@@ -5,6 +5,7 @@ pub mod damage;
 pub mod fill;
 pub mod geometry;
 pub mod line;
+pub mod mirror;
 pub mod painter;
 pub mod raster;
 

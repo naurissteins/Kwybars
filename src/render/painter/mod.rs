@@ -45,15 +45,14 @@ impl Painter {
         scale: f32,
         order: ByteOrder,
     ) -> Self {
-        let edge = config.overlay.position;
-        let layout = Geometry::new(&config.visualizer, edge, size, scale, bars);
-        let base = Fill::new(config, edge, size, bars, order);
+        let layout = Geometry::new(config, size, scale, bars);
+        let base = Fill::new(config, layout.axis(), size, bars, order);
         Self {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             bars,
-            next: vec![0.0; layout.bars()],
+            next: vec![0.0; layout.elements()],
             opacity: u8::MAX,
-            shown: vec![0.0; layout.bars()],
+            shown: vec![0.0; layout.elements()],
             shown_opacity: u8::MAX,
             layout,
             fill: base.clone(),
@@ -76,10 +75,9 @@ impl Painter {
     /// lays out `heights` at `opacity` out of 255; false when the result
     /// matches what is shown
     pub fn layout(&mut self, heights: &[f32], opacity: u8) -> bool {
-        for (index, extent) in self.next.iter_mut().enumerate() {
-            *extent = self
-                .layout
-                .extent(heights.get(index).copied().unwrap_or(0.0));
+        for (element, extent) in self.next.iter_mut().enumerate() {
+            let value = heights.get(self.layout.bar(element)).copied();
+            *extent = self.layout.extent(element, value.unwrap_or(0.0));
         }
         if opacity != self.opacity {
             self.fill.fade_from(&self.base, opacity);
