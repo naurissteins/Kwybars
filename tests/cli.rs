@@ -1,4 +1,4 @@
-//! exit codes and output of the `kwybars` binary's checking subcommands
+//! exit codes and output of the `kwybars` binary's subcommands
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -58,7 +58,13 @@ fn help_lists_the_commands_and_exits_with_0() {
         let (code, stdout, stderr) = kwybars(&home.0, &[flag]);
         assert_eq!(code, Some(0));
         assert!(stdout.starts_with("Usage: kwybars [OPTIONS] [COMMAND]"));
-        for command in ["validate-config", "list-themes", "doctor"] {
+        for command in [
+            "validate-config",
+            "list-themes",
+            "doctor",
+            "switch-config",
+            "image-overlay match",
+        ] {
             assert!(stdout.contains(command), "{command} missing from help");
         }
         assert!(stderr.is_empty());
@@ -76,6 +82,9 @@ fn usage_errors_exit_with_2_and_print_the_usage_to_stderr() {
         &["validate-config", "extra"],
         &["doctor", "--config"],
         &["list-themes", "--nope"],
+        &["switch-config"],
+        &["image-overlay", "match", "wall.jpg"],
+        &["doctor", "--overlay-dir", "/tmp"],
     ] {
         let (code, stdout, stderr) = kwybars(&home.0, args);
         assert_eq!(code, Some(2), "{args:?}");
@@ -129,4 +138,67 @@ fn doctor_without_a_compositor_reports_it_and_exits_with_1() {
     assert!(stdout.contains("\nerror: wayland: "), "{stdout}");
     assert!(stdout.contains("\nsession: unknown (WAYLAND_DISPLAY not set)\n"));
     assert!(stdout.contains(" issue(s) found\n"), "{stdout}");
+}
+
+#[test]
+fn switch_config_links_the_default_config_path() {
+    let home = TempDir::new("switch");
+    let one = home.write("one.toml", "");
+    let two = home.write("two.toml", "");
+    let active = home.0.join(".config/kwybars/config.toml");
+
+    for target in [&one, &two] {
+        let (code, stdout, stderr) =
+            kwybars(&home.0, &["switch-config", &target.to_string_lossy()]);
+        assert_eq!(code, Some(0), "{stdout}{stderr}");
+        assert_eq!(
+            stdout,
+            format!(
+                "switched active config {} -> {}\n",
+                active.display(),
+                target.display()
+            )
+        );
+        assert_eq!(fs::read_link(&active).ok().as_ref(), Some(target));
+    }
+
+    let (code, stdout, stderr) = kwybars(&home.0, &["switch-config", "/nonexistent/k.toml"]);
+    assert_eq!(code, Some(1));
+    assert!(stdout.is_empty());
+    assert_eq!(
+        stderr,
+        "kwybars: target config does not exist: /nonexistent/k.toml\n"
+    );
+    assert_eq!(fs::read_link(&active).ok(), Some(two));
+}
+
+#[test]
+fn image_overlay_match_updates_the_named_config() {
+    let home = TempDir::new("match");
+    let config = home.write("config.toml", "[image_overlay]\nopacity = 0.5 # faint\n");
+    let image = home.write("forest.png", "image");
+    let dir = home.0.to_string_lossy();
+    let args = ["image-overlay", "match", "--overlay-dir", &dir, "-c"];
+
+    let (code, stdout, stderr) = kwybars(
+        &home.0,
+        &[&args[..], &[&config.to_string_lossy(), "/walls/forest.jpg"]].concat(),
+    );
+    assert_eq!(code, Some(0), "{stdout}{stderr}");
+    assert!(stdout.ends_with(&format!("config: {} (updated)\n", config.display())));
+    assert_eq!(
+        fs::read_to_string(&config).ok(),
+        Some(format!(
+            "[image_overlay]\nopacity = 0.5 # faint\nenabled = true\npath = \"{}\"\n",
+            image.display()
+        ))
+    );
+
+    let (code, stdout, stderr) = kwybars(
+        &home.0,
+        &[&args[..], &[&config.to_string_lossy(), "/walls/desert.jpg"]].concat(),
+    );
+    assert_eq!(code, Some(1));
+    assert!(stdout.is_empty());
+    assert!(stderr.starts_with("kwybars: no overlay image named like /walls/desert.jpg in "));
 }

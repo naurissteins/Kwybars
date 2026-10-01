@@ -122,10 +122,118 @@ fn usage_names_every_command() {
         "validate-config",
         "list-themes",
         "doctor",
+        "switch-config",
+        "image-overlay match",
         "debug audio",
         "debug spectrum",
     ] {
         assert!(USAGE.contains(&format!("\n  {command} ")), "{command}");
+    }
+}
+
+#[test]
+fn switch_config_takes_a_target_and_the_config_path_to_link() {
+    let expected = |active: Option<&str>| Command::SwitchConfig {
+        options: RunOptions {
+            config_path: active.map(PathBuf::from),
+        },
+        target: PathBuf::from("/tmp/alt.toml"),
+    };
+    assert_eq!(
+        parse_args(&["switch-config", "/tmp/alt.toml"]).ok(),
+        Some(expected(None))
+    );
+    for flags in [
+        &["--active", "/tmp/current.toml"][..],
+        &["-a", "/tmp/current.toml"],
+        &["--config=/tmp/current.toml"],
+        &["-c", "/tmp/other.toml", "--active=/tmp/current.toml"],
+    ] {
+        let args = [&["switch-config"], flags, &["/tmp/alt.toml"]].concat();
+        assert_eq!(
+            parse_args(&args).ok(),
+            Some(expected(Some("/tmp/current.toml"))),
+            "{flags:?}"
+        );
+    }
+    for args in [&["switch-config"][..], &["switch-config", ""]] {
+        assert!(matches!(
+            parse_args(args),
+            Err(UsageError::Missing {
+                command: "switch-config",
+                ..
+            })
+        ));
+    }
+    assert!(matches!(
+        parse_args(&["switch-config", "a.toml", "b.toml"]),
+        Err(UsageError::UnknownCommand(_))
+    ));
+}
+
+#[test]
+fn image_overlay_match_takes_a_directory_and_a_wallpaper() {
+    let args = [
+        "image-overlay",
+        "match",
+        "--overlay-dir",
+        "/tmp/overlays",
+        "--config=/tmp/config.toml",
+        "/walls/forest.jpg",
+    ];
+    assert_eq!(
+        parse_args(&args).ok(),
+        Some(Command::ImageOverlayMatch {
+            options: RunOptions {
+                config_path: Some(PathBuf::from("/tmp/config.toml")),
+            },
+            overlay_dir: PathBuf::from("/tmp/overlays"),
+            wallpaper: PathBuf::from("/walls/forest.jpg"),
+        })
+    );
+    for args in [
+        &["image-overlay", "match", "/walls/forest.jpg"][..],
+        &["image-overlay", "match", "--overlay-dir", "/tmp/overlays"],
+    ] {
+        assert!(
+            matches!(parse_args(args), Err(UsageError::Missing { .. })),
+            "{args:?}"
+        );
+    }
+    for args in [&["image-overlay"][..], &["image-overlay", "list"]] {
+        assert!(matches!(
+            parse_args(args),
+            Err(UsageError::UnknownCommand(_))
+        ));
+    }
+}
+
+#[test]
+fn an_option_of_another_command_is_an_error() {
+    for (args, option) in [
+        (&["doctor", "--overlay-dir", "/tmp"][..], "--overlay-dir"),
+        (&["--active", "/tmp/a.toml"], "--active"),
+        (
+            &["switch-config", "--overlay-dir", "/tmp", "a.toml"],
+            "--overlay-dir",
+        ),
+        (
+            &[
+                "image-overlay",
+                "match",
+                "--overlay-dir",
+                "/o",
+                "-a",
+                "x",
+                "w.jpg",
+            ],
+            "--active",
+        ),
+    ] {
+        match parse_args(args) {
+            Err(UsageError::StrayOption(name)) => assert_eq!(name, option),
+            other => panic!("expected a stray option, got {other:?}"),
+        }
     }
 }
 
