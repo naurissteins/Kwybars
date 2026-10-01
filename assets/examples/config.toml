@@ -1,5 +1,6 @@
 # Example Kwybars config
-# If you do not create a config file, Kwybars already uses these built-in defaults
+# If you do not create a config file, Kwybars already uses these built-in defaults.
+# The other files in this directory are presets, one per layout.
 
 [overlay]
 monitor_mode = "primary"
@@ -52,14 +53,23 @@ height = 0
 offset_x = 0
 offset_y = 0
 
-[daemon]
-enabled = true
-poll_interval_ms = 90
-activity_threshold = 0.035
+# When the bars show and hide. They appear once the audio peak has stayed
+# above `threshold` (0 to 1) for `activate_delay_ms`, and fade out after it
+# has stayed below it for `deactivate_delay_ms`.
+[activity]
+threshold = 0.035
 activate_delay_ms = 180
 deactivate_delay_ms = 2200
-stop_on_silence = true
-notify_on_error = true
-notify_cooldown_seconds = 45
-overlay_command = "kwybars-overlay"
-overlay_args = []
+
+# How the audio becomes bar heights.
+[audio]
+# Bar height multiplier (0.1 to 10). With auto_sensitivity it is the starting
+# point; without it, it is the fixed gain.
+sensitivity = 1.0
+# Adjust the gain so loud passages just reach the top.
+auto_sensitivity = true
+# The frequency range spread across the bars, in Hz.
+low_cutoff_hz = 50
+high_cutoff_hz = 10000
+# 0 follows the audio exactly, higher values (up to 0.95) move more calmly.
+smoothing = 0.7
