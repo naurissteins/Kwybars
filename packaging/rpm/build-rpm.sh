@@ -60,16 +60,13 @@ License:        GPL-3.0-or-later
 URL:            https://github.com/naurissteins/Kwybars
 Source0:        ${source_basename}
 BuildArch:      ${architecture}
-Requires:       cava
-Requires:       gdk-pixbuf2
-Requires:       gtk4
-Requires:       gtk4-layer-shell
 Requires:       pipewire-libs
-Recommends:     libnotify
+Recommends:     pipewire
 
 %description
-Kwybars renders real-time audio bars as a transparent GTK4 layer-shell
-overlay on Wayland desktops.
+Kwybars draws real-time audio bars on the desktop of Wayland compositors
+that support layer-shell. It reads audio from PipeWire and hides itself
+while nothing plays.
 
 %prep
 %setup -q -n ${source_dirname}
@@ -78,22 +75,20 @@ overlay on Wayland desktops.
 
 %install
 install -d %{buildroot}%{_bindir}
-install -m755 kwybars-daemon %{buildroot}%{_bindir}/kwybars-daemon
-install -m755 kwybars-overlay %{buildroot}%{_bindir}/kwybars-overlay
-install -m755 kwybarsctl %{buildroot}%{_bindir}/kwybarsctl
+install -m755 kwybars %{buildroot}%{_bindir}/kwybars
 
 install -d %{buildroot}/usr/lib/systemd/user
-install -m644 kwybars-daemon.service %{buildroot}/usr/lib/systemd/user/kwybars-daemon.service
+install -m644 kwybars.service %{buildroot}/usr/lib/systemd/user/kwybars.service
 
 install -d %{buildroot}%{_datadir}/kwybars/themes
 install -m644 themes/*.toml %{buildroot}%{_datadir}/kwybars/themes/
 
 install -d %{buildroot}%{_docdir}/%{name}/examples
-install -m644 config.toml %{buildroot}%{_docdir}/%{name}/examples/config.toml
+install -m644 examples/*.toml %{buildroot}%{_docdir}/%{name}/examples/
 install -m644 README.md %{buildroot}%{_docdir}/%{name}/README.md
 
 install -d %{buildroot}%{_mandir}/man1
-install -m644 share/man/man1/*.1 %{buildroot}%{_mandir}/man1/
+install -m644 share/man/man1/kwybars.1 %{buildroot}%{_mandir}/man1/kwybars.1
 
 install -d %{buildroot}%{_licensedir}/%{name}
 install -m644 LICENSE %{buildroot}%{_licensedir}/%{name}/LICENSE
@@ -101,15 +96,10 @@ install -m644 LICENSE %{buildroot}%{_licensedir}/%{name}/LICENSE
 %files
 %license %{_licensedir}/%{name}/LICENSE
 %doc %{_docdir}/%{name}/README.md
-%doc %{_docdir}/%{name}/examples/config.toml
+%doc %{_docdir}/%{name}/examples
 %{_mandir}/man1/kwybars.1*
-%{_mandir}/man1/kwybars-daemon.1*
-%{_mandir}/man1/kwybars-overlay.1*
-%{_mandir}/man1/kwybarsctl.1*
-%{_bindir}/kwybars-daemon
-%{_bindir}/kwybars-overlay
-%{_bindir}/kwybarsctl
-/usr/lib/systemd/user/kwybars-daemon.service
+%{_bindir}/kwybars
+/usr/lib/systemd/user/kwybars.service
 %{_datadir}/kwybars/themes
 SPEC
 

@@ -119,9 +119,9 @@
               default = { };
               example = lib.literalExpression ''
                 {
-                	overlay.position 	= "bottom"
-                	overlay.width 		= 800
-                	overlay.height 		= 500
+                  overlay.position = "bottom";
+                  overlay.height = 500;
+                  visualizer.layout = "wave";
                 }
               '';
               description = ''
@@ -164,7 +164,6 @@
             extraArgs = lib.mkOption {
               type = lib.types.listOf lib.types.str;
               default = [ ];
-              example = [ "--verbose" ];
               description = "Extra command-line arguments to pass to the kwybars executable.";
             };
 
