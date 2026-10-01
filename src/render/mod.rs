@@ -6,6 +6,7 @@ pub mod dots;
 pub mod fill;
 pub mod frame;
 pub mod geometry;
+pub mod image;
 pub mod line;
 pub mod mirror;
 pub mod painter;

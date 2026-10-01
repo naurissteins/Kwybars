@@ -5,6 +5,7 @@ use std::fmt;
 use crate::audio::dynamics::DynamicsConfig;
 use crate::audio::spectrum::SpectrumConfig;
 use crate::config::{Config, Theme};
+use crate::render::image::Overlay;
 
 /// the parts of the running overlay a new config touches
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -13,14 +14,14 @@ pub struct Scope {
     pub motion: bool,
     pub activity: bool,
     pub surfaces: bool,
+    pub image: bool,
 }
 
 impl Scope {
+    /// each side is a config, its theme, and its overlay image
     pub fn between(
-        old: &Config,
-        old_theme: Option<&Theme>,
-        new: &Config,
-        new_theme: Option<&Theme>,
+        (old, old_theme, old_image): (&Config, Option<&Theme>, Option<&Overlay>),
+        (new, new_theme, new_image): (&Config, Option<&Theme>, Option<&Overlay>),
     ) -> Self {
         let framerate = old.visualizer.framerate != new.visualizer.framerate;
         Self {
@@ -32,6 +33,7 @@ impl Scope {
             surfaces: old.overlay != new.overlay
                 || old.visualizer != new.visualizer
                 || old_theme != new_theme,
+            image: old_image != new_image,
         }
     }
 
@@ -47,6 +49,7 @@ impl fmt::Display for Scope {
             (self.motion, "motion"),
             (self.activity, "activity"),
             (self.surfaces, "surfaces"),
+            (self.image, "image"),
         ];
         let mut first = true;
         for (_, name) in parts.iter().filter(|(changed, _)| *changed) {
@@ -62,21 +65,26 @@ impl fmt::Display for Scope {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use image::{Rgba as Pixel, RgbaImage};
+
     use super::Scope;
     use crate::config::{Config, Rgba, Theme};
+    use crate::render::image::{Overlay, Source};
 
     fn scope(edit: impl FnOnce(&mut Config)) -> Scope {
         let old = Config::default();
         let mut new = old.clone();
         edit(&mut new);
-        Scope::between(&old, None, &new, None)
+        Scope::between((&old, None, None), (&new, None, None))
     }
 
     #[test]
     fn nothing_changed_is_empty() {
         assert!(scope(|_| {}).is_empty());
-        // the image overlay is not drawn yet
-        assert!(scope(|c| c.image_overlay.enabled = !c.image_overlay.enabled).is_empty());
+        // without an image to show, its settings change nothing
+        assert!(scope(|c| c.image_overlay.opacity = 0.5).is_empty());
     }
 
     #[test]
@@ -110,7 +118,37 @@ mod tests {
             name: "test".to_owned(),
             colors: [Rgba::new(1.0, 0.0, 0.0, 1.0); 6],
         };
-        let found = Scope::between(&config, None, &config, Some(&theme));
+        let found = Scope::between((&config, None, None), (&config, Some(&theme), None));
         assert_eq!(found.to_string(), "surfaces");
+    }
+
+    #[test]
+    fn a_new_image_or_placement_updates_only_the_image() {
+        let config = Config::default();
+        let overlay = |opacity: f32, shade: u8| {
+            let pixels = RgbaImage::from_pixel(2, 2, Pixel([shade, 0, 0, 255]));
+            let mut placed = config.image_overlay.clone();
+            placed.opacity = opacity;
+            Overlay {
+                source: Arc::new(Source::from_rgba(pixels)),
+                config: placed,
+            }
+        };
+        let between = |old: Option<&Overlay>, new: Option<&Overlay>| {
+            Scope::between((&config, None, old), (&config, None, new))
+        };
+        let shown = overlay(1.0, 9);
+        assert_eq!(between(None, Some(&shown)).to_string(), "image");
+        assert_eq!(between(Some(&shown), None).to_string(), "image");
+        assert_eq!(
+            between(Some(&shown), Some(&overlay(0.5, 9))).to_string(),
+            "image"
+        );
+        assert_eq!(
+            between(Some(&shown), Some(&overlay(1.0, 200))).to_string(),
+            "image"
+        );
+        // the same pixels decoded again are no change
+        assert!(between(Some(&shown), Some(&overlay(1.0, 9))).is_empty());
     }
 }

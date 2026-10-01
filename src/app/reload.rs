@@ -10,7 +10,7 @@ use calloop::timer::{TimeoutAction, Timer};
 use calloop::{Interest, LoopHandle, Mode, PostAction};
 use tracing::{error, info, warn};
 
-use super::{App, frame_time};
+use super::{App, frame_time, image};
 use crate::audio::capture::CaptureSettings;
 use crate::audio::dynamics::{Dynamics, DynamicsConfig};
 use crate::audio::motion::Motion;
@@ -111,7 +111,11 @@ impl App {
         }
         let config = loaded.config;
         let theme = loaded.theme.map(|loaded| loaded.theme);
-        let scope = Scope::between(&self.config, self.theme.as_ref(), &config, theme.as_ref());
+        let image = image::overlay(&config, loaded.image, self.image.as_ref());
+        let scope = Scope::between(
+            (&self.config, self.theme.as_ref(), self.image.as_ref()),
+            (&config, theme.as_ref(), image.as_ref()),
+        );
         if scope.is_empty() {
             info!("config reloaded, nothing changed");
             return;
@@ -144,8 +148,12 @@ impl App {
             self.wayland
                 .reconfigure(config.clone(), theme.clone(), Instant::now());
         }
+        if scope.image {
+            self.wayland.set_image(image.clone());
+        }
         self.config = config;
         self.theme = theme;
+        self.image = image;
         self.render();
     }
 }

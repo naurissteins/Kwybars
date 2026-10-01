@@ -27,7 +27,7 @@ pub use color::{ColorParseError, Rgba};
 pub use colors::{COLORS_FILE, ColorOverrides};
 pub use error::ConfigError;
 pub use image::ImageOverlayConfig;
-pub use load::{Loaded, Source, load};
+pub use load::{Loaded, LoadedImage, Source, load};
 pub use overlay::{OutputConfig, OverlayConfig};
 pub use parse::{ParseError, Parsed, parse};
 pub use path::{ConfigPathError, default_path};

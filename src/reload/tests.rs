@@ -89,6 +89,28 @@ fn edits_saves_and_link_switches_are_seen_but_other_files_are_not() {
 }
 
 #[test]
+fn the_overlay_image_is_watched() {
+    let dir = TempDir::new();
+    let art = dir.0.join("presets/art.png");
+    let save = |shade: u8| {
+        let saved = image::RgbaImage::from_pixel(2, 2, image::Rgba([shade, 0, 0, 255])).save(&art);
+        assert!(saved.is_ok(), "{saved:?}");
+    };
+    save(1);
+    let path = dir.0.join("config.toml");
+    write(
+        &path,
+        "[image_overlay]\nenabled = true\npath = \"presets/art.png\"\n",
+    );
+    let (mut reloader, _channel) = reloader(&path);
+    assert!(!reloader.drain());
+    save(2);
+    assert!(reloader.drain());
+    write(&dir.0.join("presets/other.png"), "x");
+    assert!(!reloader.drain());
+}
+
+#[test]
 fn changes_are_debounced() {
     let dir = TempDir::new();
     let path = dir.0.join("config.toml");

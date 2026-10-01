@@ -6,6 +6,9 @@ use smithay_client_toolkit::output::{OutputHandler, OutputState};
 use smithay_client_toolkit::reexports::client::backend::ObjectId;
 use smithay_client_toolkit::reexports::client::protocol::{wl_output, wl_surface};
 use smithay_client_toolkit::reexports::client::{Connection, Proxy, QueueHandle};
+use smithay_client_toolkit::reexports::protocols::wp::alpha_modifier::v1::client::{
+    wp_alpha_modifier_surface_v1::WpAlphaModifierSurfaceV1, wp_alpha_modifier_v1::WpAlphaModifierV1,
+};
 use smithay_client_toolkit::reexports::protocols::wp::fractional_scale::v1::client::{
     wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1,
     wp_fractional_scale_v1::{self, WpFractionalScaleV1},
@@ -50,6 +53,30 @@ impl Dispatch2<WpViewport, Wayland> for NoEvents {
         _: &mut Wayland,
         _: &WpViewport,
         _: <WpViewport as Proxy>::Event,
+        _: &Connection,
+        _: &QueueHandle<Wayland>,
+    ) {
+    }
+}
+
+impl Dispatch2<WpAlphaModifierV1, Wayland> for NoEvents {
+    fn event(
+        &self,
+        _: &mut Wayland,
+        _: &WpAlphaModifierV1,
+        _: <WpAlphaModifierV1 as Proxy>::Event,
+        _: &Connection,
+        _: &QueueHandle<Wayland>,
+    ) {
+    }
+}
+
+impl Dispatch2<WpAlphaModifierSurfaceV1, Wayland> for NoEvents {
+    fn event(
+        &self,
+        _: &mut Wayland,
+        _: &WpAlphaModifierSurfaceV1,
+        _: <WpAlphaModifierSurfaceV1 as Proxy>::Event,
         _: &Connection,
         _: &QueueHandle<Wayland>,
     ) {

@@ -50,8 +50,10 @@ impl BufferRing {
         }
     }
 
-    /// drops every buffer and the pool; the compositor keeps any it still
-    /// holds until it releases them
+    pub fn format(&self) -> wl_shm::Format {
+        self.format
+    }
+
     pub fn release(&mut self) {
         self.slots.clear();
         self.pool = None;

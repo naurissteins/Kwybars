@@ -4,12 +4,14 @@ use std::ffi::OsString;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use super::Config;
 use super::colors;
 use super::error::ConfigError;
 use super::parse::{ParseError, parse};
 use super::theme::{self, LoadedTheme};
+use crate::render::image;
 
 /// where a loaded config came from
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,10 +29,16 @@ pub struct Loaded {
     pub warnings: Vec<String>,
     pub source: Source,
     pub colors_path: Option<PathBuf>,
+    pub image: Option<LoadedImage>,
 }
 
-/// reads the config, then `colors.toml` and the theme; only a broken config
-/// file is an error, a broken colors or theme file is a warning
+/// the image overlay's file and its pixels, or why it cannot be shown
+#[derive(Debug, Clone)]
+pub struct LoadedImage {
+    pub path: PathBuf,
+    pub source: Result<Arc<image::Source>, String>,
+}
+
 pub fn load(path: &Path, env: &dyn Fn(&str) -> Option<OsString>) -> Result<Loaded, ConfigError> {
     let (mut config, source, mut warnings) = read_config(path)?;
     let canonical = fs::canonicalize(path).ok();
@@ -45,12 +53,23 @@ pub fn load(path: &Path, env: &dyn Fn(&str) -> Option<OsString>) -> Result<Loade
             .ok()
     });
 
+    let image = config.image_overlay.file(path, env).map(|file| {
+        let source = image::Source::open(&file)
+            .map(Arc::new)
+            .map_err(|err| err.to_string());
+        if let Err(err) = &source {
+            warnings.push(format!("image overlay {}: {err}", file.display()));
+        }
+        LoadedImage { path: file, source }
+    });
+
     Ok(Loaded {
         config,
         theme,
         warnings,
         source,
         colors_path,
+        image,
     })
 }
 
@@ -85,7 +104,7 @@ fn read_config(path: &Path) -> Result<(Config, Source, Vec<String>), ConfigError
     Ok((parsed.config, Source::File, warnings))
 }
 
-/// applies the first `colors.toml` found, returning its path
+/// applies the first colors.toml found, returning its path
 fn apply_colors(
     config: &mut Config,
     path: &Path,

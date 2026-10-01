@@ -1,5 +1,5 @@
-//! noticing config, `colors.toml`, and theme edits, and loading them off the
-//! main thread
+//! noticing config, `colors.toml`, theme, and image edits and loading them
+//! off the main thread
 
 mod scope;
 mod targets;
@@ -40,7 +40,7 @@ type Watched = Vec<(WatchDescriptor, Vec<OsString>)>;
 pub struct Reloaded {
     pub result: Result<Loaded, ConfigError>,
     watched: Watched,
-    theme: Option<PathBuf>,
+    files: Vec<PathBuf>,
 }
 
 /// watches the files a config is made of and loads it again when they change
@@ -49,7 +49,7 @@ pub struct Reloader {
     buffer: Vec<u8>,
     watched: Watched,
     config_path: PathBuf,
-    theme: Option<PathBuf>,
+    files: Vec<PathBuf>,
     due: Option<Instant>,
     loading: bool,
     again: bool,
@@ -57,21 +57,21 @@ pub struct Reloader {
 }
 
 impl Reloader {
-    /// starts watching what `loaded` was read from
+    /// starts watching what loaded was read from
     pub fn new(
         config_path: PathBuf,
         loaded: &Loaded,
         results: Sender<Reloaded>,
     ) -> io::Result<Self> {
         let inotify = Inotify::init()?;
-        let theme = theme_file(loaded);
-        let watched = watch(&mut inotify.watches(), &config_path, theme.as_deref());
+        let files = files_of(loaded);
+        let watched = watch(&mut inotify.watches(), &config_path, &files);
         Ok(Self {
             inotify,
             buffer: vec![0; BUFFER_BYTES],
             watched,
             config_path,
-            theme,
+            files,
             due: None,
             loading: false,
             again: false,
@@ -84,7 +84,7 @@ impl Reloader {
         self.inotify.as_fd().try_clone_to_owned()
     }
 
-    /// reads every pending event; true when one touched a watched file
+    /// reads every pending event, true when one touched a watched file
     pub fn drain(&mut self) -> bool {
         let mut relevant = false;
         loop {
@@ -115,8 +115,6 @@ impl Reloader {
         relevant
     }
 
-    /// a watched file changed at `now`; returns when to wake if no wakeup
-    /// is pending yet
     pub fn changed(&mut self, now: Instant) -> Option<Instant> {
         let pending = self.due.is_some();
         let due = now + DEBOUNCE;
@@ -124,8 +122,6 @@ impl Reloader {
         (!pending).then_some(due)
     }
 
-    /// the debounce wakeup at `now`: starts loading once things are quiet,
-    /// else returns when to wake again
     pub fn wake(&mut self, now: Instant) -> Option<Instant> {
         match self.due {
             Some(due) if due > now => Some(due),
@@ -148,7 +144,7 @@ impl Reloader {
             }
         }
         self.watched = reloaded.watched;
-        self.theme = reloaded.theme;
+        self.files = reloaded.files;
         if self.again {
             self.again = false;
             self.load();
@@ -163,23 +159,23 @@ impl Reloader {
             return;
         }
         let path = self.config_path.clone();
-        let previous_theme = self.theme.clone();
+        let previous = self.files.clone();
         let mut watches = self.inotify.watches();
         let results = self.results.clone();
         let worker = std::thread::Builder::new()
             .name("kwybars-config".to_owned())
             .spawn(move || {
                 let result = config::load(&path, &xdg::process_env);
-                let theme = match &result {
-                    Ok(loaded) => theme_file(loaded),
-                    Err(_) => previous_theme,
+                let files = match &result {
+                    Ok(loaded) => files_of(loaded),
+                    Err(_) => previous,
                 };
-                let watched = watch(&mut watches, &path, theme.as_deref());
+                let watched = watch(&mut watches, &path, &files);
                 // fails only when the main loop is gone
                 let _ = results.send(Reloaded {
                     result,
                     watched,
-                    theme,
+                    files,
                 });
             });
         match worker {
@@ -189,20 +185,20 @@ impl Reloader {
     }
 }
 
-/// the theme file `loaded` uses, if it came from a file
-fn theme_file(loaded: &Loaded) -> Option<PathBuf> {
-    match &loaded.theme.as_ref()?.origin {
+/// the theme and image files loaded was read from
+fn files_of(loaded: &Loaded) -> Vec<PathBuf> {
+    let theme = loaded.theme.as_ref().and_then(|theme| match &theme.origin {
         ThemeOrigin::File(path) => Some(path.clone()),
         ThemeOrigin::BuiltIn => None,
-    }
+    });
+    let image = loaded.image.as_ref().map(|image| image.path.clone());
+    theme.into_iter().chain(image).collect()
 }
 
-/// adds a watch for every target directory; resolves symlinks, so it runs on
-/// a worker except at startup
-fn watch(watches: &mut Watches, config_path: &Path, theme: Option<&Path>) -> Watched {
+fn watch(watches: &mut Watches, config_path: &Path, files: &[PathBuf]) -> Watched {
     let canonical = fs::canonicalize(config_path).ok();
     let canonical = canonical.as_deref().filter(|real| *real != config_path);
-    targets(config_path, canonical, theme)
+    targets(config_path, canonical, files)
         .into_iter()
         .filter_map(|target| match watches.add(&target.dir, MASK) {
             Ok(wd) => Some((wd, target.names)),

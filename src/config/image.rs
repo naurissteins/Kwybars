@@ -1,20 +1,20 @@
-//! `[image_overlay]`
+//! image_overlay
+
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
 use super::bounds::Bounds;
 use super::types::ImageFit;
 
-/// the `[image_overlay]` table
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct ImageOverlayConfig {
     pub enabled: bool,
-    /// image file; relative paths are relative to the config file
     pub path: Option<String>,
     pub opacity: f32,
     pub fit: ImageFit,
-    /// box size in logical pixels, 0 means the surface size
     pub width: u32,
     pub height: u32,
     pub offset_x: f32,
@@ -37,6 +37,28 @@ impl Default for ImageOverlayConfig {
 }
 
 impl ImageOverlayConfig {
+    pub fn file(
+        &self,
+        config_path: &Path,
+        env: &dyn Fn(&str) -> Option<OsString>,
+    ) -> Option<PathBuf> {
+        let raw = self.path.as_deref().filter(|_| self.enabled)?;
+        let path = match raw.strip_prefix("~/") {
+            Some(rest) => match env("HOME").filter(|home| !home.is_empty()) {
+                Some(home) => PathBuf::from(home).join(rest),
+                None => PathBuf::from(raw),
+            },
+            None => PathBuf::from(raw),
+        };
+        if path.is_absolute() {
+            return Some(path);
+        }
+        Some(match config_path.parent() {
+            Some(dir) => dir.join(path),
+            None => path,
+        })
+    }
+
     /// fixes out-of-range values in place, recording a warning for each
     pub(crate) fn normalize(&mut self, warnings: &mut Vec<String>) {
         let mut bounds = Bounds::new("image_overlay", warnings);

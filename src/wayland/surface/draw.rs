@@ -26,7 +26,7 @@ impl OutputSurface {
         if self.frame_pending {
             return false;
         }
-        if self.drawn == Some(frame.generation) || !self.layout(frame, size) {
+        if self.drawn == Some(frame.generation) || !self.layout(frame, size, shm) {
             self.drawn = Some(frame.generation);
             if frame.animating {
                 self.request_frame(qh);
@@ -62,9 +62,11 @@ impl OutputSurface {
     }
 
     /// lays out the bars for `size`; false when nothing on screen changes
-    fn layout(&mut self, frame: &Frame<'_>, size: (u32, u32)) -> bool {
+    fn layout(&mut self, frame: &Frame<'_>, size: (u32, u32), shm: &Shm) -> bool {
         let scale = self.scale.factor();
         let opacity = (self.fade.opacity(frame.time) * 255.0).round() as u8;
+        // a new opacity redraws the bars, and that commit shows the image's
+        self.fade_image(shm, self.ring.format(), opacity);
         if !self
             .painter
             .as_ref()

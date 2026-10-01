@@ -2,6 +2,7 @@
 
 mod buffers;
 mod draw;
+mod image;
 mod layer;
 mod settings;
 mod visibility;
@@ -32,7 +33,10 @@ use crate::activity::Fade;
 use crate::config::SurfaceConfig;
 use crate::render::{ByteOrder, Painter};
 use buffers::BufferRing;
+use image::ImageSlot;
 use layer::create_layer;
+
+pub use image::{ImageGlobals, ImageReady};
 
 /// layer-shell namespace compositors can match rules on
 const NAMESPACE: &str = "kwybars";
@@ -69,6 +73,7 @@ pub struct OutputSurface {
     drawn: Option<u64>,
     failed: bool,
 
+    image: ImageSlot,
     fade: Fade,
     /// committed since creation or the last unmap, so mapped or about to be
     shown: bool,
@@ -114,6 +119,7 @@ impl OutputSurface {
             frame_pending: false,
             drawn: None,
             failed: false,
+            image: ImageSlot::default(),
             fade: Fade::new(
                 Duration::from_millis(config.overlay.fade_in_ms),
                 Duration::from_millis(config.overlay.fade_out_ms),
@@ -210,6 +216,8 @@ fn scale_objects(
 
 impl Drop for OutputSurface {
     fn drop(&mut self) {
+        // the child goes before its parent
+        self.image = ImageSlot::default();
         // these have destructor requests; the layer surface destroys itself
         if let Some(viewport) = self.viewport.take() {
             viewport.destroy();

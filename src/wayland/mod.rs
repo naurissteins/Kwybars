@@ -12,6 +12,7 @@ use std::time::Instant;
 
 use smithay_client_toolkit::compositor::CompositorState;
 use smithay_client_toolkit::output::OutputState;
+use smithay_client_toolkit::reexports::calloop::channel::Sender;
 use smithay_client_toolkit::reexports::calloop::{LoopHandle, RegistrationToken};
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::reexports::client::backend::{self, ObjectId};
@@ -20,11 +21,13 @@ use smithay_client_toolkit::reexports::client::protocol::{wl_output::WlOutput, w
 use smithay_client_toolkit::reexports::client::{
     Connection, DispatchError, EventQueue, QueueHandle,
 };
+use smithay_client_toolkit::reexports::protocols::wp::alpha_modifier::v1::client::wp_alpha_modifier_v1::WpAlphaModifierV1;
 use smithay_client_toolkit::reexports::protocols::wp::fractional_scale::v1::client::wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1;
 use smithay_client_toolkit::reexports::protocols::wp::viewporter::client::wp_viewporter::WpViewporter;
 use smithay_client_toolkit::registry::RegistryState;
 use smithay_client_toolkit::shell::wlr_layer::LayerShell;
 use smithay_client_toolkit::shm::Shm;
+use smithay_client_toolkit::subcompositor::SubcompositorState;
 use tracing::{info, warn};
 
 pub use error::WaylandError;
@@ -32,9 +35,12 @@ pub use error::WaylandError;
 use crate::activity::Presence;
 use crate::config::{Config, Theme};
 use crate::render::Frame;
+use crate::render::image::Overlay;
 use handlers::NoEvents;
 use scale::Scale;
-use surface::OutputSurface;
+use surface::{ImageGlobals, OutputSurface};
+
+pub use surface::ImageReady;
 
 /// the compositor connection and every overlay surface
 pub struct Wayland {
@@ -46,11 +52,14 @@ pub struct Wayland {
     layer_shell: LayerShell,
     viewporter: Option<WpViewporter>,
     fractional: Option<WpFractionalScaleManagerV1>,
+    subcompositor: Option<SubcompositorState>,
+    alpha: Option<WpAlphaModifierV1>,
+    image: Option<(Overlay, u64)>,
+    image_jobs: Option<Sender<ImageReady>>,
     config: Config,
     theme: Option<Theme>,
     surfaces: Vec<OutputSurface>,
     closed: Vec<WlOutput>,
-    /// output selection warnings already logged
     warned: Vec<String>,
     ready: bool,
     queue: QueueHandle<Self>,
@@ -58,8 +67,6 @@ pub struct Wayland {
 }
 
 impl Wayland {
-    /// connects, binds the globals, and creates the surfaces for the outputs
-    /// present now; nothing is shown until the event queue is dispatched
     pub fn connect(
         config: Config,
         theme: Option<Theme>,
@@ -74,6 +81,9 @@ impl Wayland {
             LayerShell::bind(&globals, &qh).map_err(|_| WaylandError::NoLayerShell)?;
         let viewporter = globals.bind(&qh, 1..=1, NoEvents).ok();
         let fractional = globals.bind(&qh, 1..=1, NoEvents).ok();
+        let subcompositor =
+            SubcompositorState::bind(compositor.wl_compositor().clone(), &globals, &qh).ok();
+        let alpha = globals.bind(&qh, 1..=1, NoEvents).ok();
         info!(
             "wayland: fractional scale {}",
             match (&viewporter, &fractional) {
@@ -91,6 +101,10 @@ impl Wayland {
             layer_shell,
             viewporter,
             fractional,
+            subcompositor,
+            alpha,
+            image: None,
+            image_jobs: None,
             config,
             theme,
             surfaces: Vec::new(),
@@ -132,7 +146,7 @@ impl Wayland {
             .map_err(|err| err.error)
     }
 
-    /// fades every surface towards `active` at `now`, mapping and unmapping
+    /// fades every surface towards active at now, mapping and unmapping
     /// them as needed
     pub fn set_active(&mut self, active: bool, now: Instant) -> Presence {
         let mut presence = Presence::default();
@@ -145,14 +159,47 @@ impl Wayland {
         presence
     }
 
-    /// shows `frame` on every surface that is ready for it; returns how many
+    /// shows frame on every surface that is ready for it, returns how many
     /// committed a new buffer
     pub fn render(&mut self, frame: &Frame<'_>) -> usize {
         let mut drawn = 0;
         for surface in &mut self.surfaces {
+            surface.update_image(self.image.as_ref(), self.image_jobs.as_ref());
             drawn += usize::from(surface.render(frame, &self.shm, &self.queue));
         }
         drawn
+    }
+
+    pub fn set_image_jobs(&mut self, jobs: Sender<ImageReady>) {
+        self.image_jobs = Some(jobs);
+    }
+
+    /// the image overlay to show from now on, none to show none
+    pub fn set_image(&mut self, overlay: Option<Overlay>) {
+        let generation = self
+            .image
+            .as_ref()
+            .map_or(0, |(_, generation)| generation + 1);
+        self.image = overlay.map(|overlay| (overlay, generation));
+    }
+
+    /// a worker's scaled image, for the surface that asked for it
+    pub fn image_ready(&mut self, ready: ImageReady) {
+        let globals = ImageGlobals {
+            compositor: &self.compositor,
+            subcompositor: self.subcompositor.as_ref(),
+            viewporter: self.viewporter.as_ref(),
+            alpha: self.alpha.as_ref(),
+            shm: &self.shm,
+            format: self.format,
+        };
+        let surface = self
+            .surfaces
+            .iter_mut()
+            .find(|surface| surface.surface_id() == *ready.surface());
+        if let Some(surface) = surface {
+            surface.show_image(&globals, &self.queue, ready);
+        }
     }
 
     pub fn check_connection(&self) -> Result<(), WaylandError> {

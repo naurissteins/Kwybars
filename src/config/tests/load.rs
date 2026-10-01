@@ -117,3 +117,68 @@ fn missing_theme_is_a_warning() {
         vec!["theme `nope` not found, using the configured colors"]
     );
 }
+
+#[test]
+fn the_overlay_image_is_found_beside_the_config_or_under_home() {
+    use crate::config::ImageOverlayConfig;
+    use std::path::{Path, PathBuf};
+    let image = |enabled: bool, path: &str| ImageOverlayConfig {
+        enabled,
+        path: Some(path.to_owned()),
+        ..ImageOverlayConfig::default()
+    };
+    let env = fake_env(&[("HOME", "/home/u")]);
+    let config = Path::new("/cfg/kwybars/current.toml");
+    let file = |image: ImageOverlayConfig| image.file(config, &env);
+    assert_eq!(
+        file(image(true, "overlays/a.png")),
+        Some(PathBuf::from("/cfg/kwybars/overlays/a.png"))
+    );
+    assert_eq!(
+        file(image(true, "/abs/a.png")),
+        Some(PathBuf::from("/abs/a.png"))
+    );
+    assert_eq!(
+        file(image(true, "~/pics/a.png")),
+        Some(PathBuf::from("/home/u/pics/a.png"))
+    );
+    assert_eq!(file(image(false, "/abs/a.png")), None);
+    assert_eq!(
+        file(ImageOverlayConfig {
+            enabled: true,
+            ..ImageOverlayConfig::default()
+        }),
+        None
+    );
+}
+
+#[test]
+fn the_overlay_image_is_decoded_and_a_broken_one_is_a_warning() {
+    let dir = TempDir::new("load-image");
+    let good = dir.path().join("art.png");
+    let saved = image::RgbaImage::from_pixel(4, 3, image::Rgba([1, 2, 3, 255])).save(&good);
+    assert!(saved.is_ok(), "{saved:?}");
+    let path = dir.write(
+        "config.toml",
+        "[image_overlay]\nenabled = true\npath = \"art.png\"\n",
+    );
+    let loaded = load_ok(&path);
+    let Some(image) = loaded.image else {
+        panic!("the image is loaded");
+    };
+    assert_eq!(image.path, good);
+    assert_eq!(image.source.map(|source| source.size()).ok(), Some((4, 3)));
+    assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+
+    dir.write("art.png", "not an image");
+    let loaded = load_ok(&path);
+    assert!(loaded.image.is_some_and(|image| image.source.is_err()));
+    assert_eq!(loaded.warnings.len(), 1, "{:?}", loaded.warnings);
+    assert!(loaded.warnings[0].starts_with(&format!("image overlay {}: ", good.display())));
+
+    let off = dir.write(
+        "off.toml",
+        "[image_overlay]\nenabled = false\npath = \"art.png\"\n",
+    );
+    assert!(load_ok(&off).image.is_none());
+}

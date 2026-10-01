@@ -19,6 +19,20 @@ impl Scale {
         }
     }
 
+    pub fn step(self) -> (u32, u32) {
+        match self {
+            Self::Integer(scale) => (scale.max(1), 1),
+            Self::Fractional(scale) => {
+                let (mut a, mut b) = (u64::from(scale.max(1)), FRACTIONAL_DENOMINATOR);
+                while b != 0 {
+                    (a, b) = (b, a % b);
+                }
+                let per = u64::from(scale.max(1)) / a;
+                (per as u32, (FRACTIONAL_DENOMINATOR / a) as u32)
+            }
+        }
+    }
+
     /// buffer size in physical pixels for a logical surface size
     pub fn buffer_size(self, logical: (u32, u32)) -> (u32, u32) {
         let scale = |extent: u32| -> u32 {
@@ -58,6 +72,15 @@ mod tests {
         assert_eq!(Scale::Fractional(150).buffer_size((101, 101)), (126, 126));
         assert_eq!(Scale::Fractional(210).buffer_size((101, 1)), (177, 2));
         assert_eq!(Scale::Fractional(120).buffer_size((7, 9)), (7, 9));
+    }
+
+    #[test]
+    fn steps_are_the_scale_in_lowest_terms() {
+        assert_eq!(Scale::Fractional(180).step(), (3, 2));
+        assert_eq!(Scale::Fractional(150).step(), (5, 4));
+        assert_eq!(Scale::Fractional(120).step(), (1, 1));
+        assert_eq!(Scale::Fractional(160).step(), (4, 3));
+        assert_eq!(Scale::Integer(2).step(), (2, 1));
     }
 
     #[test]

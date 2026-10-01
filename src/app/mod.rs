@@ -3,6 +3,7 @@
 mod animation;
 pub mod debug;
 mod error;
+mod image;
 mod logging;
 mod reload;
 
@@ -25,6 +26,7 @@ use crate::audio::motion::Motion;
 use crate::audio::spectrum::SpectrumConfig;
 use crate::config::{Config, Theme};
 use crate::reload::Reloader;
+use crate::render::image::Overlay;
 use crate::wayland::Wayland;
 use crate::{config, xdg};
 use animation::Animation;
@@ -65,6 +67,7 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
     let mut event_loop: EventLoop<'static, App> = EventLoop::try_new()?;
     let handle = event_loop.handle();
     let reloader = reload::start(&handle, config_path, &loaded);
+    let image = image::overlay(&loaded.config, loaded.image, None);
     let mut app = App {
         running: true,
         animation: Animation::new(motion, frame_time),
@@ -76,8 +79,10 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
         reloader,
         config: loaded.config,
         theme: loaded.theme.map(|loaded| loaded.theme),
+        image,
         warnings: loaded.warnings,
     };
+    image::start(&handle, &mut app)?;
     handle
         .insert_source(signals, |event, (), app| {
             info!("received {:?}, shutting down", event.signal());
@@ -111,6 +116,7 @@ struct App {
     reloader: Option<Reloader>,
     config: Config,
     theme: Option<Theme>,
+    image: Option<Overlay>,
     warnings: Vec<String>,
 }
 
