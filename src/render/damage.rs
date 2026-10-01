@@ -20,8 +20,6 @@ impl PixelRect {
         }
     }
 
-    /// the pixels touched by `left..right` x `top..bottom`, clipped to a
-    /// buffer of `size`; `None` when nothing is left
     pub fn covering(
         (left, top, right, bottom): (f32, f32, f32, f32),
         (width, height): (u32, u32),
@@ -60,6 +58,27 @@ impl PixelRect {
             width: right - x,
             height: bottom - y,
         })
+    }
+
+    /// the parts of this rectangle outside other, as up to four rectangles
+    pub fn minus(self, other: Self, mut each: impl FnMut(Self)) {
+        let Some(shared) = self.intersect(other) else {
+            return each(self);
+        };
+        let mut strip = |x: u32, y: u32, right: u32, bottom: u32| {
+            if right > x && bottom > y {
+                each(Self {
+                    x,
+                    y,
+                    width: right - x,
+                    height: bottom - y,
+                });
+            }
+        };
+        strip(self.x, self.y, self.right(), shared.y);
+        strip(self.x, shared.bottom(), self.right(), self.bottom());
+        strip(self.x, shared.y, shared.x, shared.bottom());
+        strip(shared.right(), shared.y, self.right(), shared.bottom());
     }
 
     pub fn pixels(self) -> u64 {
@@ -109,6 +128,22 @@ mod tests {
         assert_eq!(a.intersect(pixels(4, 0, 10, 12)), Some(pixels(4, 10, 2, 2)));
         assert_eq!(a.intersect(pixels(6, 10, 3, 3)), None);
         assert_eq!(a.pixels(), 24);
+    }
+
+    #[test]
+    fn minus_leaves_the_strips_around_the_shared_part() {
+        let mut parts = Vec::new();
+        pixels(0, 0, 10, 10).minus(pixels(2, 3, 4, 20), |part| parts.push(part));
+        assert_eq!(
+            parts,
+            vec![pixels(0, 0, 10, 3), pixels(0, 3, 2, 7), pixels(6, 3, 4, 7)]
+        );
+        parts.clear();
+        pixels(0, 0, 4, 4).minus(pixels(8, 8, 2, 2), |part| parts.push(part));
+        assert_eq!(parts, vec![pixels(0, 0, 4, 4)]);
+        parts.clear();
+        pixels(1, 1, 2, 2).minus(pixels(0, 0, 9, 9), |part| parts.push(part));
+        assert!(parts.is_empty());
     }
 
     #[test]

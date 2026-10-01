@@ -26,7 +26,7 @@ use crate::audio::spectrum::SpectrumConfig;
 use crate::config::{Config, Theme};
 use crate::reload::Reloader;
 use crate::wayland::Wayland;
-use crate::{config, render, xdg};
+use crate::{config, xdg};
 use animation::Animation;
 
 /// options for running the overlay
@@ -212,10 +212,7 @@ fn config_path(options: &RunOptions) -> Result<PathBuf, AppError> {
 
 /// loads the config, logging where everything came from
 fn load_config(config_path: &Path) -> Result<config::Loaded, AppError> {
-    let mut loaded = config::load(config_path, &xdg::process_env)?;
-    loaded
-        .warnings
-        .extend(render::geometry::unported_warnings(&loaded.config));
+    let loaded = config::load(config_path, &xdg::process_env)?;
     match loaded.source {
         config::Source::File => info!("config path: {} (found)", config_path.display()),
         config::Source::Defaults => info!(

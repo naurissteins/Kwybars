@@ -9,7 +9,7 @@ use super::fill::{Axis, Fill};
 use super::line::LineLayout;
 use super::spokes::{self, Spokes};
 use super::{ByteOrder, Canvas, PixelRect, Pose, frame, mirror};
-use crate::config::{Config, Layout, SurfaceConfig};
+use crate::config::{Layout, SurfaceConfig};
 use shape::Shape;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -72,7 +72,9 @@ impl Geometry {
                 let spokes = Spokes::new(visualizer, size, scale, placement);
                 push(Shape::Spokes(spokes), 0..bars);
             }
-            Layout::Line | Layout::Wave => {
+            // the wave is one shape, drawn by the painter itself
+            Layout::Wave => {}
+            Layout::Line => {
                 let line = LineLayout::along(visualizer, edge, size, scale, bars);
                 let axis = Axis::along(edge, visualizer.gradient_direction, size);
                 push(Shape::Strip(line, axis), 0..bars);
@@ -194,61 +196,5 @@ impl Geometry {
             let local = element.checked_sub(part.first)?;
             (local < part.values.len()).then_some((index, part, local))
         })
-    }
-}
-
-/// whether layout has its own drawing yet
-pub fn is_ported(layout: Layout) -> bool {
-    matches!(
-        layout,
-        Layout::Line
-            | Layout::Mirror
-            | Layout::Frame
-            | Layout::Particle
-            | Layout::Floating
-            | Layout::Radial
-            | Layout::Polygon
-    )
-}
-
-/// one warning per table that asks for a layout not drawn yet
-pub fn unported_warnings(config: &Config) -> Vec<String> {
-    let global = (!is_ported(config.visualizer.layout)).then(|| {
-        format!(
-            "visualizer.layout: {:?} is not drawn yet in this version, drawing line",
-            config.visualizer.layout
-        )
-    });
-    let outputs = config.overlay.outputs.iter().filter_map(|output| {
-        let layout = output.visualizer.layout?;
-        (!is_ported(layout)).then(|| {
-            format!(
-                "overlay.outputs {:?}: layout {layout:?} is not drawn yet in this version, drawing line",
-                output.monitor
-            )
-        })
-    });
-    global.into_iter().chain(outputs).collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::unported_warnings;
-    use crate::config::{Config, Layout, OutputConfig};
-
-    #[test]
-    fn warns_once_per_table_with_an_unported_layout() {
-        let mut config = Config::default();
-        assert!(unported_warnings(&config).is_empty());
-        config.visualizer.layout = Layout::Wave;
-        let mut output = OutputConfig {
-            monitor: "DP-2".to_owned(),
-            ..OutputConfig::default()
-        };
-        output.visualizer.layout = Some(Layout::Wave);
-        config.overlay.outputs = vec![output, OutputConfig::default()];
-        let warnings = unported_warnings(&config);
-        assert_eq!(warnings.len(), 2, "{warnings:?}");
-        assert!(warnings[0].contains("Wave") && warnings[1].contains("DP-2"));
     }
 }

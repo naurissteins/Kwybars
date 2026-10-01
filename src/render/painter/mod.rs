@@ -2,6 +2,7 @@
 
 #[cfg(test)]
 mod tests;
+mod wave;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
@@ -9,8 +10,9 @@ use std::time::Instant;
 use super::dots::Drift;
 use super::fill::Fill;
 use super::geometry::Geometry;
+use super::wave::{Held, Wave};
 use super::{ByteOrder, Canvas, PixelRect, Pose};
-use crate::config::SurfaceConfig;
+use crate::config::{Layout, SurfaceConfig};
 
 /// source of painter ids, so buffers know which geometry drew them
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
@@ -19,6 +21,9 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 #[derive(Debug, Clone, Default)]
 pub struct BufferContents {
     poses: Vec<Pose>,
+    wave: Held,
+    /// the wave's version
+    version: u64,
     opacity: u8,
     painter: u64,
 }
@@ -32,6 +37,9 @@ pub struct Painter {
     bases: Vec<Fill>,
     fills: Vec<Fill>,
     drift: Option<Drift>,
+    wave: Option<Wave>,
+    /// version, bounds, and curve area
+    shown_wave: (u64, Option<PixelRect>, Option<PixelRect>),
     /// when the layout first showed, for its turn
     epoch: Option<Instant>,
     scale: f32,
@@ -51,11 +59,18 @@ impl Painter {
         order: ByteOrder,
     ) -> Self {
         let layout = Geometry::new(config, size, scale, bars);
-        let bases = layout.fills(config, bars, order);
+        let wave = (config.visualizer.layout == Layout::Wave)
+            .then(|| Wave::new(config, size, scale, bars));
+        let bases = match &wave {
+            Some(_) => Wave::fills(config, size, order),
+            None => layout.fills(config, bars, order),
+        };
         Self {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             bars,
             drift: layout.drifting().then(|| Drift::new(bars)),
+            wave,
+            shown_wave: (0, None, None),
             epoch: None,
             next: vec![Pose::default(); layout.elements()],
             opacity: u8::MAX,
@@ -76,12 +91,17 @@ impl Painter {
 
     /// whether shown surfaces need frames with the bars at rest
     pub fn animates(&self) -> bool {
-        self.layout.turning() || self.drift.as_ref().is_some_and(|drift| !drift.settled())
+        self.layout.turning()
+            || self.drift.as_ref().is_some_and(|drift| !drift.settled())
+            || self.wave.as_ref().is_some_and(Wave::moving)
     }
 
     pub fn layout(&mut self, heights: &[f32], opacity: u8, now: Instant) -> bool {
         if let Some(drift) = &mut self.drift {
             drift.step(heights, now);
+        }
+        if let Some(wave) = &mut self.wave {
+            wave.step(heights, now);
         }
         let epoch = *self.epoch.get_or_insert(now);
         let turn = self
@@ -99,13 +119,16 @@ impl Painter {
             }
             self.opacity = opacity;
         }
-        !self.shown_valid || self.next != self.shown || self.opacity != self.shown_opacity
+        let waved = self.wave.as_ref().map_or(0, Wave::version) != self.shown_wave.0;
+        !self.shown_valid || waved || self.next != self.shown || self.opacity != self.shown_opacity
     }
 
     /// empty contents sized for this painter's bars, for a new buffer
     pub fn new_contents(&self) -> BufferContents {
         BufferContents {
             poses: vec![Pose::default(); self.next.len()],
+            wave: self.wave.as_ref().map(Wave::held).unwrap_or_default(),
+            version: 0,
             opacity: 0,
             painter: 0,
         }
@@ -113,6 +136,9 @@ impl Painter {
 
     /// brings canvas, which holds contents, up to the laid out bars
     pub fn paint(&self, canvas: &mut Canvas<'_>, contents: &mut BufferContents) {
+        if let Some(wave) = &self.wave {
+            return self.paint_wave(wave, canvas, contents);
+        }
         // a buffer drawn with other geometry, or never, is drawn whole
         if contents.painter != self.id || contents.poses.len() != self.next.len() {
             canvas.clear(PixelRect::full(canvas.size()));
@@ -165,7 +191,9 @@ impl Painter {
     }
 
     pub fn present(&mut self, mut each: impl FnMut(PixelRect)) {
-        if self.shown_valid {
+        if self.wave.is_some() {
+            self.present_wave(&mut each);
+        } else if self.shown_valid {
             let faded = self.shown_opacity != self.opacity;
             for (_, area) in self.changes(&self.shown, faded) {
                 each(area);

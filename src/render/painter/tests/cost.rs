@@ -45,6 +45,15 @@ fn paint_cost() {
             ),
         ),
         ("radial turning, segmented", preset("radial", &turning)),
+        ("wave", preset("wave", &[])),
+        (
+            "wave with glow",
+            preset("wave", &[("wave_glow = false", "wave_glow = true")]),
+        ),
+        (
+            "wave, stroke only",
+            preset("wave", &[("wave_fill = true", "wave_fill = false")]),
+        ),
         ("polygon", preset("polygon", &[])),
         (
             "polygon turning",

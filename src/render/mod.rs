@@ -11,6 +11,7 @@ pub mod mirror;
 pub mod painter;
 pub mod raster;
 pub mod spokes;
+pub mod wave;
 
 pub use canvas::Canvas;
 pub use damage::PixelRect;

@@ -1,11 +1,11 @@
 //! anti-aliased rectangles with rounded corners, written row by row
 
-mod edge;
+pub mod edge;
 #[cfg(test)]
 mod tests;
 mod turned;
 
-pub use turned::{Turned, clear_turned, fill_turned};
+pub use turned::{RowSpan, Scan, Turned, clear_turned, fill_turned};
 
 use std::f32::consts::FRAC_1_SQRT_2;
 

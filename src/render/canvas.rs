@@ -34,6 +34,15 @@ impl<'a> Canvas<'a> {
         }
     }
 
+    #[inline]
+    pub fn pixel(&mut self, x: u32, y: u32) -> Option<&mut [u8; 4]> {
+        if x >= self.width || y >= self.height {
+            return None;
+        }
+        let at = (y as usize * self.width as usize + x as usize) * 4;
+        self.data.get_mut(at..at + 4)?.try_into().ok()
+    }
+
     /// the pixels of row `y` from column `x0` up to `x1`, clipped to the buffer
     pub fn span(&mut self, y: u32, x0: u32, x1: u32) -> &mut [[u8; 4]] {
         if y >= self.height {
