@@ -1,79 +1,86 @@
+//! bars pointing out from places around a center, optionally turning: the
+//! drawing shared by radial and polygon
+
+pub mod polygon;
+pub mod radial;
 #[cfg(test)]
 mod tests;
-
-use std::f32::consts::TAU;
 
 use super::fill::Fill;
 use super::raster::{self, Turned};
 use super::{Canvas, PixelRect, Pose};
 use crate::config::VisualizerConfig;
 
-/// legacy limits, in logical pixels
-const MIN_INNER: f32 = 10.0;
-const MIN_LENGTH_ROOM: f32 = 6.0;
+/// shortest bar in logical pixels, as in the legacy overlay
 const MIN_EXTENT: f32 = 2.0;
 
-/// radians and logical pixels
+/// where a bar starts, from the center, and the angle it points along,
+/// before any turn
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct Distribution {
-    first: f32,
-    step: f32,
-    thickness: f32,
+pub struct Spoke {
+    pub base: (f32, f32),
+    pub angle: f32,
+}
+
+/// where a layout puts its bars, in logical pixels
+#[derive(Debug, Clone, PartialEq)]
+pub struct Placement {
+    pub spokes: Vec<Spoke>,
+    pub thickness: f32,
+    pub max_length: f32,
+    /// degrees per second
+    pub speed: f32,
 }
 
 /// in buffer pixels
 #[derive(Debug, Clone, PartialEq)]
-pub struct RadialLayout {
+pub struct Spokes {
     size: (u32, u32),
     center: (f32, f32),
-    inner: f32,
+    spokes: Vec<Spoke>,
     max_length: f32,
     min_extent: f32,
     thickness: f32,
     radius: f32,
     segments: Option<(f32, f32)>,
-    angles: Vec<f32>,
     /// radians per second
     speed: f32,
 }
 
-impl RadialLayout {
-    pub fn new(visualizer: &VisualizerConfig, size: (u32, u32), scale: f32, bars: usize) -> Self {
-        let (width, height) = (size.0 as f32 / scale, size.1 as f32 / scale);
-        let thickness = visualizer.bar_width.max(1) as f32;
-        let gap = visualizer.gap as f32;
-        let outer = ((width * 0.5).min(height * 0.5) - (thickness.max(2.0) + gap)).max(10.0);
-        let inner = (visualizer.radial_inner_radius.max(1) as f32)
-            .max(MIN_INNER)
-            .min((outer - MIN_INNER).max(MIN_INNER));
-        let max_length = (outer - inner).max(MIN_LENGTH_ROOM);
-        let spread = distribution(
-            bars,
-            inner,
-            thickness,
-            gap,
-            visualizer.radial_start_angle.to_radians(),
-            visualizer.radial_arc_degrees.to_radians(),
-        );
+/// the radius bars may reach in a surface of logical size, as legacy
+/// centered layouts keep clear of its edges
+pub fn outer_radius(visualizer: &VisualizerConfig, (width, height): (f32, f32)) -> f32 {
+    let padding = (visualizer.bar_width.max(1) as f32).max(2.0) + visualizer.gap as f32;
+    ((width * 0.5).min(height * 0.5) - padding).max(10.0)
+}
+
+impl Spokes {
+    pub fn new(
+        visualizer: &VisualizerConfig,
+        size: (u32, u32),
+        scale: f32,
+        placement: Placement,
+    ) -> Self {
         let segment_length = visualizer.segment_length.max(1) as f32 * scale;
+        let scaled = |spoke: Spoke| Spoke {
+            base: (spoke.base.0 * scale, spoke.base.1 * scale),
+            angle: spoke.angle,
+        };
         Self {
             size,
             center: (
                 size.0 as f32 * 0.5 + visualizer.center_offset_x * scale,
                 size.1 as f32 * 0.5 + visualizer.center_offset_y * scale,
             ),
-            inner: inner * scale,
-            max_length: max_length * scale,
+            spokes: placement.spokes.into_iter().map(scaled).collect(),
+            max_length: placement.max_length * scale,
             min_extent: MIN_EXTENT * scale,
-            thickness: spread.thickness * scale,
+            thickness: placement.thickness * scale,
             radius: visualizer.bar_corner_radius.max(0.0) * scale,
             segments: visualizer
                 .segmented_bars
                 .then_some((segment_length, visualizer.segment_gap as f32 * scale)),
-            angles: (0..bars)
-                .map(|index| spread.first + index as f32 * spread.step)
-                .collect(),
-            speed: visualizer.radial_rotation_speed.to_radians(),
+            speed: placement.speed.to_radians(),
         }
     }
 
@@ -143,7 +150,7 @@ impl RadialLayout {
         }
     }
 
-    /// about how many pixels bar index touches at pose
+    /// about how many pixels a bar touches at pose
     pub fn footprint(&self, pose: Pose) -> u64 {
         ((pose.extent + 2.0) * (self.thickness + 2.0)) as u64
     }
@@ -155,8 +162,8 @@ impl RadialLayout {
         }
     }
 
-    /// distance from the inner circle below which a bar looks the same at
-    /// extent and at any longer extent
+    /// distance from a bar's start below which it looks the same at extent
+    /// and at any longer extent
     fn stable(&self, extent: f32) -> f32 {
         if let Some((length, gap)) = self.segments {
             let step = length + gap;
@@ -172,71 +179,26 @@ impl RadialLayout {
         }
     }
 
-    /// bar index between from and to out from the inner circle
+    /// bar index between from and to out from its start, the whole layout
+    /// turned about the center
     fn shape(&self, index: usize, from: f32, to: f32, turn: f32) -> Option<Turned> {
-        let angle = self.angles.get(index)? + turn;
+        let spoke = self.spokes.get(index)?;
+        let (sin, cos) = turn.sin_cos();
+        let base = (
+            spoke.base.0 * cos - spoke.base.1 * sin,
+            spoke.base.0 * sin + spoke.base.1 * cos,
+        );
+        let angle = spoke.angle + turn;
         let axis = (angle.cos(), angle.sin());
-        let base = self.inner + from;
         Some(Turned {
-            start: (self.center.0 + axis.0 * base, self.center.1 + axis.1 * base),
+            start: (
+                self.center.0 + base.0 + axis.0 * from,
+                self.center.1 + base.1 + axis.1 * from,
+            ),
             axis,
             length: to - from,
             half_width: self.thickness * 0.5,
             radius: self.radius,
         })
-    }
-}
-
-/// legacy radial_distribution; a full circle also leaves a gap between the
-/// last bar and the first
-fn distribution(
-    count: usize,
-    inner: f32,
-    thickness: f32,
-    gap: f32,
-    start: f32,
-    arc: f32,
-) -> Distribution {
-    let inner = inner.max(1.0);
-    let arc = arc.clamp(-TAU, TAU);
-    let direction = if arc < 0.0 { -1.0 } else { 1.0 };
-    let magnitude = arc.abs().max(0.001);
-    let full_circle = (magnitude - TAU).abs() < 0.001;
-    let gaps = match count {
-        0 | 1 => 0,
-        _ if full_circle => count,
-        _ => count - 1,
-    } as f32;
-    let nominal = count as f32 * thickness.max(1.0) + gaps * gap.max(0.0);
-    let available = magnitude * inner;
-    let fit = if nominal > available {
-        available / nominal
-    } else {
-        1.0
-    };
-    let thickness = (thickness * fit).max(1.0);
-    let base_gap = gap.max(0.0) * fit;
-    let occupied = count as f32 * thickness + gaps * base_gap;
-    let extra = if gaps > 0.0 {
-        (available - occupied).max(0.0) / gaps
-    } else {
-        0.0
-    };
-    let step = if count <= 1 {
-        0.0
-    } else {
-        direction * (thickness + base_gap + extra) / inner
-    };
-    let first = if full_circle {
-        start
-    } else if count == 1 {
-        start + arc * 0.5
-    } else {
-        start + direction * thickness * 0.5 / inner
-    };
-    Distribution {
-        first,
-        step,
-        thickness,
     }
 }

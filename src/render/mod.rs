@@ -9,8 +9,8 @@ pub mod geometry;
 pub mod line;
 pub mod mirror;
 pub mod painter;
-pub mod radial;
 pub mod raster;
+pub mod spokes;
 
 pub use canvas::Canvas;
 pub use damage::PixelRect;

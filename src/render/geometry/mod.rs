@@ -7,7 +7,7 @@ use std::ops::Range;
 use super::dots::DotLayout;
 use super::fill::{Axis, Fill};
 use super::line::LineLayout;
-use super::radial::RadialLayout;
+use super::spokes::{self, Spokes};
 use super::{ByteOrder, Canvas, PixelRect, Pose, frame, mirror};
 use crate::config::{Config, Layout, SurfaceConfig};
 use shape::Shape;
@@ -62,11 +62,17 @@ impl Geometry {
                 let dots = DotLayout::new(visualizer, edge, size, scale, bars, drifting);
                 push(Shape::Dots(dots), 0..bars);
             }
-            Layout::Radial => {
-                let radial = RadialLayout::new(visualizer, size, scale, bars);
-                push(Shape::Radial(radial), 0..bars);
+            Layout::Radial | Layout::Polygon => {
+                let logical = (size.0 as f32 / scale, size.1 as f32 / scale);
+                let placement = if visualizer.layout == Layout::Radial {
+                    spokes::radial::placement(visualizer, logical, bars)
+                } else {
+                    spokes::polygon::placement(visualizer, logical, bars)
+                };
+                let spokes = Spokes::new(visualizer, size, scale, placement);
+                push(Shape::Spokes(spokes), 0..bars);
             }
-            Layout::Line | Layout::Wave | Layout::Polygon => {
+            Layout::Line | Layout::Wave => {
                 let line = LineLayout::along(visualizer, edge, size, scale, bars);
                 let axis = Axis::along(edge, visualizer.gradient_direction, size);
                 push(Shape::Strip(line, axis), 0..bars);
@@ -116,22 +122,22 @@ impl Geometry {
 
     /// radians the layout has turned seconds after it first showed
     pub fn turn(&self, seconds: f64) -> f32 {
-        self.radial().map_or(0.0, |radial| radial.turn(seconds))
+        self.spokes().map_or(0.0, |spokes| spokes.turn(seconds))
     }
 
     pub fn turning(&self) -> bool {
-        self.radial().is_some_and(RadialLayout::turning)
+        self.spokes().is_some_and(Spokes::turning)
     }
 
     /// whether elements' bounds overlap, so a cleared area must be repainted
     /// with every element in it
     pub fn overlapping(&self) -> bool {
-        self.radial().is_some()
+        self.spokes().is_some()
     }
 
-    fn radial(&self) -> Option<&RadialLayout> {
+    fn spokes(&self) -> Option<&Spokes> {
         self.parts.iter().find_map(|part| match &part.shape {
-            Shape::Radial(radial) => Some(radial),
+            Shape::Spokes(spokes) => Some(spokes),
             _ => None,
         })
     }
@@ -201,6 +207,7 @@ pub fn is_ported(layout: Layout) -> bool {
             | Layout::Particle
             | Layout::Floating
             | Layout::Radial
+            | Layout::Polygon
     )
 }
 
@@ -233,7 +240,7 @@ mod tests {
     fn warns_once_per_table_with_an_unported_layout() {
         let mut config = Config::default();
         assert!(unported_warnings(&config).is_empty());
-        config.visualizer.layout = Layout::Polygon;
+        config.visualizer.layout = Layout::Wave;
         let mut output = OutputConfig {
             monitor: "DP-2".to_owned(),
             ..OutputConfig::default()
@@ -242,6 +249,6 @@ mod tests {
         config.overlay.outputs = vec![output, OutputConfig::default()];
         let warnings = unported_warnings(&config);
         assert_eq!(warnings.len(), 2, "{warnings:?}");
-        assert!(warnings[0].contains("Polygon") && warnings[1].contains("DP-2"));
+        assert!(warnings[0].contains("Wave") && warnings[1].contains("DP-2"));
     }
 }

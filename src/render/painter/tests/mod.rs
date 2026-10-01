@@ -1,5 +1,6 @@
 mod cost;
 mod dots;
+mod polygon;
 mod radial;
 
 use std::time::{Duration, Instant};

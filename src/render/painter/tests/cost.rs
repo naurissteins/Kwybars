@@ -45,6 +45,14 @@ fn paint_cost() {
             ),
         ),
         ("radial turning, segmented", preset("radial", &turning)),
+        ("polygon", preset("polygon", &[])),
+        (
+            "polygon turning",
+            preset(
+                "polygon",
+                &[("polygon_rotation_speed = 0", "polygon_rotation_speed = 30")],
+            ),
+        ),
     ];
     let only = std::env::var("KWYBARS_COST_CASE").unwrap_or_default();
     for (name, surface) in cases
