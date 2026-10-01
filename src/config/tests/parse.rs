@@ -1,7 +1,7 @@
 use super::{assert_close, parse_err, parse_ok};
 use crate::config::{
     ColorMode, Config, Edge, FrameMirrorMode, GradientDirection, HorizontalAlignment, ImageFit,
-    Layer, Layout, LineMode, MirrorOrientation, MonitorMode, Rgba, VerticalAlignment,
+    Layer, Layout, LineMode, MirrorOrientation, Rgba, ShowOn, VerticalAlignment,
 };
 
 const FULL: &str = r#"
@@ -122,8 +122,8 @@ fn parses_every_section() {
     );
     assert_eq!(overlay.horizontal_alignment, HorizontalAlignment::Right);
     assert_eq!(overlay.vertical_alignment, VerticalAlignment::Bottom);
-    assert_eq!(overlay.monitor_mode, MonitorMode::List);
-    assert_eq!(overlay.monitors, vec!["DP-1", "HDMI-A-1"]);
+    // the old per-output entries decide, as they always did
+    assert_eq!(overlay.show_on, ShowOn::Sections);
 
     let [first, second] = overlay.outputs.as_slice() else {
         panic!("expected two outputs, got {:?}", overlay.outputs);
@@ -215,6 +215,8 @@ fn unknown_keys_warn_with_their_path() {
         vec![
             "daemon.enabled: removed (kwybars runs as a single process without a daemon), ignored",
             "visualizer.backend, visualizer.pipewire_attack: removed (audio is captured from PipeWire directly), ignored",
+            "[[overlay.outputs]] is deprecated, write each entry as its own section, for example [output.DP-1]",
+            "overlay.monitor_mode, overlay.monitors: deprecated and not used here, `show_on` or the [output.NAME] sections choose the monitors",
             "[daemon] is deprecated, move these keys to [activity]: daemon.activity_threshold -> activity.threshold",
         ]
     );
@@ -227,6 +229,7 @@ fn unknown_keys_warn_with_their_path() {
         vec![
             "overlay.outputs[0].foo: unknown key, ignored",
             "overlay.outputs[0].visualizer.bar: unknown key, ignored",
+            "[[overlay.outputs]] is deprecated, write each entry as its own section, for example [output.DP-1]",
         ]
     );
 }
@@ -242,7 +245,7 @@ fn empty_config_is_the_default() {
 fn defaults_match_the_documented_values() {
     let config = Config::default();
     let overlay = &config.overlay;
-    assert_eq!(overlay.monitor_mode, MonitorMode::Primary);
+    assert_eq!(overlay.show_on, ShowOn::Primary);
     assert_eq!(
         (overlay.layer, overlay.position),
         (Layer::Background, Edge::Bottom)
@@ -276,14 +279,12 @@ fn output_without_monitor_is_an_error() {
 
 #[test]
 fn global_keys_in_output_visualizer_are_dropped() {
-    let parsed = parse_ok(
-        "[[overlay.outputs]]\nmonitor = \"DP-1\"\n[overlay.outputs.visualizer]\nbars = 80\ngap = 4\n",
-    );
+    let parsed = parse_ok("[output.DP-1.visualizer]\nbars = 80\ngap = 4\n");
     let output = &parsed.config.overlay.outputs[0].visualizer;
     assert_eq!((output.bars, output.gap), (None, Some(4)));
     assert_eq!(
         parsed.warnings,
-        vec!["overlay.outputs[0].visualizer.bars: cannot be set per output, ignored"]
+        vec!["output.DP-1.visualizer.bars: cannot be set per output, ignored"]
     );
 }
 

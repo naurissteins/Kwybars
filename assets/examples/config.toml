@@ -3,7 +3,7 @@
 # The other files in this directory are presets, one per layout.
 
 [overlay]
-monitor_mode = "primary"
+show_on = "primary"
 layer = "background"
 position = "bottom"
 full_length = true
@@ -14,21 +14,21 @@ margin_right = 20
 fade_in_ms = 180
 fade_out_ms = 350
 
-# Optional per-monitor overrides. When any [[overlay.outputs]] entries are
-# present, they replace monitor_mode/monitors selection.
-# [[overlay.outputs]]
-# monitor = "DP-1"
+# show_on chooses the monitors: "primary", "all", or a list of names such as
+# ["DP-1", "HDMI-A-1"]. `kwybars doctor` prints the names.
+#
+# Optional per-monitor sections change settings for one monitor.
+# [output.DP-1]
 # position = "bottom"
 # height = 180
 #
-# [overlay.outputs.visualizer]
+# [output.DP-1.visualizer]
 # layout = "wave"
 # wave_glow = true
 # color_mode = "solid"
 # color_rgba = "rgba(175, 198, 255, 0.75)"
 #
-# [[overlay.outputs]]
-# monitor = "HDMI-A-1"
+# [output.HDMI-A-1]
 # enabled = false
 
 [visualizer]

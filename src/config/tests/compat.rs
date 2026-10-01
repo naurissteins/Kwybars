@@ -67,12 +67,15 @@ fn activity_defaults_and_clamping() {
 #[test]
 fn removed_keys_in_output_visualizer_are_named() {
     let parsed = parse_ok(
-        "[[overlay.outputs]]\nmonitor = \"DP-1\"\n[overlay.outputs.visualizer]\nbackend = \"cava\"\n",
+        "[[overlay.outputs]]\nmonitor = \"DP-1\"\n[overlay.outputs.visualizer]\nbackend = \"cava\"\n\
+         [output.DP-2.visualizer]\npipewire_gain = 2.0\n",
     );
     assert_eq!(
         parsed.warnings,
         vec![
-            "overlay.outputs[0].visualizer.backend: removed (audio is captured from PipeWire directly), ignored"
+            "output.DP-2.visualizer.pipewire_gain, overlay.outputs[0].visualizer.backend: removed (audio is captured from PipeWire directly), ignored",
+            "[[overlay.outputs]] is deprecated, write each entry as its own section, for example [output.DP-1]",
+            "[[overlay.outputs]] is ignored because [output.NAME] sections are present",
         ]
     );
 }

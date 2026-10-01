@@ -9,7 +9,7 @@ use crate::config::types::{
     ColorMode, Edge, FrameMirrorMode, GradientDirection, Layout, LineMode, MirrorOrientation,
 };
 
-/// a `[visualizer]` or `[overlay.outputs.visualizer]` table; `None` means unset
+/// a `[visualizer]` or `[output.NAME.visualizer]` table; `None` means unset
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct VisualizerOverrides {

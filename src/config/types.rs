@@ -40,10 +40,63 @@ pub enum VerticalAlignment {
     Bottom,
 }
 
-/// which outputs get an overlay
+/// which outputs get an overlay, overlay.show_on
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum ShowOn {
+    /// the first output the compositor advertises
+    #[default]
+    Primary,
+    All,
+    Named(Vec<String>),
+    Sections,
+}
+
+impl<'de> Deserialize<'de> for ShowOn {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct ShowOnVisitor;
+
+        impl<'de> Visitor<'de> for ShowOnVisitor {
+            type Value = ShowOn;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("\"primary\", \"all\", a monitor name, or a list of monitor names")
+            }
+
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<ShowOn, E> {
+                Ok(match value.trim() {
+                    "primary" => ShowOn::Primary,
+                    "all" => ShowOn::All,
+                    name => ShowOn::Named(clean_names([name])),
+                })
+            }
+
+            fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<ShowOn, A::Error> {
+                let mut names: Vec<String> = Vec::new();
+                while let Some(name) = seq.next_element::<String>()? {
+                    names.push(name);
+                }
+                Ok(ShowOn::Named(clean_names(names.iter().map(String::as_str))))
+            }
+        }
+
+        deserializer.deserialize_any(ShowOnVisitor)
+    }
+}
+
+/// trimmed names without the empty ones
+pub(super) fn clean_names<'a>(names: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    names
+        .into_iter()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// the deprecated `overlay.monitor_mode`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum MonitorMode {
+pub(super) enum MonitorMode {
     Primary,
     All,
     List,

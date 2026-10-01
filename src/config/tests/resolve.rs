@@ -17,18 +17,14 @@ layout = "line"
 gap = 10
 theme_opacity = 0.5
 
-[[overlay.outputs]]
-monitor = "DP-1"
+[output.DP-1]
 position = "top"
 fade_in_ms = 50
 
-[overlay.outputs.visualizer]
+[output.DP-1.visualizer]
 layout = "wave"
 
-[[overlay.outputs]]
-monitor = "DP-2"
-
-[overlay.outputs.visualizer]
+[output.DP-2.visualizer]
 color_rgba = "rgba(255, 0, 0, 1)"
 "#;
 

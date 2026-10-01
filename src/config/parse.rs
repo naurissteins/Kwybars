@@ -1,5 +1,7 @@
 //! toml text to a checked [`Config`]
 
+use std::collections::BTreeMap;
+
 use serde::Deserialize;
 use serde_ignored::Path;
 
@@ -8,7 +10,7 @@ use super::activity::{self, ActivityTable, DaemonTable};
 use super::audio::AudioConfig;
 use super::compat;
 use super::image::ImageOverlayConfig;
-use super::overlay::OverlayConfig;
+use super::overlay::{self, OutputConfig, OverlayTable};
 use super::visualizer::{VisualizerConfig, VisualizerOverrides};
 
 /// a parsed config plus warnings about keys that were ignored or fixed
@@ -33,7 +35,8 @@ pub enum ParseError {
 struct ConfigFile {
     theme: Option<String>,
     theme_opacity: Option<f32>,
-    overlay: OverlayConfig,
+    overlay: OverlayTable,
+    output: BTreeMap<String, OutputConfig>,
     visualizer: VisualizerOverrides,
     image_overlay: ImageOverlayConfig,
     activity: ActivityTable,
@@ -50,7 +53,10 @@ pub fn parse(raw: &str) -> Result<Parsed, ParseError> {
         let key = key_path(&path);
         match compat::removed_reason(&key) {
             Some(reason) => removed.push((key, reason)),
-            None => warnings.push(format!("{key}: unknown key, ignored")),
+            None => warnings.push(match compat::hint(&key) {
+                Some(hint) => format!("{key}: unknown key, ignored ({hint})"),
+                None => format!("{key}: unknown key, ignored"),
+            }),
         }
     })?;
     warnings.extend(compat::removed_warnings(&removed));
@@ -62,7 +68,8 @@ fn build(file: ConfigFile, warnings: &mut Vec<String>) -> Result<Config, ParseEr
     let ConfigFile {
         theme,
         theme_opacity,
-        mut overlay,
+        overlay,
+        output,
         visualizer: mut overrides,
         mut image_overlay,
         activity,
@@ -81,17 +88,7 @@ fn build(file: ConfigFile, warnings: &mut Vec<String>) -> Result<Config, ParseEr
     let mut visualizer = VisualizerConfig::default();
     overrides.apply_to(&mut visualizer);
 
-    overlay.monitors = clean_names(&overlay.monitors);
-    for (index, output) in overlay.outputs.iter_mut().enumerate() {
-        let table = format!("overlay.outputs[{index}]");
-        output.monitor = output.monitor.trim().to_owned();
-        if output.monitor.is_empty() {
-            return Err(ParseError::Invalid(format!("{table}: missing `monitor`")));
-        }
-        let table = format!("{table}.visualizer");
-        output.visualizer.drop_global_keys(&table, warnings);
-        output.visualizer.normalize(&table, warnings);
-    }
+    let overlay = overlay::resolve(overlay, output, warnings).map_err(ParseError::Invalid)?;
 
     image_overlay.normalize(warnings);
     let activity = activity::resolve(activity, daemon, warnings);
@@ -104,15 +101,6 @@ fn build(file: ConfigFile, warnings: &mut Vec<String>) -> Result<Config, ParseEr
         activity,
         audio,
     })
-}
-
-fn clean_names(names: &[String]) -> Vec<String> {
-    names
-        .iter()
-        .map(|name| name.trim())
-        .filter(|name| !name.is_empty())
-        .map(str::to_owned)
-        .collect()
 }
 
 /// formats an ignored key as `overlay.outputs[0].visualizer.foo`

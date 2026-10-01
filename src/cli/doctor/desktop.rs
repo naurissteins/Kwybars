@@ -3,7 +3,7 @@
 use std::ffi::OsString;
 
 use crate::cli::report::Report;
-use crate::config::{Config, MonitorMode, OverlayConfig};
+use crate::config::{Config, OverlayConfig, ShowOn};
 use crate::wayland::{Probe, ProbedOutput};
 
 pub fn session(report: &mut Report, env: &dyn Fn(&str) -> Option<OsString>) {
@@ -65,20 +65,20 @@ fn outputs(report: &mut Report, probe: &Probe, overlay: &OverlayConfig) {
         return;
     }
     // the runtime falls back to the primary output without saying so
-    let listed = overlay.outputs.is_empty() && overlay.monitor_mode == MonitorMode::List;
-    let named = |name: &String| {
-        probe
-            .outputs
-            .iter()
-            .any(|output| output.name.as_deref() == Some(name.as_str()))
+    let ShowOn::Named(wanted) = &overlay.show_on else {
+        return;
     };
-    for missing in overlay
-        .monitors
-        .iter()
-        .filter(|name| listed && !named(name))
-    {
+    let connected = |name: &String| {
+        matches!(name.as_str(), "primary")
+            || name.trim_start_matches("index:").parse::<usize>().is_ok()
+            || probe
+                .outputs
+                .iter()
+                .any(|output| output.name.as_deref() == Some(name.as_str()))
+    };
+    for missing in wanted.iter().filter(|name| !connected(name)) {
         report.warning(format!(
-            "overlay.monitors: no connected output named {missing:?}"
+            "overlay.show_on: no connected output named {missing:?}"
         ));
     }
 }

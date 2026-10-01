@@ -1,7 +1,7 @@
 use super::{audio, desktop, service, settings};
 use crate::audio::capture::{CaptureState, StatusSnapshot};
 use crate::cli::report::Report;
-use crate::config::{Config, MonitorMode, OutputConfig};
+use crate::config::{Config, OutputConfig, ShowOn};
 use crate::wayland::{Probe, ProbedOutput};
 use crate::xdg::fake_env;
 
@@ -79,8 +79,7 @@ fn no_compositor_or_no_layer_shell_is_an_error() {
 #[test]
 fn outputs_that_are_not_connected_are_named() {
     let mut config = Config::default();
-    config.overlay.monitor_mode = MonitorMode::List;
-    config.overlay.monitors = vec!["HDMI-9".to_owned(), "DP-4".to_owned()];
+    config.overlay.show_on = ShowOn::Named(vec!["HDMI-9".to_owned(), "DP-4".to_owned()]);
     let report = compositor(Ok(&desk()), Some(&config));
     assert_eq!(report.status(), 0);
     assert_eq!(
@@ -88,10 +87,11 @@ fn outputs_that_are_not_connected_are_named() {
         [
             "output DP-1: 3840x2160, scale 1.5, no overlay",
             "output DP-4: 3840x2160, scale 1.5, overlay",
-            "warning: overlay.monitors: no connected output named \"HDMI-9\"",
+            "warning: overlay.show_on: no connected output named \"HDMI-9\"",
         ]
     );
 
+    config.overlay.show_on = ShowOn::Sections;
     config.overlay.outputs = vec![OutputConfig {
         monitor: "HDMI-9".to_owned(),
         ..OutputConfig::default()
@@ -101,7 +101,7 @@ fn outputs_that_are_not_connected_are_named() {
     assert_eq!(
         report.lines()[5..],
         [
-            "warning: overlay.outputs: no connected output named \"HDMI-9\"",
+            "warning: [output.HDMI-9]: no connected output has that name",
             "error: outputs: no connected output gets an overlay with this config",
         ]
     );

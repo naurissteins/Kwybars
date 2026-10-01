@@ -134,7 +134,7 @@ impl OutputSurface {
         self.output == *output && self.entry == entry
     }
 
-    /// the `[[overlay.outputs]]` entry this surface was selected by
+    /// the `[output.NAME]` section that applies to this surface
     pub fn entry(&self) -> Option<usize> {
         self.entry
     }

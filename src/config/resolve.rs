@@ -93,7 +93,7 @@ impl OutputConfig {
 }
 
 impl Config {
-    /// settings for a surface; `output` is its `[[overlay.outputs]]` entry, if any
+    /// settings for a surface; `output` is its `[output.NAME]` section, if any
     ///
     /// the theme applies unless the output sets any of its own color keys
     pub fn surface(&self, output: Option<&OutputConfig>, theme: Option<&Theme>) -> SurfaceConfig {

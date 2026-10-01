@@ -13,10 +13,23 @@ pub fn removed_reason(key_path: &str) -> Option<&'static str> {
         | ("daemon", "overlay_command" | "overlay_args") => Some(NO_DAEMON),
         ("daemon", "notify_on_error" | "notify_cooldown_seconds") => Some(NO_NOTIFICATIONS),
         (table, key)
-            if (table == "visualizer" || table.ends_with("].visualizer"))
+            if (table == "visualizer" || table.ends_with(".visualizer"))
                 && (key == "backend" || key.starts_with("pipewire_")) =>
         {
             Some(NO_BACKENDS)
+        }
+        _ => None,
+    }
+}
+
+/// what to write instead of an unknown key that other programs use
+pub fn hint(key_path: &str) -> Option<&'static str> {
+    match key_path {
+        "overlay.output_mode" | "overlay.output" | "overlay.monitor" | "overlay.display" => {
+            Some("to choose monitors write `show_on` in [overlay]")
+        }
+        _ if key_path.starts_with("outputs.") || key_path == "outputs" => {
+            Some("per-monitor sections are written [output.NAME]")
         }
         _ => None,
     }
@@ -59,10 +72,12 @@ mod tests {
             removed_reason("visualizer.pipewire_gain"),
             Some(NO_BACKENDS)
         );
-        assert_eq!(
-            removed_reason("overlay.outputs[1].visualizer.pipewire_decay"),
-            Some(NO_BACKENDS)
-        );
+        for nested in [
+            "overlay.outputs[1].visualizer.pipewire_decay",
+            "output.DP-1.visualizer.backend",
+        ] {
+            assert_eq!(removed_reason(nested), Some(NO_BACKENDS), "{nested}");
+        }
         for other in [
             "daemon.typo",
             "overlay.backend",

@@ -1,13 +1,16 @@
-//! `[overlay]` placement and `[[overlay.outputs]]` per-output overrides
+//! `[overlay]` placement and `[output.NAME]` per-output overrides
+
+mod table;
 
 use serde::Deserialize;
 
-use super::types::{Edge, HorizontalAlignment, Layer, MonitorMode, VerticalAlignment};
+use super::types::{Edge, HorizontalAlignment, Layer, ShowOn, VerticalAlignment};
 use super::visualizer::VisualizerOverrides;
 
-/// the `[overlay]` table
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(default)]
+pub(super) use table::{OverlayTable, resolve};
+
+/// the resolved `[overlay]` table with the per-output sections
+#[derive(Debug, Clone, PartialEq)]
 pub struct OverlayConfig {
     pub position: Edge,
     pub layer: Layer,
@@ -23,9 +26,8 @@ pub struct OverlayConfig {
     pub height: u32,
     pub horizontal_alignment: HorizontalAlignment,
     pub vertical_alignment: VerticalAlignment,
-    pub monitor_mode: MonitorMode,
-    pub monitors: Vec<String>,
-    /// when non-empty, replaces `monitor_mode` and `monitors`
+    pub show_on: ShowOn,
+    /// overrides for the output each one names
     pub outputs: Vec<OutputConfig>,
 }
 
@@ -46,18 +48,16 @@ impl Default for OverlayConfig {
             height: 500,
             horizontal_alignment: HorizontalAlignment::Center,
             vertical_alignment: VerticalAlignment::Center,
-            monitor_mode: MonitorMode::Primary,
-            monitors: Vec::new(),
+            show_on: ShowOn::Primary,
             outputs: Vec::new(),
         }
     }
 }
 
-/// one `[[overlay.outputs]]` entry; `None` keeps the `[overlay]` value
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct OutputConfig {
-    /// output name such as `DP-1`, required
+    /// output name such as DP-1, primary, or a 1-based index
     pub monitor: String,
     pub enabled: bool,
     pub position: Option<Edge>,

@@ -146,7 +146,7 @@ delegate_dispatch2!(State);
 #[cfg(test)]
 mod tests {
     use super::{Probe, ProbedOutput};
-    use crate::config::{MonitorMode, OverlayConfig};
+    use crate::config::{OverlayConfig, ShowOn};
 
     fn output(name: &str, mode: (i32, i32), logical: (i32, i32)) -> ProbedOutput {
         ProbedOutput {
@@ -182,8 +182,7 @@ mod tests {
         let primary = OverlayConfig::default();
         assert_eq!(probe.selected(&primary).0, vec![true, false]);
         let listed = OverlayConfig {
-            monitor_mode: MonitorMode::List,
-            monitors: vec!["DP-4".to_owned()],
+            show_on: ShowOn::Named(vec!["DP-4".to_owned()]),
             ..OverlayConfig::default()
         };
         assert_eq!(probe.selected(&listed), (vec![false, true], Vec::new()));

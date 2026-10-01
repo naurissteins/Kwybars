@@ -1,6 +1,7 @@
 mod compat;
 mod examples;
 mod load;
+mod monitors;
 mod parse;
 mod resolve;
 
