@@ -100,12 +100,10 @@ pub fn load(name: &str, dirs: &[PathBuf]) -> Result<LoadedTheme, ThemeError> {
     if !is_valid_name(name) {
         return Err(ThemeError::InvalidName(name.to_owned()));
     }
-    let file_name = format!("{name}.toml");
     let parse_error = |file: String| move |message| ThemeError::Parse { file, message };
 
-    if let Some(path) = dirs
-        .iter()
-        .map(|dir| dir.join(&file_name))
+    if let Some(path) = candidates(name, dirs)
+        .into_iter()
         .find(|path| path.is_file())
     {
         let raw = read(&path)?;
@@ -119,6 +117,15 @@ pub fn load(name: &str, dirs: &[PathBuf]) -> Result<LoadedTheme, ThemeError> {
         theme,
         origin: ThemeOrigin::BuiltIn,
     })
+}
+
+/// the files a theme name is looked for in, in order; none for a bad name
+pub fn candidates(name: &str, dirs: &[PathBuf]) -> Vec<PathBuf> {
+    if !is_valid_name(name) {
+        return Vec::new();
+    }
+    let file_name = format!("{name}.toml");
+    dirs.iter().map(|dir| dir.join(&file_name)).collect()
 }
 
 fn is_valid_name(name: &str) -> bool {

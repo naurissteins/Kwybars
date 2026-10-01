@@ -12,7 +12,13 @@ pub struct Target {
     pub names: Vec<OsString>,
 }
 
-pub fn targets(config: &Path, canonical: Option<&Path>, files: &[PathBuf]) -> Vec<Target> {
+/// `files` exist; a file in `wanted` may appear later, with its directory
+pub fn targets(
+    config: &Path,
+    canonical: Option<&Path>,
+    files: &[PathBuf],
+    wanted: &[PathBuf],
+) -> Vec<Target> {
     let mut targets: Vec<Target> = Vec::new();
     for path in std::iter::once(config).chain(canonical) {
         add(&mut targets, path);
@@ -20,6 +26,11 @@ pub fn targets(config: &Path, canonical: Option<&Path>, files: &[PathBuf]) -> Ve
     }
     for file in files {
         add(&mut targets, file);
+    }
+    for file in wanted {
+        add(&mut targets, file);
+        // creating the directory is seen from its parent
+        add(&mut targets, &dir_of(file));
     }
     targets
 }
@@ -65,18 +76,26 @@ mod tests {
         let found = targets(
             Path::new("/cfg/kwybars/current.toml"),
             Some(Path::new("/cfg/kwybars/custom/line.toml")),
+            &[PathBuf::from("/cfg/kwybars/overlays/02.jpg")],
             &[
+                PathBuf::from("/cfg/kwybars/themes/mocha.toml"),
                 PathBuf::from("/cfg/kwybars/custom/themes/mocha.toml"),
-                PathBuf::from("/cfg/kwybars/overlays/02.jpg"),
+                PathBuf::from("/usr/share/kwybars/themes/mocha.toml"),
             ],
         );
         assert_eq!(
             found,
             vec![
-                target("/cfg/kwybars", &["current.toml", "colors.toml"]),
-                target("/cfg/kwybars/custom", &["line.toml", "colors.toml"]),
-                target("/cfg/kwybars/custom/themes", &["mocha.toml"]),
+                target("/cfg/kwybars", &["current.toml", "colors.toml", "themes"]),
+                target(
+                    "/cfg/kwybars/custom",
+                    &["line.toml", "colors.toml", "themes"]
+                ),
                 target("/cfg/kwybars/overlays", &["02.jpg"]),
+                target("/cfg/kwybars/themes", &["mocha.toml"]),
+                target("/cfg/kwybars/custom/themes", &["mocha.toml"]),
+                target("/usr/share/kwybars/themes", &["mocha.toml"]),
+                target("/usr/share/kwybars", &["themes"]),
             ]
         );
     }
@@ -87,6 +106,7 @@ mod tests {
             Path::new("/cfg/config.toml"),
             None,
             &[PathBuf::from("/cfg/theme.toml")],
+            &[],
         );
         assert_eq!(
             found,
@@ -99,7 +119,7 @@ mod tests {
 
     #[test]
     fn a_bare_file_name_is_watched_in_the_working_directory() {
-        let found = targets(Path::new("config.toml"), None, &[]);
+        let found = targets(Path::new("config.toml"), None, &[], &[]);
         assert_eq!(found, vec![target(".", &["config.toml", "colors.toml"])]);
     }
 }

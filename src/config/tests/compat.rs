@@ -32,7 +32,7 @@ fn legacy_daemon_config_loads_with_grouped_warnings() {
         parsed.warnings,
         vec![
             "daemon.enabled, daemon.overlay_args, daemon.overlay_command, daemon.poll_interval_ms, daemon.stop_on_silence: removed (kwybars runs as a single process without a daemon), ignored",
-            "daemon.notify_cooldown_seconds, daemon.notify_on_error: removed (desktop notifications are not supported in this version), ignored",
+            "daemon.notify_cooldown_seconds, daemon.notify_on_error: removed (desktop notifications were removed, errors are in the log and `kwybars doctor`), ignored",
             "visualizer.backend, visualizer.pipewire_gain: removed (audio is captured from PipeWire directly), ignored",
             "[daemon] is deprecated, move these keys to [activity]: daemon.activity_threshold -> activity.threshold, daemon.activate_delay_ms -> activity.activate_delay_ms, daemon.deactivate_delay_ms -> activity.deactivate_delay_ms",
         ]

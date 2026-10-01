@@ -19,7 +19,7 @@ use tracing::{debug, warn};
 
 pub use scope::Scope;
 
-use crate::config::{self, ConfigError, Loaded, ThemeOrigin};
+use crate::config::{self, ConfigError, Loaded};
 use crate::xdg;
 use targets::targets;
 
@@ -36,11 +36,28 @@ const MASK: WatchMask = WatchMask::CLOSE_WRITE
 /// a watched directory and the names in it that matter
 type Watched = Vec<(WatchDescriptor, Vec<OsString>)>;
 
+/// the files beside the config a load used or looked for
+#[derive(Debug, Clone, Default)]
+struct Sources {
+    image: Option<PathBuf>,
+    /// where the configured theme may be, also while no such file exists
+    themes: Vec<PathBuf>,
+}
+
+impl Sources {
+    fn of(loaded: &Loaded) -> Self {
+        Self {
+            image: loaded.image.as_ref().map(|image| image.path.clone()),
+            themes: loaded.theme_candidates.clone(),
+        }
+    }
+}
+
 /// what a load worker sends back
 pub struct Reloaded {
     pub result: Result<Loaded, ConfigError>,
     watched: Watched,
-    files: Vec<PathBuf>,
+    sources: Sources,
 }
 
 /// watches the files a config is made of and loads it again when they change
@@ -49,7 +66,7 @@ pub struct Reloader {
     buffer: Vec<u8>,
     watched: Watched,
     config_path: PathBuf,
-    files: Vec<PathBuf>,
+    sources: Sources,
     due: Option<Instant>,
     loading: bool,
     again: bool,
@@ -64,14 +81,14 @@ impl Reloader {
         results: Sender<Reloaded>,
     ) -> io::Result<Self> {
         let inotify = Inotify::init()?;
-        let files = files_of(loaded);
-        let watched = watch(&mut inotify.watches(), &config_path, &files);
+        let sources = Sources::of(loaded);
+        let watched = watch(&mut inotify.watches(), &config_path, &sources);
         Ok(Self {
             inotify,
             buffer: vec![0; BUFFER_BYTES],
             watched,
             config_path,
-            files,
+            sources,
             due: None,
             loading: false,
             again: false,
@@ -144,7 +161,7 @@ impl Reloader {
             }
         }
         self.watched = reloaded.watched;
-        self.files = reloaded.files;
+        self.sources = reloaded.sources;
         if self.again {
             self.again = false;
             self.load();
@@ -159,23 +176,23 @@ impl Reloader {
             return;
         }
         let path = self.config_path.clone();
-        let previous = self.files.clone();
+        let previous = self.sources.clone();
         let mut watches = self.inotify.watches();
         let results = self.results.clone();
         let worker = std::thread::Builder::new()
             .name("kwybars-config".to_owned())
             .spawn(move || {
                 let result = config::load(&path, &xdg::process_env);
-                let files = match &result {
-                    Ok(loaded) => files_of(loaded),
+                let sources = match &result {
+                    Ok(loaded) => Sources::of(loaded),
                     Err(_) => previous,
                 };
-                let watched = watch(&mut watches, &path, &files);
+                let watched = watch(&mut watches, &path, &sources);
                 // fails only when the main loop is gone
                 let _ = results.send(Reloaded {
                     result,
                     watched,
-                    files,
+                    sources,
                 });
             });
         match worker {
@@ -185,27 +202,22 @@ impl Reloader {
     }
 }
 
-/// the theme and image files loaded was read from
-fn files_of(loaded: &Loaded) -> Vec<PathBuf> {
-    let theme = loaded.theme.as_ref().and_then(|theme| match &theme.origin {
-        ThemeOrigin::File(path) => Some(path.clone()),
-        ThemeOrigin::BuiltIn => None,
-    });
-    let image = loaded.image.as_ref().map(|image| image.path.clone());
-    theme.into_iter().chain(image).collect()
-}
-
-fn watch(watches: &mut Watches, config_path: &Path, files: &[PathBuf]) -> Watched {
+fn watch(watches: &mut Watches, config_path: &Path, sources: &Sources) -> Watched {
     let canonical = fs::canonicalize(config_path).ok();
     let canonical = canonical.as_deref().filter(|real| *real != config_path);
-    targets(config_path, canonical, files)
-        .into_iter()
-        .filter_map(|target| match watches.add(&target.dir, MASK) {
-            Ok(wd) => Some((wd, target.names)),
-            Err(err) => {
-                debug!("not watching {}: {err}", target.dir.display());
-                None
-            }
-        })
-        .collect()
+    targets(
+        config_path,
+        canonical,
+        sources.image.as_slice(),
+        &sources.themes,
+    )
+    .into_iter()
+    .filter_map(|target| match watches.add(&target.dir, MASK) {
+        Ok(wd) => Some((wd, target.names)),
+        Err(err) => {
+            debug!("not watching {}: {err}", target.dir.display());
+            None
+        }
+    })
+    .collect()
 }

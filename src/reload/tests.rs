@@ -8,7 +8,9 @@ use calloop::EventLoop;
 use calloop::channel::{self, Channel, Event};
 
 use super::{DEBOUNCE, Reloaded, Reloader};
-use crate::config;
+use crate::config::{self, ConfigError, Loaded, ThemeOrigin};
+
+const THEME: &str = include_str!("../../assets/themes/nord.toml");
 
 static NEXT_DIR: AtomicU32 = AtomicU32::new(0);
 
@@ -49,6 +51,48 @@ fn reloader(config: &Path) -> (Reloader, Channel<Reloaded>) {
         panic!("no inotify");
     };
     (reloader, channel)
+}
+
+/// the loop a worker's result arrives on
+struct Results(EventLoop<'static, Option<Reloaded>>);
+
+impl Results {
+    fn new(channel: Channel<Reloaded>) -> Self {
+        let Ok(event_loop) = EventLoop::try_new() else {
+            panic!("event loop");
+        };
+        let inserted = event_loop
+            .handle()
+            .insert_source(channel, |event, (), got| {
+                if let Event::Msg(reloaded) = event {
+                    *got = Some(reloaded);
+                }
+            });
+        assert!(inserted.is_ok());
+        Self(event_loop)
+    }
+
+    /// waits for the load that is running and hands its result to the reloader
+    fn next(&mut self, reloader: &mut Reloader) -> Result<Loaded, ConfigError> {
+        let mut got = None;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while got.is_none() && Instant::now() < deadline {
+            let dispatched = self.0.dispatch(Some(Duration::from_millis(100)), &mut got);
+            assert!(dispatched.is_ok());
+        }
+        let Some(reloaded) = got else {
+            panic!("no result from the worker");
+        };
+        reloader.finish(reloaded)
+    }
+
+    /// loads now, as the debounce timer would
+    fn load(&mut self, reloader: &mut Reloader) -> Result<Loaded, ConfigError> {
+        let start = Instant::now();
+        reloader.changed(start);
+        assert_eq!(reloader.wake(start + DEBOUNCE), None);
+        self.next(reloader)
+    }
 }
 
 #[test]
@@ -145,30 +189,8 @@ fn a_load_runs_on_a_worker_and_watches_the_new_link_target() {
     reloader.changed(start);
     assert_eq!(reloader.wake(start + DEBOUNCE), None);
 
-    let Ok(mut event_loop) = EventLoop::<Option<Reloaded>>::try_new() else {
-        panic!("event loop");
-    };
-    let inserted = event_loop
-        .handle()
-        .insert_source(channel, |event, (), got| {
-            if let Event::Msg(reloaded) = event {
-                *got = Some(reloaded);
-            }
-        });
-    assert!(inserted.is_ok());
-    let mut got = None;
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while got.is_none() && Instant::now() < deadline {
-        assert!(
-            event_loop
-                .dispatch(Some(Duration::from_millis(100)), &mut got)
-                .is_ok()
-        );
-    }
-    let Some(reloaded) = got else {
-        panic!("no result from the worker");
-    };
-    let loaded = reloader.finish(reloaded);
+    let mut results = Results::new(channel);
+    let loaded = results.next(&mut reloader);
     assert!(matches!(&loaded, Ok(loaded) if loaded.config.visualizer.bars == 20));
 
     // the new target's directory is watched now
@@ -185,27 +207,50 @@ fn a_broken_config_is_an_error_to_keep_the_old_one() {
     write(&path, "[visualizer\nbars = ");
     reloader.changed(Instant::now());
     reloader.wake(Instant::now() + DEBOUNCE);
-    let Ok(mut event_loop) = EventLoop::<Option<Reloaded>>::try_new() else {
-        panic!("event loop");
-    };
-    let inserted = event_loop
-        .handle()
-        .insert_source(channel, |event, (), got| {
-            if let Event::Msg(reloaded) = event {
-                *got = Some(reloaded);
-            }
-        });
-    assert!(inserted.is_ok());
-    let mut got = None;
-    while got.is_none() {
-        assert!(
-            event_loop
-                .dispatch(Some(Duration::from_secs(5)), &mut got)
-                .is_ok()
-        );
-    }
-    let Some(reloaded) = got else {
-        panic!("no result");
-    };
-    assert!(reloader.finish(reloaded).is_err());
+    assert!(Results::new(channel).next(&mut reloader).is_err());
+}
+
+#[test]
+fn a_theme_created_after_the_load_is_picked_up_with_its_directory() {
+    let dir = TempDir::new();
+    let path = dir.0.join("config.toml");
+    write(&path, "[visualizer]\ntheme = \"mine\"\n");
+    let (mut reloader, channel) = reloader(&path);
+    let mut results = Results::new(channel);
+    assert!(!reloader.drain());
+
+    // the directory appears first, and is watched from the next load on
+    let themes = dir.0.join("themes");
+    assert!(fs::create_dir(&themes).is_ok());
+    assert!(reloader.drain());
+    let loaded = results.load(&mut reloader);
+    assert!(matches!(&loaded, Ok(loaded) if loaded.theme.is_none()));
+
+    write(&themes.join("other.toml"), THEME);
+    assert!(!reloader.drain());
+    let mine = themes.join("mine.toml");
+    write(&mine, THEME);
+    assert!(reloader.drain());
+    let loaded = results.load(&mut reloader);
+    let origin = loaded
+        .ok()
+        .and_then(|loaded| loaded.theme)
+        .map(|theme| theme.origin);
+    assert_eq!(origin, Some(ThemeOrigin::File(mine.clone())));
+
+    // and removing it again falls back
+    assert!(fs::remove_file(&mine).is_ok());
+    assert!(reloader.drain());
+}
+
+#[test]
+fn a_file_that_shadows_a_built_in_theme_is_seen() {
+    let dir = TempDir::new();
+    assert!(fs::create_dir(dir.0.join("themes")).is_ok());
+    let path = dir.0.join("config.toml");
+    write(&path, "[visualizer]\ntheme = \"nord\"\n");
+    let (mut reloader, _channel) = reloader(&path);
+    assert!(!reloader.drain());
+    write(&dir.0.join("themes/nord.toml"), THEME);
+    assert!(reloader.drain());
 }

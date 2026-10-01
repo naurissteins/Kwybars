@@ -1,7 +1,8 @@
 //! keys that legacy kwybars accepted and this version ignores on purpose
 
 const NO_DAEMON: &str = "kwybars runs as a single process without a daemon";
-const NO_NOTIFICATIONS: &str = "desktop notifications are not supported in this version";
+const NO_NOTIFICATIONS: &str =
+    "desktop notifications were removed, errors are in the log and `kwybars doctor`";
 const NO_BACKENDS: &str = "audio is captured from PipeWire directly";
 
 /// why a removed key no longer does anything, `None` for keys that were never valid

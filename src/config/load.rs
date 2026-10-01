@@ -25,6 +25,8 @@ pub enum Source {
 pub struct Loaded {
     pub config: Config,
     pub theme: Option<LoadedTheme>,
+    /// every file the configured theme is looked for in, found or not
+    pub theme_candidates: Vec<PathBuf>,
     pub warnings: Vec<String>,
     pub problems: Vec<String>,
     pub source: Source,
@@ -69,8 +71,10 @@ pub fn load(path: &Path, env: &dyn Fn(&str) -> Option<OsString>) -> Result<Loade
 
     let colors_path = apply_colors(&mut config, path, canonical, &mut problems);
 
+    let mut theme_candidates = Vec::new();
     let theme = config.visualizer.theme.as_deref().and_then(|name| {
         let dirs = theme::search_dirs(path, canonical, env);
+        theme_candidates = theme::candidates(name, &dirs);
         theme::load(name, &dirs)
             .inspect_err(|err| problems.push(format!("{err}, using the configured colors")))
             .ok()
@@ -89,6 +93,7 @@ pub fn load(path: &Path, env: &dyn Fn(&str) -> Option<OsString>) -> Result<Loade
     Ok(Loaded {
         config,
         theme,
+        theme_candidates,
         warnings,
         problems,
         source,
