@@ -1,12 +1,14 @@
 //! theme palettes: six colors that replace the direct bar colors
 
 mod builtin;
+mod list;
 mod lookup;
 
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+pub use list::{AvailableTheme, available};
 pub use lookup::search_dirs;
 
 use super::color::Rgba;
@@ -95,7 +97,7 @@ impl Theme {
 
 /// finds `<name>.toml` in `dirs`, falling back to the built-in themes
 pub fn load(name: &str, dirs: &[PathBuf]) -> Result<LoadedTheme, ThemeError> {
-    if name.is_empty() || name.starts_with('.') || name.contains(['/', '\\']) {
+    if !is_valid_name(name) {
         return Err(ThemeError::InvalidName(name.to_owned()));
     }
     let file_name = format!("{name}.toml");
@@ -117,6 +119,10 @@ pub fn load(name: &str, dirs: &[PathBuf]) -> Result<LoadedTheme, ThemeError> {
         theme,
         origin: ThemeOrigin::BuiltIn,
     })
+}
+
+fn is_valid_name(name: &str) -> bool {
+    !(name.is_empty() || name.starts_with('.') || name.contains(['/', '\\']))
 }
 
 fn read(path: &Path) -> Result<String, ThemeError> {

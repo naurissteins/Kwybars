@@ -15,15 +15,20 @@ const CONFIG_ENV: &str = "KWYBARS_CONFIG";
 )]
 pub struct ConfigPathError;
 
-/// resolves the config path: `$KWYBARS_CONFIG`, else
-/// `$XDG_CONFIG_HOME/kwybars/config.toml`, else `~/.config/kwybars/config.toml`
 pub fn default_path(env: &dyn Fn(&str) -> Option<OsString>) -> Result<PathBuf, ConfigPathError> {
-    if let Some(path) = env(CONFIG_ENV).filter(|value| !value.is_empty()) {
-        return Ok(PathBuf::from(path));
+    if let Some(path) = env_path(env) {
+        return Ok(path);
     }
     xdg::base_dir(env, "XDG_CONFIG_HOME", ".config")
         .map(|dir| dir.join("kwybars").join("config.toml"))
         .ok_or(ConfigPathError)
+}
+
+/// the config path `$KWYBARS_CONFIG` names
+pub fn env_path(env: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    env(CONFIG_ENV)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
 }
 
 #[cfg(test)]

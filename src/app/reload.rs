@@ -100,12 +100,13 @@ impl App {
 
     /// rebuilds only what the new config changes
     fn apply(&mut self, loaded: Loaded) {
-        for warning in &loaded.warnings {
+        let warnings: Vec<String> = loaded.messages().cloned().collect();
+        for warning in &warnings {
             if !self.warnings.contains(warning) {
                 warn!("{warning}");
             }
         }
-        self.warnings = loaded.warnings;
+        self.warnings = warnings;
         if loaded.source == Source::Defaults {
             warn!("the config file is gone, using built-in defaults");
         }

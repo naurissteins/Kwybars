@@ -2,6 +2,7 @@
 
 mod analysis;
 mod format;
+mod probe;
 mod ring;
 mod status;
 mod stream;
@@ -17,6 +18,7 @@ use calloop::ping::Ping;
 use pipewire::channel::Sender;
 use tracing::error;
 
+pub use probe::probe;
 pub use status::{CaptureState, StatusSnapshot};
 
 use super::frame::FrameSlot;
@@ -35,7 +37,6 @@ pub struct CaptureSettings {
 #[derive(Debug)]
 struct Shared {
     status: CaptureStatus,
-    /// wakes the reader's loop when it asked for the next frame
     waker: Option<Ping>,
 }
 

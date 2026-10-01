@@ -33,10 +33,10 @@ fn assert_close(actual: f32, expected: f32) {
 }
 
 /// a fresh directory under the system temp dir, removed on drop
-pub(super) struct TempDir(PathBuf);
+pub(crate) struct TempDir(PathBuf);
 
 impl TempDir {
-    pub(super) fn new(tag: &str) -> Self {
+    pub(crate) fn new(tag: &str) -> Self {
         let path = std::env::temp_dir().join(format!("kwybars-{tag}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&path);
         if let Err(err) = fs::create_dir_all(&path) {
@@ -45,12 +45,12 @@ impl TempDir {
         Self(path)
     }
 
-    pub(super) fn path(&self) -> &Path {
+    pub(crate) fn path(&self) -> &Path {
         &self.0
     }
 
     /// writes `raw` to `name`, creating parent directories
-    pub(super) fn write(&self, name: &str, raw: &str) -> PathBuf {
+    pub(crate) fn write(&self, name: &str, raw: &str) -> PathBuf {
         let path = self.0.join(name);
         if let Some(parent) = path.parent()
             && let Err(err) = fs::create_dir_all(parent)

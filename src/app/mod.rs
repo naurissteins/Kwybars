@@ -18,6 +18,7 @@ use calloop::{EventLoop, LoopHandle, RegistrationToken};
 use tracing::{info, warn};
 
 pub use error::AppError;
+pub use logging::log_file_path;
 
 use crate::activity::ActivityTracker;
 use crate::audio::capture::{Capture, CaptureSettings};
@@ -34,7 +35,6 @@ use animation::Animation;
 /// options for running the overlay
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RunOptions {
-    /// config path from `--config`, `None` means the default location
     pub config_path: Option<PathBuf>,
 }
 
@@ -67,6 +67,7 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
     let mut event_loop: EventLoop<'static, App> = EventLoop::try_new()?;
     let handle = event_loop.handle();
     let reloader = reload::start(&handle, config_path, &loaded);
+    let warnings = loaded.messages().cloned().collect();
     let image = image::overlay(&loaded.config, loaded.image, None);
     let mut app = App {
         running: true,
@@ -80,7 +81,7 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
         config: loaded.config,
         theme: loaded.theme.map(|loaded| loaded.theme),
         image,
-        warnings: loaded.warnings,
+        warnings,
     };
     image::start(&handle, &mut app)?;
     handle
@@ -108,7 +109,6 @@ struct App {
     running: bool,
     animation: Animation,
     activity: ActivityTracker,
-    /// the pending activity deadline timer and when it fires
     timer: Option<(RegistrationToken, Instant)>,
     handle: LoopHandle<'static, App>,
     wayland: Wayland,
@@ -121,8 +121,6 @@ struct App {
 }
 
 impl App {
-    /// follows the audio level, shows or hides the surfaces, steps the bars
-    /// if a frame is due, and lets ready surfaces draw it
     fn render(&mut self) {
         let now = Instant::now();
         let level = self.animation.level();
@@ -226,7 +224,7 @@ fn load_config(config_path: &Path) -> Result<config::Loaded, AppError> {
             config_path.display()
         ),
     }
-    for warning in &loaded.warnings {
+    for warning in loaded.messages() {
         warn!("{warning}");
     }
     if let Some(path) = &loaded.colors_path {

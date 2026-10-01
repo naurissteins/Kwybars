@@ -10,14 +10,13 @@ use super::Config;
 use super::colors;
 use super::error::ConfigError;
 use super::parse::{ParseError, parse};
-use super::theme::{self, LoadedTheme};
+use super::theme::{self, AvailableTheme, LoadedTheme};
 use crate::render::image;
 
 /// where a loaded config came from
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Source {
     File,
-    /// the file does not exist, built-in defaults are used
     Defaults,
 }
 
@@ -27,6 +26,7 @@ pub struct Loaded {
     pub config: Config,
     pub theme: Option<LoadedTheme>,
     pub warnings: Vec<String>,
+    pub problems: Vec<String>,
     pub source: Source,
     pub colors_path: Option<PathBuf>,
     pub image: Option<LoadedImage>,
@@ -39,17 +39,40 @@ pub struct LoadedImage {
     pub source: Result<Arc<image::Source>, String>,
 }
 
-pub fn load(path: &Path, env: &dyn Fn(&str) -> Option<OsString>) -> Result<Loaded, ConfigError> {
-    let (mut config, source, mut warnings) = read_config(path)?;
-    let canonical = fs::canonicalize(path).ok();
-    let canonical = canonical.as_deref().filter(|real| *real != path);
+impl Loaded {
+    /// warnings, then problems
+    pub fn messages(&self) -> impl Iterator<Item = &String> {
+        self.warnings.iter().chain(&self.problems)
+    }
+}
 
-    let colors_path = apply_colors(&mut config, path, canonical, &mut warnings);
+/// the file a symlinked config points at
+pub fn link_target(path: &Path) -> Option<PathBuf> {
+    fs::canonicalize(path).ok().filter(|real| real != path)
+}
+
+/// where `colors.toml` is looked for, in order
+pub fn colors_candidates(path: &Path) -> Vec<PathBuf> {
+    colors::candidates(path, link_target(path).as_deref())
+}
+
+/// every theme the config at path can name
+pub fn themes(path: &Path, env: &dyn Fn(&str) -> Option<OsString>) -> Vec<AvailableTheme> {
+    theme::available(&theme::search_dirs(path, link_target(path).as_deref(), env))
+}
+
+pub fn load(path: &Path, env: &dyn Fn(&str) -> Option<OsString>) -> Result<Loaded, ConfigError> {
+    let (mut config, source, warnings) = read_config(path)?;
+    let mut problems = Vec::new();
+    let canonical = link_target(path);
+    let canonical = canonical.as_deref();
+
+    let colors_path = apply_colors(&mut config, path, canonical, &mut problems);
 
     let theme = config.visualizer.theme.as_deref().and_then(|name| {
         let dirs = theme::search_dirs(path, canonical, env);
         theme::load(name, &dirs)
-            .inspect_err(|err| warnings.push(format!("{err}, using the configured colors")))
+            .inspect_err(|err| problems.push(format!("{err}, using the configured colors")))
             .ok()
     });
 
@@ -58,7 +81,7 @@ pub fn load(path: &Path, env: &dyn Fn(&str) -> Option<OsString>) -> Result<Loade
             .map(Arc::new)
             .map_err(|err| err.to_string());
         if let Err(err) = &source {
-            warnings.push(format!("image overlay {}: {err}", file.display()));
+            problems.push(format!("image overlay {}: {err}", file.display()));
         }
         LoadedImage { path: file, source }
     });
@@ -67,6 +90,7 @@ pub fn load(path: &Path, env: &dyn Fn(&str) -> Option<OsString>) -> Result<Loade
         config,
         theme,
         warnings,
+        problems,
         source,
         colors_path,
         image,
@@ -109,7 +133,7 @@ fn apply_colors(
     config: &mut Config,
     path: &Path,
     canonical: Option<&Path>,
-    warnings: &mut Vec<String>,
+    problems: &mut Vec<String>,
 ) -> Option<PathBuf> {
     let colors_path = colors::candidates(path, canonical)
         .into_iter()
@@ -123,7 +147,7 @@ fn apply_colors(
             Some(colors_path)
         }
         Err(err) => {
-            warnings.push(format!(
+            problems.push(format!(
                 "{}: {err}, using the config colors",
                 colors_path.display()
             ));

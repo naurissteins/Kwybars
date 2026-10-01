@@ -56,9 +56,9 @@ fn broken_colors_toml_is_a_warning() {
     assert_eq!(loaded.config.visualizer, Config::default().visualizer);
     assert_eq!(loaded.colors_path, None);
     assert!(
-        loaded.warnings[0].contains("colors.toml: line 1: color_rgba"),
+        loaded.problems[0].contains("colors.toml: line 1: color_rgba"),
         "{:?}",
-        loaded.warnings
+        loaded.problems
     );
 }
 
@@ -112,8 +112,9 @@ fn missing_theme_is_a_warning() {
     let path = dir.write("config.toml", "theme = \"nope\"\n");
     let loaded = load_ok(&path);
     assert!(loaded.theme.is_none());
+    assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
     assert_eq!(
-        loaded.warnings,
+        loaded.problems,
         vec!["theme `nope` not found, using the configured colors"]
     );
 }
@@ -169,12 +170,13 @@ fn the_overlay_image_is_decoded_and_a_broken_one_is_a_warning() {
     assert_eq!(image.path, good);
     assert_eq!(image.source.map(|source| source.size()).ok(), Some((4, 3)));
     assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+    assert!(loaded.problems.is_empty(), "{:?}", loaded.problems);
 
     dir.write("art.png", "not an image");
     let loaded = load_ok(&path);
     assert!(loaded.image.is_some_and(|image| image.source.is_err()));
-    assert_eq!(loaded.warnings.len(), 1, "{:?}", loaded.warnings);
-    assert!(loaded.warnings[0].starts_with(&format!("image overlay {}: ", good.display())));
+    assert_eq!(loaded.problems.len(), 1, "{:?}", loaded.problems);
+    assert!(loaded.problems[0].starts_with(&format!("image overlay {}: ", good.display())));
 
     let off = dir.write(
         "off.toml",

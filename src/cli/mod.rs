@@ -5,11 +5,17 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use crate::app::{self, RunOptions};
+use crate::xdg;
 
+mod check;
+mod doctor;
 mod meter;
+mod report;
 mod spectrum;
 #[cfg(test)]
 mod tests;
+mod themes;
+mod validate;
 
 const USAGE: &str = "\
 Usage: kwybars [OPTIONS] [COMMAND]
@@ -17,13 +23,18 @@ Usage: kwybars [OPTIONS] [COMMAND]
 Runs the Kwybars audio visualizer overlay.
 
 Commands:
+  validate-config      Check the config, colors.toml, theme, and image overlay
+  list-themes          List the themes the config can name
+  doctor               Check the config and what Kwybars needs from the desktop
   debug audio          Show a live level meter of the captured audio
   debug spectrum       Show the analyzed bars in the terminal
 
 Options:
-  -c, --config <PATH>  Load the config from PATH instead of the default location
+  -c, --config <PATH>  Use the config at PATH instead of the default location
   -h, --help           Print this help and exit
   -V, --version        Print the version and exit
+
+The checking commands exit with 1 when they find an error.
 ";
 
 /// what the command line asks Kwybars to do
@@ -32,6 +43,9 @@ pub enum Command {
     Run(RunOptions),
     Help,
     Version,
+    ValidateConfig(RunOptions),
+    ListThemes(RunOptions),
+    Doctor(RunOptions),
     DebugAudio,
     DebugSpectrum(RunOptions),
 }
@@ -79,6 +93,9 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command, UsageE
             .as_slice()
         {
             [] => Command::Run(options),
+            ["validate-config"] => Command::ValidateConfig(options),
+            ["list-themes"] => Command::ListThemes(options),
+            ["doctor"] => Command::Doctor(options),
             ["debug", "audio"] => Command::DebugAudio,
             ["debug", "spectrum"] => Command::DebugSpectrum(options),
             _ => return Err(UsageError::UnknownCommand(words.join(" "))),
@@ -98,6 +115,9 @@ pub fn execute(command: Command) -> ExitCode {
             ExitCode::SUCCESS
         }
         Command::Run(options) => exit_code(app::run(options)),
+        Command::ValidateConfig(options) => validate::report(&options, &xdg::process_env).print(),
+        Command::ListThemes(options) => themes::report(&options, &xdg::process_env).print(),
+        Command::Doctor(options) => doctor::report(&options, &xdg::process_env).print(),
         Command::DebugAudio => {
             let result = app::debug::audio(meter::show);
             meter::finish();

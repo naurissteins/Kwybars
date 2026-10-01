@@ -4,6 +4,7 @@ mod error;
 mod handlers;
 mod outputs;
 mod placement;
+mod probe;
 mod scale;
 mod selection;
 mod surface;
@@ -31,6 +32,7 @@ use smithay_client_toolkit::subcompositor::SubcompositorState;
 use tracing::{info, warn};
 
 pub use error::WaylandError;
+pub use probe::{Probe, ProbedOutput, probe};
 
 use crate::activity::Presence;
 use crate::config::{Config, Theme};

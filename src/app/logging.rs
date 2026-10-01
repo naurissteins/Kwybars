@@ -117,9 +117,7 @@ fn filter_from_env(env: &dyn Fn(&str) -> Option<OsString>) -> (Targets, Option<S
     }
 }
 
-/// `$KWYBARS_LOG_FILE`, else `$XDG_STATE_HOME/kwybars/kwybars.log`, else
-/// `~/.local/state/kwybars/kwybars.log`.
-fn log_file_path(env: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+pub fn log_file_path(env: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
     if let Some(path) = env(LOG_FILE_ENV).filter(|value| !value.is_empty()) {
         return Some(PathBuf::from(path));
     }

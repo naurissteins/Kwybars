@@ -40,6 +40,10 @@ pub fn find(name: &str) -> Option<&'static str> {
         .map(|(_, raw)| *raw)
 }
 
+pub fn names() -> impl Iterator<Item = &'static str> {
+    BUILTIN.iter().map(|(name, _)| *name)
+}
+
 #[cfg(test)]
 mod tests {
     use super::BUILTIN;
