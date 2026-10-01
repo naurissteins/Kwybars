@@ -1,5 +1,4 @@
 mod compat;
-mod legacy;
 mod load;
 mod parse;
 mod resolve;

@@ -5,7 +5,7 @@
 #   scripts/measure --startup [-n RUNS] -- COMMAND [ARGS...]
 #
 # Default mode starts COMMAND, waits WARMUP seconds, then samples the whole
-# process tree (COMMAND plus every descendant, e.g. daemon -> overlay -> cava)
+# process tree (COMMAND plus every descendant, so other programs can be compared)
 # for DURATION seconds and prints CPU, context switches, RSS, and PSS.
 # -o keeps the command's stdout/stderr in LOG.
 #

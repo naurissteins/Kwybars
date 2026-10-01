@@ -24,16 +24,10 @@ toml_edit = "0.25"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "fmt", "std", "time"] }
 
-[dev-dependencies]
-# compares the new config parser against the legacy one until phase 2
-kwybars-common = { path = "crates/common" }
-
 [lints]
 workspace = true
 
 [workspace]
-# The legacy crates stay until Phase 2 of the rewrite removes them.
-members = [".", "crates/common", "crates/control", "crates/daemon", "crates/engine", "crates/overlay"]
 resolver = "3"
 
 [workspace.package]

@@ -1,0 +1,17 @@
+[Unit]
+Description=Kwybars audio visualizer overlay
+Documentation=man:kwybars(1)
+PartOf=graphical-session.target
+After=graphical-session.target
+ConditionEnvironment=WAYLAND_DISPLAY
+StartLimitIntervalSec=30
+StartLimitBurst=5
+
+[Service]
+Environment=PATH=%h/.cargo/bin:/usr/local/bin:/usr/bin
+ExecStart=/usr/bin/env kwybars
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

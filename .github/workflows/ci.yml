@@ -39,28 +39,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
-            git \
-            gobject-introspection \
             libclang-dev \
-            libgdk-pixbuf-2.0-dev \
-            libgirepository1.0-dev \
-            libglib2.0-dev \
-            libgtk-4-dev \
             libpipewire-0.3-dev \
-            libwayland-dev \
-            meson \
-            ninja-build \
-            pkg-config \
-            valac \
-            wayland-protocols
-
-          if ! pkg-config --exists gtk4-layer-shell-0; then
-            git clone --depth 1 https://github.com/wmww/gtk4-layer-shell.git /tmp/gtk4-layer-shell
-            meson setup /tmp/gtk4-layer-shell/build /tmp/gtk4-layer-shell
-            meson compile -C /tmp/gtk4-layer-shell/build
-            sudo meson install -C /tmp/gtk4-layer-shell/build
-            sudo ldconfig
-          fi
+            pkg-config
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
   check:
@@ -76,28 +57,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
-            git \
-            gobject-introspection \
             libclang-dev \
-            libgdk-pixbuf-2.0-dev \
-            libgirepository1.0-dev \
-            libglib2.0-dev \
-            libgtk-4-dev \
             libpipewire-0.3-dev \
-            libwayland-dev \
-            meson \
-            ninja-build \
-            pkg-config \
-            valac \
-            wayland-protocols
-
-          if ! pkg-config --exists gtk4-layer-shell-0; then
-            git clone --depth 1 https://github.com/wmww/gtk4-layer-shell.git /tmp/gtk4-layer-shell
-            meson setup /tmp/gtk4-layer-shell/build /tmp/gtk4-layer-shell
-            meson compile -C /tmp/gtk4-layer-shell/build
-            sudo meson install -C /tmp/gtk4-layer-shell/build
-            sudo ldconfig
-          fi
+            pkg-config
       - run: cargo check --workspace
 
   test:
@@ -113,28 +75,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
-            git \
-            gobject-introspection \
             libclang-dev \
-            libgdk-pixbuf-2.0-dev \
-            libgirepository1.0-dev \
-            libglib2.0-dev \
-            libgtk-4-dev \
             libpipewire-0.3-dev \
-            libwayland-dev \
-            meson \
-            ninja-build \
-            pkg-config \
-            valac \
-            wayland-protocols
-
-          if ! pkg-config --exists gtk4-layer-shell-0; then
-            git clone --depth 1 https://github.com/wmww/gtk4-layer-shell.git /tmp/gtk4-layer-shell
-            meson setup /tmp/gtk4-layer-shell/build /tmp/gtk4-layer-shell
-            meson compile -C /tmp/gtk4-layer-shell/build
-            sudo meson install -C /tmp/gtk4-layer-shell/build
-            sudo ldconfig
-          fi
+            pkg-config
       - run: cargo test --workspace
 
   dependencies:
@@ -161,28 +104,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
-            git \
-            gobject-introspection \
             libclang-dev \
-            libgdk-pixbuf-2.0-dev \
-            libgirepository1.0-dev \
-            libglib2.0-dev \
-            libgtk-4-dev \
             libpipewire-0.3-dev \
-            libwayland-dev \
-            meson \
-            ninja-build \
-            pkg-config \
-            valac \
-            wayland-protocols
-
-          if ! pkg-config --exists gtk4-layer-shell-0; then
-            git clone --depth 1 https://github.com/wmww/gtk4-layer-shell.git /tmp/gtk4-layer-shell
-            meson setup /tmp/gtk4-layer-shell/build /tmp/gtk4-layer-shell
-            meson compile -C /tmp/gtk4-layer-shell/build
-            sudo meson install -C /tmp/gtk4-layer-shell/build
-            sudo ldconfig
-          fi
+            pkg-config
       - run: cargo build --locked --release --workspace
 
   nix:
