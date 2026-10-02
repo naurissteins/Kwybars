@@ -5,25 +5,18 @@ mod tests;
 
 use crate::config::Config;
 
-/// acceleration of a falling bar, in bar heights per second squared
 const GRAVITY: f32 = 9.0;
-/// gain change per second while bars overshoot the top
 const GAIN_FALL_PER_SECOND: f32 = 1.2;
-/// gain change per second while audio stays below the top
 const GAIN_RISE_PER_SECOND: f32 = 0.08;
-/// faster rise until the first overshoot, so the first seconds are not flat
 const GAIN_WARMUP_PER_SECOND: f32 = 3.0;
 const GAIN_RANGE: (f32, f32) = (0.01, 5_000.0);
-/// smoothing values are defined at this rate and converted to real elapsed time
 const SMOOTHING_RATE_HZ: f32 = 60.0;
 
 /// tuning for [`Dynamics`]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DynamicsConfig {
-    /// multiplier on top of the gain; the whole gain when `auto_sensitivity` is off
     pub sensitivity: f32,
     pub auto_sensitivity: bool,
-    /// `0.0..1.0`, fraction of the previous height kept per 1/60 s
     pub smoothing: f32,
 }
 
@@ -72,8 +65,6 @@ impl Dynamics {
         }
     }
 
-    /// keeps the bars and the learned gain, switching auto sensitivity on
-    /// warms the gain up again
     pub fn set_config(&mut self, config: DynamicsConfig) {
         if config.auto_sensitivity && !self.config.auto_sensitivity {
             self.warming_up = true;
@@ -81,8 +72,6 @@ impl Dynamics {
         self.config = config;
     }
 
-    /// advances by `dt` seconds; `raw` is one amplitude per bar, `None` for
-    /// silence, which lets the bars fall without moving the gain
     pub fn update(&mut self, raw: Option<&[f32]>, dt: f32) -> &[f32] {
         let dt = dt.clamp(0.0, 0.25);
         let keep = self.config.smoothing.powf(dt * SMOOTHING_RATE_HZ);
@@ -93,6 +82,8 @@ impl Dynamics {
             let target = raw
                 .and_then(|values| values.get(index))
                 .map_or(0.0, |value| value * gain);
+            // a nan or infinite target would stay in the smoothed state for good
+            let target = if target.is_finite() { target } else { 0.0 };
             let Some(smoothed) = self.smoothed.get_mut(index) else {
                 continue;
             };

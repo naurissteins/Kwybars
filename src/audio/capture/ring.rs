@@ -26,6 +26,7 @@ impl SampleRing {
     }
 
     /// appends little-endian f32 samples, a trailing partial sample is dropped
+    /// and nan or infinite samples are stored as zero
     pub fn push_le_bytes(&mut self, bytes: &[u8]) {
         let capacity = self.samples.len() as u64;
         if capacity == 0 {
@@ -35,7 +36,9 @@ impl SampleRing {
         for raw in samples {
             let index = (self.written % capacity) as usize;
             if let Some(slot) = self.samples.get_mut(index) {
-                *slot = f32::from_le_bytes(*raw);
+                let sample = f32::from_le_bytes(*raw);
+                // one nan in the fft window would turn every bar into nan
+                *slot = if sample.is_finite() { sample } else { 0.0 };
             }
             self.written += 1;
         }
@@ -101,6 +104,20 @@ mod tests {
         raw.push(0xff);
         ring.push_le_bytes(&raw);
         assert_eq!(collect(&ring, 0), (vec![1.0], 1));
+    }
+
+    #[test]
+    fn non_finite_samples_are_stored_as_zero() {
+        let mut ring = SampleRing::default();
+        ring.reset(8);
+        ring.push_le_bytes(&bytes(&[
+            0.5,
+            f32::NAN,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            -0.25,
+        ]));
+        assert_eq!(collect(&ring, 0), (vec![0.5, 0.0, 0.0, 0.0, -0.25], 5));
     }
 
     #[test]

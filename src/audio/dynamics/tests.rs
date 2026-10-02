@@ -98,6 +98,22 @@ fn behaves_the_same_at_different_update_rates() {
 }
 
 #[test]
+fn non_finite_input_does_not_stick() {
+    for smoothing in [0.0, 0.7] {
+        for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let mut dynamics = one_bar(manual(smoothing));
+            run(&mut dynamics, Some(&[0.5]), 1.0, DT);
+            let height = dynamics.update(Some(&[bad]), DT)[0];
+            assert!((0.0..=1.0).contains(&height), "{bad}: {height}");
+            let height = run(&mut dynamics, Some(&[0.5]), 2.0, DT);
+            assert!((height - 0.5).abs() < 1e-3, "{bad}: {height}");
+            run(&mut dynamics, None, 2.0, DT);
+            assert!(dynamics.at_rest(), "{bad}");
+        }
+    }
+}
+
+#[test]
 fn updating_does_not_reallocate() {
     let mut dynamics = Dynamics::new(3, DynamicsConfig::default());
     let before = (
