@@ -16,6 +16,7 @@ env:
 jobs:
   fmt:
     name: Format
+    if: vars.RUN_CI == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +27,7 @@ jobs:
 
   clippy:
     name: Clippy
+    if: vars.RUN_CI == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +48,7 @@ jobs:
 
   check:
     name: Check
+    if: vars.RUN_CI == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -64,6 +67,7 @@ jobs:
 
   test:
     name: Test
+    if: vars.RUN_CI == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -82,6 +86,7 @@ jobs:
 
   dependencies:
     name: Dependencies
+    if: vars.RUN_CI == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -93,6 +98,7 @@ jobs:
 
   release-check:
     name: Release Check
+    if: vars.RUN_CI == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -111,6 +117,7 @@ jobs:
 
   nix:
     name: Nix Package (${{ matrix.system }})
+    if: vars.RUN_CI == 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
