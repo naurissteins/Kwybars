@@ -207,14 +207,8 @@ fn scaled(
     key: &ImageKey,
     order: crate::render::ByteOrder,
 ) -> Option<(Child, Vec<u8>)> {
-    let placed = layout(
-        &key.config,
-        source.size(),
-        key.logical,
-        key.buffer,
-        key.scale.factor(),
-    )?;
-    let child = Child::around(placed.visible, key.logical, key.buffer, key.scale.step());
+    let placed = layout(&key.config, source.size(), key.logical, key.scale.factor())?;
+    let child = Child::around(&placed, key.scale.step());
     let pixels = render(source, &placed, child.buffer, key.config.opacity, order);
     Some((child, pixels))
 }

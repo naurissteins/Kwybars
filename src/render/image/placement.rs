@@ -1,19 +1,25 @@
+use super::MAX_PIXELS;
 use crate::config::{ImageFit, ImageOverlayConfig};
-use crate::render::PixelRect;
 
-/// where the scaled image goes in a surface's buffer
+/// a rectangle that may start left of or above its parent
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rect {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Layout {
     pub draw: (u32, u32),
     pub origin: (i32, i32),
-    pub visible: PixelRect,
 }
 
 pub fn layout(
     config: &ImageOverlayConfig,
     source: (u32, u32),
     logical: (u32, u32),
-    buffer: (u32, u32),
     scale: f32,
 ) -> Option<Layout> {
     let (canvas_w, canvas_h) = (logical.0 as f32, logical.1 as f32);
@@ -48,59 +54,44 @@ pub fn layout(
         pixels(draw_w).max(1.0) as u32,
         pixels(draw_h).max(1.0) as u32,
     );
-    let origin = (pixels(x) as i32, pixels(y) as i32);
-    let visible = PixelRect::covering(
-        (
-            origin.0 as f32,
-            origin.1 as f32,
-            origin.0 as f32 + draw.0 as f32,
-            origin.1 as f32 + draw.1 as f32,
-        ),
-        buffer,
-    )?;
+    if u64::from(draw.0) * u64::from(draw.1) > MAX_PIXELS {
+        return None;
+    }
     Some(Layout {
         draw,
-        origin,
-        visible,
+        origin: (pixels(x) as i32, pixels(y) as i32),
     })
 }
 
+/// the child surface that holds the image
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Child {
-    /// position and size in the parent, in pixels
-    pub logical: PixelRect,
-    /// the same in buffer pixels: the child's buffer
-    pub buffer: PixelRect,
+    pub logical: Rect,
+    pub buffer: Rect,
 }
 
 impl Child {
-    pub fn around(
-        visible: PixelRect,
-        logical: (u32, u32),
-        buffer: (u32, u32),
-        (per_step, step): (u32, u32),
-    ) -> Self {
+    pub fn around(placed: &Layout, (per_step, step): (u32, u32)) -> Self {
         let (per_step, step) = (per_step.max(1), step.max(1));
-        // one axis: the logical and buffer start and end
-        let axis = |start: u32, end: u32, logical: u32, buffer: u32| {
-            let first = start / per_step * step;
-            let last = end.div_ceil(per_step) * step;
-            // the far edge of the surface is aligned however its size rounds
-            let (last, buffer_end) = if last >= logical {
-                (logical, buffer)
-            } else {
-                (last, last / step * per_step)
-            };
-            let first = first.min(last);
-            ((first, last), (first / step * per_step, buffer_end))
+        // one axis: the logical and buffer start and length
+        let axis = |start: i32, length: u32| {
+            let per = i64::from(per_step);
+            let first = i64::from(start).div_euclid(per);
+            let end = i64::from(start) + i64::from(length);
+            let last = (end + per - 1).div_euclid(per);
+            let steps = last - first;
+            (
+                (first * i64::from(step), steps * i64::from(step)),
+                (first * per, steps * per),
+            )
         };
-        let (lx, bx) = axis(visible.x, visible.right(), logical.0, buffer.0);
-        let (ly, by) = axis(visible.y, visible.bottom(), logical.1, buffer.1);
-        let rect = |x: (u32, u32), y: (u32, u32)| PixelRect {
-            x: x.0,
-            y: y.0,
-            width: x.1.saturating_sub(x.0),
-            height: y.1.saturating_sub(y.0),
+        let (lx, bx) = axis(placed.origin.0, placed.draw.0);
+        let (ly, by) = axis(placed.origin.1, placed.draw.1);
+        let rect = |x: (i64, i64), y: (i64, i64)| Rect {
+            x: x.0 as i32,
+            y: y.0 as i32,
+            width: x.1 as u32,
+            height: y.1 as u32,
         };
         Self {
             logical: rect(lx, ly),

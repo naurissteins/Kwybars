@@ -5,7 +5,7 @@ mod scale;
 #[cfg(test)]
 mod tests;
 
-pub use placement::{Child, Layout, layout};
+pub use placement::{Child, Layout, Rect, layout};
 pub use scale::render;
 
 use std::fs::File;
@@ -47,8 +47,6 @@ pub struct Source {
 }
 
 impl Source {
-    /// reads and decodes path; the size is checked before the pixels are
-    /// decoded
     pub fn open(path: &Path) -> Result<Self, ImageError> {
         let mut reader =
             ImageReader::new(BufReader::new(File::open(path)?)).with_guessed_format()?;

@@ -63,8 +63,9 @@ impl ImageLayer {
         pixels: Vec<u8>,
     ) -> Result<(), DrawError> {
         let int = |value: u32| i32::try_from(value).map_err(|_| DrawError::TooLarge);
+        // the image may start left of or above the bars' surface
         self.subsurface
-            .set_position(int(child.logical.x)?, int(child.logical.y)?);
+            .set_position(child.logical.x, child.logical.y);
         match (&self.viewport, scale) {
             (Some(viewport), _) => {
                 self.surface.set_buffer_scale(1);

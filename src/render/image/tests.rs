@@ -1,8 +1,8 @@
 use image::{Rgba, RgbaImage};
 
-use super::{Child, ImageError, MAX_PIXELS, Source, check_size, layout, render};
+use super::{Child, ImageError, Layout, MAX_PIXELS, Rect, Source, check_size, layout, render};
 use crate::config::{ImageFit, ImageOverlayConfig};
-use crate::render::{ByteOrder, PixelRect};
+use crate::render::ByteOrder;
 
 fn config(fit: ImageFit, edit: impl FnOnce(&mut ImageOverlayConfig)) -> ImageOverlayConfig {
     let mut config = ImageOverlayConfig {
@@ -14,8 +14,8 @@ fn config(fit: ImageFit, edit: impl FnOnce(&mut ImageOverlayConfig)) -> ImageOve
     config
 }
 
-fn rect(x: u32, y: u32, width: u32, height: u32) -> PixelRect {
-    PixelRect {
+fn rect(x: i32, y: i32, width: u32, height: u32) -> Rect {
+    Rect {
         x,
         y,
         width,
@@ -30,7 +30,6 @@ fn contain_fits_the_image_inside_the_surface_and_centers_it() {
         &config(ImageFit::Contain, |_| {}),
         (500, 500),
         (2520, 520),
-        (3780, 780),
         1.5,
     );
     let Some(placed) = placed else {
@@ -38,25 +37,39 @@ fn contain_fits_the_image_inside_the_surface_and_centers_it() {
     };
     assert_eq!(placed.draw, (780, 780));
     assert_eq!(placed.origin, (1500, 0));
-    assert_eq!(placed.visible, rect(1500, 0, 780, 780));
 }
 
 #[test]
-fn cover_fills_the_surface_and_is_cropped_to_it() {
+fn cover_fills_the_surface_and_reaches_past_it() {
     let placed = layout(
         &config(ImageFit::Cover, |_| {}),
         (500, 250),
         (400, 300),
-        (400, 300),
         1.0,
     );
-    let Some(placed) = placed else {
+    // scaled by 1.2 to cover the height: 600 wide, 100 off each side
+    assert_eq!(
+        placed,
+        Some(Layout {
+            draw: (600, 300),
+            origin: (-100, 0),
+        })
+    );
+}
+
+#[test]
+fn an_image_taller_than_the_bars_is_not_cut() {
+    // a 600x900 picture, its own size, over a 2520x500 band at 1.5
+    let tall = config(ImageFit::Stretch, |c| (c.width, c.height) = (600, 900));
+    let Some(placed) = layout(&tall, (600, 900), (2520, 500), 1.5) else {
         panic!("the image shows");
     };
-    // scaled by 1.2 to cover the height: 600 wide, 100 off each side
-    assert_eq!(placed.draw, (600, 300));
-    assert_eq!(placed.origin, (-100, 0));
-    assert_eq!(placed.visible, rect(0, 0, 400, 300));
+    assert_eq!(placed.draw, (900, 1350));
+    // centered on the band: 200 logical above it and below it
+    assert_eq!(placed.origin, (1440, -300));
+    let child = Child::around(&placed, (3, 2));
+    assert_eq!(child.logical, rect(960, -200, 600, 900));
+    assert_eq!(child.buffer, rect(1440, -300, 900, 1350));
 }
 
 #[test]
@@ -65,7 +78,7 @@ fn stretch_takes_the_box_and_offsets_move_it() {
         (c.width, c.height) = (100, 40);
         (c.offset_x, c.offset_y) = (30.0, -10.0);
     });
-    let Some(placed) = layout(&boxed, (500, 500), (400, 300), (800, 600), 2.0) else {
+    let Some(placed) = layout(&boxed, (500, 500), (400, 300), 2.0) else {
         panic!("the image shows");
     };
     assert_eq!(placed.draw, (200, 80));
@@ -73,38 +86,38 @@ fn stretch_takes_the_box_and_offsets_move_it() {
     assert_eq!(placed.origin, (360, 240));
     // a box makes contain and cover fit it instead of the surface
     let contained = config(ImageFit::Contain, |c| (c.width, c.height) = (100, 40));
-    let placed = layout(&contained, (500, 500), (400, 300), (400, 300), 1.0);
+    let placed = layout(&contained, (500, 500), (400, 300), 1.0);
     assert_eq!(placed.map(|placed| placed.draw), Some((40, 40)));
 }
 
 #[test]
-fn an_image_moved_off_the_surface_shows_nothing() {
+fn nothing_to_draw_and_oversized_boxes_show_nothing() {
+    let plain = config(ImageFit::Contain, |_| {});
+    assert_eq!(layout(&plain, (500, 500), (0, 300), 1.0), None);
+    // an offset may move the image anywhere, the compositor clips it
     let away = config(ImageFit::Contain, |c| c.offset_x = 5_000.0);
-    assert_eq!(layout(&away, (500, 500), (400, 300), (400, 300), 1.0), None);
-    assert_eq!(
-        layout(
-            &config(ImageFit::Contain, |_| {}),
-            (500, 500),
-            (0, 300),
-            (1, 300),
-            1.0
-        ),
-        None
-    );
+    let moved = layout(&away, (500, 500), (400, 300), 1.0);
+    assert_eq!(moved.map(|placed| placed.origin), Some((5_050, 0)));
+    // a box that would need more pixels than an image file may have
+    let huge = config(ImageFit::Stretch, |c| {
+        (c.width, c.height) = (20_000, 20_000)
+    });
+    assert_eq!(layout(&huge, (500, 500), (400, 300), 1.0), None);
 }
 
 #[test]
 fn a_child_lines_up_with_its_parents_pixels() {
+    let place = |origin: (i32, i32), draw: (u32, u32)| Layout { draw, origin };
     // at 1.5 every 2 logical pixels are 3 buffer pixels
-    let child = Child::around(rect(1500, 10, 781, 760), (2520, 520), (3780, 780), (3, 2));
+    let child = Child::around(&place((1500, 10), (781, 760)), (3, 2));
     assert_eq!(child.logical, rect(1000, 6, 522, 508));
     assert_eq!(child.buffer, rect(1500, 9, 783, 762));
-    // an odd logical size: the far edge is where the parent's buffer ends
-    let child = Child::around(rect(0, 0, 152, 152), (101, 101), (152, 152), (3, 2));
-    assert_eq!(child.logical, rect(0, 0, 101, 101));
-    assert_eq!(child.buffer, rect(0, 0, 152, 152));
+    // left of and above the parent: still on the same grid
+    let child = Child::around(&place((-100, -7), (152, 20)), (3, 2));
+    assert_eq!(child.logical, rect(-68, -6, 104, 16));
+    assert_eq!(child.buffer, rect(-102, -9, 156, 24));
     // whole scales need no rounding
-    let child = Child::around(rect(7, 9, 20, 30), (100, 100), (200, 200), (2, 1));
+    let child = Child::around(&place((7, 9), (20, 30)), (2, 1));
     assert_eq!(child.logical, rect(3, 4, 11, 16));
     assert_eq!(child.buffer, rect(6, 8, 22, 32));
 }
@@ -117,7 +130,7 @@ fn scaling_premultiplies_fades_and_orders_the_bytes() {
     pixels.put_pixel(1, 0, Rgba([0, 0, 255, 128]));
     let source = Source::from_rgba(pixels);
     let stretched = config(ImageFit::Stretch, |_| {});
-    let Some(placed) = layout(&stretched, source.size(), (4, 2), (4, 2), 1.0) else {
+    let Some(placed) = layout(&stretched, source.size(), (4, 2), 1.0) else {
         panic!("the image shows");
     };
     let area = rect(0, 0, 4, 2);
@@ -134,10 +147,10 @@ fn scaling_premultiplies_fades_and_orders_the_bytes() {
 fn the_area_around_the_image_stays_clear() {
     let source = Source::from_rgba(RgbaImage::from_pixel(2, 2, Rgba([0, 255, 0, 255])));
     let small = config(ImageFit::Stretch, |c| (c.width, c.height) = (2, 2));
-    let Some(placed) = layout(&small, source.size(), (6, 4), (6, 4), 1.0) else {
+    let Some(placed) = layout(&small, source.size(), (6, 4), 1.0) else {
         panic!("the image shows");
     };
-    assert_eq!(placed.visible, rect(2, 1, 2, 2));
+    assert_eq!(placed.origin, (2, 1));
     // an area one pixel larger on every side
     let area = rect(1, 0, 4, 4);
     let out = render(&source, &placed, area, 1.0, ByteOrder::Rgba);
