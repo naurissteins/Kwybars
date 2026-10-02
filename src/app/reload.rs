@@ -144,6 +144,9 @@ impl App {
         }
         if scope.activity {
             self.activity.reconfigure(&config.activity);
+            // the render below reads the level afterwards
+            self.capture
+                .set_activity_threshold(config.activity.threshold);
         }
         if scope.surfaces {
             self.wayland

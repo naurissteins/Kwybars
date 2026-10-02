@@ -161,8 +161,13 @@ impl Wayland {
         presence
     }
 
-    /// shows frame on every surface that is ready for it, returns how many
-    /// committed a new buffer
+    pub fn hide_deadline(&self) -> Option<Instant> {
+        self.surfaces
+            .iter()
+            .filter_map(OutputSurface::hide_deadline)
+            .min()
+    }
+
     pub fn render(&mut self, frame: &Frame<'_>) -> usize {
         let mut drawn = 0;
         for surface in &mut self.surfaces {

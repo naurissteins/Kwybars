@@ -22,7 +22,7 @@ impl Fade {
         }
     }
 
-    /// takes new durations, continuing from the opacity at `now`
+    /// takes new durations, continuing from the opacity at now
     pub fn set_durations(&mut self, fade_in: Duration, fade_out: Duration, now: Instant) {
         if self.since.is_some() {
             self.from = self.opacity(now);
@@ -37,7 +37,7 @@ impl Fade {
         self.visible
     }
 
-    /// heads for opacity 1 when `visible`, else for 0, from where it is at `now`
+    /// heads for opacity 1 when visible, else for 0, from where it is at now
     pub fn set_visible(&mut self, visible: bool, now: Instant) {
         if visible == self.visible {
             return;
@@ -47,18 +47,14 @@ impl Fade {
         self.visible = visible;
     }
 
-    /// opacity in `0.0..=1.0` at `now`
     pub fn opacity(&self, now: Instant) -> f32 {
         let target = if self.visible { 1.0 } else { 0.0 };
         let Some(since) = self.since else {
             return self.from;
         };
-        let duration = if self.visible {
-            self.fade_in
-        } else {
-            self.fade_out
-        };
-        if duration.is_zero() {
+        let duration = self.duration();
+        // exact from end on, so whoever waits for it finds the fade over
+        if duration.is_zero() || self.end().is_some_and(|end| now >= end) {
             return target;
         }
         let step = now.saturating_duration_since(since).as_secs_f32() / duration.as_secs_f32();
@@ -69,7 +65,27 @@ impl Fade {
         }
     }
 
-    /// whether the opacity still changes after `now`
+    /// when the opacity reaches its target, None before the first fade
+    pub fn end(&self) -> Option<Instant> {
+        let left = if self.visible {
+            1.0 - self.from
+        } else {
+            self.from
+        };
+        let nanos = self.duration().as_nanos() as f64 * f64::from(left);
+        // the cast saturates, and a time out of range never comes
+        self.since?.checked_add(Duration::from_nanos(nanos as u64))
+    }
+
+    fn duration(&self) -> Duration {
+        if self.visible {
+            self.fade_in
+        } else {
+            self.fade_out
+        }
+    }
+
+    /// whether the opacity still changes after now
     pub fn is_fading(&self, now: Instant) -> bool {
         let opacity = self.opacity(now);
         if self.visible {
@@ -136,6 +152,37 @@ mod tests {
         fade.set_visible(false, start);
         assert_eq!(fade.opacity(start), 0.0);
         assert!(!fade.is_fading(start));
+    }
+
+    #[test]
+    fn the_end_is_when_the_opacity_arrives() {
+        let start = Instant::now();
+        let mut fade = Fade::new(ms(100), ms(300));
+        assert_eq!(fade.end(), None);
+        fade.set_visible(true, start);
+        assert_eq!(fade.end(), Some(start + ms(100)));
+        // turned around at a third, so a third of the fade-out is left
+        let turn = start + ms(33);
+        fade.set_visible(false, turn);
+        let Some(end) = fade.end() else {
+            panic!("no end");
+        };
+        let left = end.saturating_duration_since(turn);
+        assert!(left > ms(98) && left < ms(100), "{left:?}");
+        assert!(fade.is_fading(end - ms(1)));
+        assert_eq!(fade.opacity(end), 0.0);
+        assert!(!fade.is_fading(end));
+    }
+
+    #[test]
+    fn the_opacity_is_exact_at_the_end_for_any_turn() {
+        let start = Instant::now();
+        for turn_us in (1..100_000).step_by(997) {
+            let mut fade = Fade::new(ms(100), ms(2_500));
+            fade.set_visible(true, start);
+            fade.set_visible(false, start + Duration::from_micros(turn_us));
+            assert_eq!(fade.end().map(|end| fade.opacity(end)), Some(0.0));
+        }
     }
 
     #[test]
