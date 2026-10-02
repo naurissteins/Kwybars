@@ -63,6 +63,11 @@ impl FrameSlot {
         self.silent.load(Ordering::Relaxed)
     }
 
+    /// peak level of the newest frame, 0 for silence
+    pub fn level(&self) -> f32 {
+        f32::from_bits(self.level.load(Ordering::Relaxed))
+    }
+
     fn write(&self, store: impl FnOnce(&Self)) -> bool {
         let start = self.sequence.load(Ordering::Relaxed);
         self.sequence

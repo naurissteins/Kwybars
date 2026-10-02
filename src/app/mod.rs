@@ -142,7 +142,8 @@ impl App {
     }
 
     fn watch_deadline(&mut self) {
-        let Some(deadline) = self.activity.deadline() else {
+        let deadlines = [self.activity.deadline(), self.wayland.hide_deadline()];
+        let Some(deadline) = deadlines.into_iter().flatten().min() else {
             return;
         };
         if self.timer.is_some_and(|(_, at)| at <= deadline) {
@@ -158,7 +159,7 @@ impl App {
             TimeoutAction::Drop
         }) {
             Ok(token) => self.timer = Some((token, deadline)),
-            Err(err) => warn!("could not wait for the activity delay: {}", err.error),
+            Err(err) => warn!("could not wait for the activity deadline: {}", err.error),
         }
     }
 }
@@ -193,6 +194,7 @@ fn start_audio(config: &Config, waker: Ping) -> Result<(Capture, Motion), AppErr
         spectrum,
     };
     let capture = Capture::spawn(settings, Some(waker))?;
+    capture.set_activity_threshold(config.activity.threshold);
     let motion = Motion::new(Arc::clone(capture.frames()), dynamics, frame_time);
     Ok((capture, motion))
 }

@@ -19,6 +19,14 @@ impl OutputSurface {
         }
     }
 
+    pub fn hide_deadline(&self) -> Option<Instant> {
+        if self.shown && !self.fade.is_visible() {
+            self.fade.end()
+        } else {
+            None
+        }
+    }
+
     /// mapped, or asked to be
     pub fn is_shown(&self) -> bool {
         self.shown
@@ -46,11 +54,9 @@ impl OutputSurface {
         self.layer.wl_surface().attach(None, 0, 0);
         self.layer.commit();
         self.shown = false;
-        // the next map waits for a new configure and draws in full
         self.configured = None;
         self.applied = None;
         self.drawn = None;
-        // a callback requested for an unmapped surface may never come
         self.frame_pending = false;
         self.ring.release();
         self.painter = None;
