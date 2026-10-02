@@ -16,6 +16,7 @@ env:
 jobs:
   fmt:
     name: Format
+    if: vars.RUN_CI == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +27,7 @@ jobs:
 
   clippy:
     name: Clippy
+    if: vars.RUN_CI == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,30 +41,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
-            git \
-            gobject-introspection \
-            libgdk-pixbuf-2.0-dev \
-            libgirepository1.0-dev \
-            libglib2.0-dev \
-            libgtk-4-dev \
-            libwayland-dev \
-            meson \
-            ninja-build \
-            pkg-config \
-            valac \
-            wayland-protocols
-
-          if ! pkg-config --exists gtk4-layer-shell-0; then
-            git clone --depth 1 https://github.com/wmww/gtk4-layer-shell.git /tmp/gtk4-layer-shell
-            meson setup /tmp/gtk4-layer-shell/build /tmp/gtk4-layer-shell
-            meson compile -C /tmp/gtk4-layer-shell/build
-            sudo meson install -C /tmp/gtk4-layer-shell/build
-            sudo ldconfig
-          fi
+            libclang-dev \
+            libpipewire-0.3-dev \
+            pkg-config
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
   check:
     name: Check
+    if: vars.RUN_CI == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,30 +60,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
-            git \
-            gobject-introspection \
-            libgdk-pixbuf-2.0-dev \
-            libgirepository1.0-dev \
-            libglib2.0-dev \
-            libgtk-4-dev \
-            libwayland-dev \
-            meson \
-            ninja-build \
-            pkg-config \
-            valac \
-            wayland-protocols
-
-          if ! pkg-config --exists gtk4-layer-shell-0; then
-            git clone --depth 1 https://github.com/wmww/gtk4-layer-shell.git /tmp/gtk4-layer-shell
-            meson setup /tmp/gtk4-layer-shell/build /tmp/gtk4-layer-shell
-            meson compile -C /tmp/gtk4-layer-shell/build
-            sudo meson install -C /tmp/gtk4-layer-shell/build
-            sudo ldconfig
-          fi
+            libclang-dev \
+            libpipewire-0.3-dev \
+            pkg-config
       - run: cargo check --workspace
 
   test:
     name: Test
+    if: vars.RUN_CI == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -109,30 +79,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
-            git \
-            gobject-introspection \
-            libgdk-pixbuf-2.0-dev \
-            libgirepository1.0-dev \
-            libglib2.0-dev \
-            libgtk-4-dev \
-            libwayland-dev \
-            meson \
-            ninja-build \
-            pkg-config \
-            valac \
-            wayland-protocols
-
-          if ! pkg-config --exists gtk4-layer-shell-0; then
-            git clone --depth 1 https://github.com/wmww/gtk4-layer-shell.git /tmp/gtk4-layer-shell
-            meson setup /tmp/gtk4-layer-shell/build /tmp/gtk4-layer-shell
-            meson compile -C /tmp/gtk4-layer-shell/build
-            sudo meson install -C /tmp/gtk4-layer-shell/build
-            sudo ldconfig
-          fi
+            libclang-dev \
+            libpipewire-0.3-dev \
+            pkg-config
       - run: cargo test --workspace
 
   dependencies:
     name: Dependencies
+    if: vars.RUN_CI == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -144,6 +98,7 @@ jobs:
 
   release-check:
     name: Release Check
+    if: vars.RUN_CI == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -155,30 +110,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
-            git \
-            gobject-introspection \
-            libgdk-pixbuf-2.0-dev \
-            libgirepository1.0-dev \
-            libglib2.0-dev \
-            libgtk-4-dev \
-            libwayland-dev \
-            meson \
-            ninja-build \
-            pkg-config \
-            valac \
-            wayland-protocols
-
-          if ! pkg-config --exists gtk4-layer-shell-0; then
-            git clone --depth 1 https://github.com/wmww/gtk4-layer-shell.git /tmp/gtk4-layer-shell
-            meson setup /tmp/gtk4-layer-shell/build /tmp/gtk4-layer-shell
-            meson compile -C /tmp/gtk4-layer-shell/build
-            sudo meson install -C /tmp/gtk4-layer-shell/build
-            sudo ldconfig
-          fi
+            libclang-dev \
+            libpipewire-0.3-dev \
+            pkg-config
       - run: cargo build --locked --release --workspace
 
   nix:
     name: Nix Package (${{ matrix.system }})
+    if: vars.RUN_CI == 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false

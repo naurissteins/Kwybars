@@ -1,8 +1,9 @@
 # Example Kwybars config
 # If you do not create a config file, Kwybars already uses these built-in defaults
+# The other files in this directory are presets, one per layout
 
 [overlay]
-monitor_mode = "primary"
+show_on = "primary"
 layer = "background"
 position = "bottom"
 full_length = true
@@ -13,27 +14,34 @@ margin_right = 20
 fade_in_ms = 180
 fade_out_ms = 350
 
-# Optional per-monitor overrides. When any [[overlay.outputs]] entries are
-# present, they replace monitor_mode/monitors selection.
-# [[overlay.outputs]]
-# monitor = "DP-1"
+# show_on chooses the monitors: "primary", "all", or a list of names such as
+# ["DP-1", "HDMI-A-1"]. `kwybars doctor` prints the names
+#
+# Per-monitor sections change settings for one monitor. Under
+# [output.NAME] you can repeat [overlay], [visualizer], and [image_overlay].
+# [output.DP-1.overlay]
 # position = "bottom"
 # height = 180
 #
-# [overlay.outputs.visualizer]
+# [output.DP-1.visualizer]
 # layout = "wave"
 # wave_glow = true
 # color_mode = "solid"
 # color_rgba = "rgba(175, 198, 255, 0.75)"
 #
-# [[overlay.outputs]]
-# monitor = "HDMI-A-1"
+# [output.DP-1.image_overlay]
+# path = "~/.config/kwybars/overlays/other.png"
+#
+# [output.HDMI-A-1]
 # enabled = false
 
 [visualizer]
 layout = "line"
 bar_corner_radius = 20
 bars = 50
+# Where the bass is: "low_to_high" (bass first, treble last), "bass_center"
+# (bass in the middle, treble towards both ends), or "bass_edges".
+bar_order = "low_to_high"
 bar_width = 8
 gap = 20
 framerate = 60
@@ -52,14 +60,23 @@ height = 0
 offset_x = 0
 offset_y = 0
 
-[daemon]
-enabled = true
-poll_interval_ms = 90
-activity_threshold = 0.035
+# When the bars show and hide. They appear once the audio peak has stayed
+# above `threshold` (0 to 1) for `activate_delay_ms`, and fade out after it
+# has stayed below it for `deactivate_delay_ms`.
+[activity]
+threshold = 0.035
 activate_delay_ms = 180
 deactivate_delay_ms = 2200
-stop_on_silence = true
-notify_on_error = true
-notify_cooldown_seconds = 45
-overlay_command = "kwybars-overlay"
-overlay_args = []
+
+# How the audio becomes bar heights.
+[audio]
+# Bar height multiplier (0.1 to 10). With auto_sensitivity it is the starting
+# point; without it, it is the fixed gain.
+sensitivity = 1.0
+# Adjust the gain so loud passages just reach the top.
+auto_sensitivity = true
+# The frequency range spread across the bars, in Hz.
+low_cutoff_hz = 50
+high_cutoff_hz = 10000
+# 0 follows the audio exactly, higher values (up to 0.95) move more calmly.
+smoothing = 0.7

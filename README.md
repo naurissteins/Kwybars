@@ -9,9 +9,11 @@
 
 </div>
 
-Kwybars is a GTK4-based desktop audio visualizer for GNU/Linux (Wayland) that renders real-time audio bars on your screen.
+Kwybars is a light desktop audio visualizer for GNU/Linux (Wayland) that renders real-time audio bars on your screen.
 
-Think of it like `cava`... but instead of living in the terminal, it becomes a transparent overlay on your desktop. Place visualizer on any screen edge: top, bottom, left, right or center and watch your music bounce in real time. Kwybars are highly customizable with multiple layouts, segmented bars, gradients, themes, and extensive configuration options.
+Think of it like `cava`... but instead of living in the terminal, it becomes a transparent overlay on your desktop. Place visualizer on any screen edge: top, bottom, left, right or center and watch your music bounce in real time. Kwybars is highly customizable with multiple layouts, segmented bars, gradients, themes, and extensive configuration options.
+
+It is a single small binary that reads audio straight from PipeWire. It shows up when something plays, hides when it stops, and does nothing at all in between.
 
 https://github.com/user-attachments/assets/5fe84372-86be-49a8-b9c0-6564e81f1eaa
 
@@ -19,7 +21,7 @@ https://github.com/user-attachments/assets/5fe84372-86be-49a8-b9c0-6564e81f1eaa
 
 -   Place visualizer on any screen edge `top | bottom | left | right`
 -   Multi-monitor support: show bars on primary, all, or selected monitors
--   Per-monitor overlay and visualizer configuration with `[[overlay.outputs]]`
+-   Per-monitor overlay and visualizer configuration with `[output.NAME]` sections
 -   Control window layer: `background`, `bottom`, `top`
 -   Custom overlay size + alignment
 -   Solid or gradient bar colors
@@ -34,13 +36,20 @@ https://github.com/user-attachments/assets/5fe84372-86be-49a8-b9c0-6564e81f1eaa
 -   Smooth fade in/out on audio activity
 -   Hot reload config changes (no restart needed)
 -   Built-in themes and optional custom theme palettes (`~/.config/kwybars/themes/*.toml`)
--   Optional but recommended `kwybars-daemon` that auto starts/stops overlay based on audio activity and shares one audio backend stream with the overlay
+-   Shows and hides itself with audio activity, with no work done while silent
+-   Fractional scaling and monitor hotplug
+-   Built-in checks: `kwybars doctor`, `kwybars validate-config`
 
 <div align=center>
 
   [Documentation](https://naurissteins.com/kwybars)
   
 </div>
+
+## Requirements
+
+-   A Wayland compositor with layer-shell support (Hyprland, Sway, niri, river, KDE Plasma, ...)
+-   PipeWire
 
 ## Installation
 ### AUR (Arch Linux)
@@ -52,24 +61,26 @@ yay -S kwybars-bin
 yay -S kwybars-git
 ```
 
-Start the daemon after install:
+Run it:
 ``` bash
-kwybars-daemon
+kwybars
 ```
 
-Start the daemon on boot (Hyprland):
+Start it with your session (Hyprland):
 ```sh
 # Recommended (if you use UWSM):
-exec-once = uwsm app -- kwybars-daemon
+exec-once = uwsm app -- kwybars
 
 # If you are not using UWSM
-exec-once = kwybars-daemon
+exec-once = kwybars
 ```
 
-If you prefer `systemd` service:
+If you prefer a `systemd` user service:
 ```bash
-systemctl --user enable --now kwybars-daemon.service
+systemctl --user enable --now kwybars.service
 ```
+
+Nothing on screen? `kwybars doctor` checks the config, compositor, monitors, and PipeWire.
 
 ### NixOS
 
@@ -93,10 +104,9 @@ Import module:
 }
 ```
 
-The module installs `kwybars-daemon`, `kwybars-overlay`, and `kwybarsctl`. 
-Start deamon from your compositor config `exec = kwybars-daemon` or in terminal `kwybars-daemon`
+The module installs `kwybars`. Start it from your compositor config (`exec-once = kwybars`) or in a terminal.
 
-Or enable the user daemon service (this is optional):
+Or enable the user service (this is optional):
 
 ```nix
 {
@@ -104,7 +114,7 @@ Or enable the user daemon service (this is optional):
     enable = true;
     systemd.enable = true;
 
-    # Optional. Useful with `kwybarsctl switch-config --active ...`.
+    # Optional. Useful with `kwybars switch-config`.
     # configPath = "/home/your-user/.config/kwybars/current.toml";
   };
 }
@@ -130,11 +140,19 @@ Or install it directly in a NixOS system config:
 
 ```bash
 nix build github:naurissteins/Kwybars
-./result/bin/kwybars-daemon
+./result/bin/kwybars
 
-# or run a flake app directly
+# or run the flake app directly
 nix run github:naurissteins/Kwybars
 ```
+
+### Other distributions
+
+Debian/Ubuntu and Fedora packages, and building from source, are covered in the [documentation](https://naurissteins.com/kwybars).
+
+## Upgrading from 0.2
+
+`kwybars-daemon`, `kwybars-overlay`, and `kwybarsctl` are now the single `kwybars` command, and Cava and GTK are no longer needed. Existing configs keep working. See the upgrade page in the [documentation](https://naurissteins.com/kwybars).
 
 ## Docs
 

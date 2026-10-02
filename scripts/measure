@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+# Measure the resource cost of a Kwybars process tree.
+#
+#   scripts/measure [-w WARMUP] [-d DURATION] [-o LOG] -- COMMAND [ARGS...]
+#   scripts/measure --startup [-n RUNS] -- COMMAND [ARGS...]
+#
+# Default mode starts COMMAND, waits WARMUP seconds, then samples the whole
+# process tree (COMMAND plus every descendant, so other programs can be compared)
+# for DURATION seconds and prints CPU, context switches, RSS, and PSS.
+# -o keeps the command's stdout/stderr in LOG.
+#
+# --startup runs COMMAND RUNS times with WAYLAND_DEBUG=client and reports the
+# time from launch to the first wl_surface.attach, i.e. the first mapped
+# surface. Audio must already be playing. Debug output slows the client, so
+# never combine it with a resource measurement.
+set -euo pipefail
+
+warmup=5
+duration=30
+startup=0
+runs=5
+log=
+
+usage() {
+  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-0}"
+}
+
+while (($#)); do
+  case "$1" in
+    -w) warmup="$2"; shift 2 ;;
+    -d) duration="$2"; shift 2 ;;
+    -n) runs="$2"; shift 2 ;;
+    -o) log="$2"; shift 2 ;;
+    --startup) startup=1; shift ;;
+    -h|--help) usage 0 ;;
+    --) shift; break ;;
+    *) usage 2 ;;
+  esac
+done
+(($#)) || usage 2
+
+clk_tck=$(getconf CLK_TCK)
+workdir=$(mktemp -d)
+trap 'rm -rf "$workdir"' EXIT
+
+# Root pid plus all descendants, one per line.
+tree_pids() {
+  local pid=$1 child
+  echo "$pid"
+  for child in $(cat /proc/"$pid"/task/*/children 2>/dev/null); do
+    tree_pids "$child"
+  done
+}
+
+stop_tree() {
+  local pids
+  pids=$(tree_pids "$1" 2>/dev/null | tac || true)
+  # shellcheck disable=SC2086
+  kill -TERM $pids 2>/dev/null || true
+  wait "$1" 2>/dev/null || true
+  sleep 0.5
+  # shellcheck disable=SC2086
+  kill -KILL $pids 2>/dev/null || true
+}
+
+# "<pid> <comm> <cpu ticks> <context switches> <threads> <rss kB> <pss kB>"
+snapshot() {
+  local pid stat comm ticks ctx threads rss pss
+  for pid in $(tree_pids "$1"); do
+    stat=$(cat /proc/"$pid"/stat 2>/dev/null) || continue
+    comm=$(cat /proc/"$pid"/comm)
+    # Fields after the ")" closing comm: utime is 12th, stime 13th.
+    read -r -a f <<<"${stat##*) }"
+    ticks=$((f[11] + f[12]))
+    ctx=$(awk '/ctxt_switches/ { s += $2 } END { print s + 0 }' \
+      /proc/"$pid"/task/*/status 2>/dev/null)
+    threads=$(awk '/^Threads:/ { print $2 }' /proc/"$pid"/status)
+    rss=$(awk '/^VmRSS:/ { print $2 }' /proc/"$pid"/status)
+    pss=$(awk '/^Pss:/ { print $2 }' /proc/"$pid"/smaps_rollup 2>/dev/null || echo 0)
+    echo "$pid $comm $ticks $ctx $threads ${rss:-0} ${pss:-0}"
+  done
+}
+
+measure_resources() {
+  "$@" >"$workdir/out.log" 2>&1 &
+  local root=$!
+  sleep "$warmup"
+  if ! kill -0 "$root" 2>/dev/null; then
+    echo "command exited during warmup; log:" >&2
+    cat "$workdir/out.log" >&2
+    exit 1
+  fi
+  snapshot "$root" >"$workdir/before"
+  sleep "$duration"
+  snapshot "$root" >"$workdir/after"
+  stop_tree "$root"
+  [[ -n $log ]] && cp "$workdir/out.log" "$log"
+
+  awk -v tck="$clk_tck" -v dur="$duration" '
+    NR == FNR { ticks[$1] = $3; ctx[$1] = $4; next }
+    {
+      if (!($1 in ticks)) { missing = missing " " $2; next }
+      cpu = ($3 - ticks[$1]) / tck / dur * 100
+      cs = ($4 - ctx[$1]) / dur
+      printf "  %-16s pid %-7d cpu %6.2f%%  ctxsw %7.1f/s  threads %3d  rss %6.1f MiB  pss %6.1f MiB\n",
+        $2, $1, cpu, cs, $5, $6 / 1024, $7 / 1024
+      tcpu += cpu; tcs += cs; tthr += $5; trss += $6; tpss += $7; n++
+    }
+    END {
+      printf "  %-16s %-11s cpu %6.2f%%  ctxsw %7.1f/s  threads %3d  rss %6.1f MiB  pss %6.1f MiB\n",
+        "TOTAL", n " procs", tcpu, tcs, tthr, trss / 1024, tpss / 1024
+      if (missing != "") print "  note: processes started during sampling were excluded:" missing
+    }' "$workdir/before" "$workdir/after"
+}
+
+# Prints milliseconds from launch to the first wl_surface.attach, or "timeout".
+startup_once() {
+  local start root
+  rm -f "$workdir/attach"
+  start=$EPOCHREALTIME
+  WAYLAND_DEBUG=client "$@" >/dev/null 2> >(
+    while IFS= read -r line; do
+      # libwayland prints "wl_surface#3.attach(wl_buffer#7", the pure-Rust
+      # wayland-backend prints "wl_surface@3.attach(Some(wl_buffer@7)".
+      if [[ $line =~ wl_surface[#@][0-9]+\.attach\((Some\()?wl_buffer ]]; then
+        echo "$EPOCHREALTIME" >"$workdir/attach"
+        break
+      fi
+    done
+    cat >/dev/null
+  ) &
+  root=$!
+  for _ in $(seq 100); do
+    [[ -s $workdir/attach ]] && break
+    sleep 0.1
+  done
+  stop_tree "$root"
+  if [[ -s $workdir/attach ]]; then
+    awk -v a="$(cat "$workdir/attach")" -v s="$start" 'BEGIN { printf "%.0f\n", (a - s) * 1000 }'
+  else
+    echo timeout
+  fi
+}
+
+measure_startup() {
+  local i results=()
+  for ((i = 1; i <= runs; i++)); do
+    results+=("$(startup_once "$@")")
+    sleep 1
+  done
+  echo "  first attach (ms): ${results[*]}"
+  printf '%s\n' "${results[@]}" | grep -v timeout | sort -n |
+    awk '{ v[NR] = $1 } END { if (NR) printf "  median: %d ms\n", v[int((NR + 1) / 2)] }'
+}
+
+if ((startup)); then
+  measure_startup "$@"
+else
+  echo "warmup ${warmup}s, sampled ${duration}s: $*"
+  measure_resources "$@"
+fi

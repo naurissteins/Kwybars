@@ -1,5 +1,5 @@
 [overlay]
-monitor_mode = "primary"
+show_on = "primary"
 layer = "background"
 full_length = true
 height = 860
