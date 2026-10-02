@@ -6,7 +6,8 @@ pub use overrides::VisualizerOverrides;
 
 use super::color::Rgba;
 use super::types::{
-    ColorMode, Edge, FrameMirrorMode, GradientDirection, Layout, LineMode, MirrorOrientation,
+    BarOrder, ColorMode, Edge, FrameMirrorMode, GradientDirection, Layout, LineMode,
+    MirrorOrientation,
 };
 
 /// fully resolved visualizer settings
@@ -26,6 +27,7 @@ pub struct VisualizerConfig {
     pub frame_edges: Vec<Edge>,
     pub frame_mirror_mode: FrameMirrorMode,
     pub bars: usize,
+    pub bar_order: BarOrder,
     pub bar_width: u32,
     pub bar_corner_radius: f32,
     pub segmented_bars: bool,
@@ -75,6 +77,7 @@ impl Default for VisualizerConfig {
             frame_edges: default_frame_edges(),
             frame_mirror_mode: FrameMirrorMode::Pairs,
             bars: 50,
+            bar_order: BarOrder::LowToHigh,
             bar_width: 8,
             bar_corner_radius: 20.0,
             segmented_bars: false,

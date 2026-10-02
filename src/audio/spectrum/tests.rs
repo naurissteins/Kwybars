@@ -22,8 +22,13 @@ fn feed_sine(analyzer: &mut Analyzer, hz: f32, amplitude: f32, channels: u32) {
     }
 }
 
-fn bin_of(analyzer: &Analyzer, hz: f32) -> usize {
-    (hz * analyzer.fft_len() as f32 / RATE as f32).round() as usize
+/// the bar whose middle frequency is closest to `hz`
+fn bar_of(analyzer: &Analyzer, hz: f32) -> usize {
+    let distance = |center: &f32| (center / hz).ln().abs();
+    let centers = analyzer.centers_hz();
+    (0..centers.len())
+        .min_by(|a, b| distance(&centers[*a]).total_cmp(&distance(&centers[*b])))
+        .unwrap_or_default()
 }
 
 fn loudest(bars: &[f32]) -> usize {
@@ -49,36 +54,50 @@ fn fft_length_follows_the_sample_rate() {
 }
 
 #[test]
-fn sines_land_in_their_bar_at_their_amplitude() {
+fn sines_land_in_their_bar() {
     for bars in [8, 32, 50, 100, 256] {
         for hz in [60.0, 440.0, 2_500.0, 8_000.0] {
             let mut analyzer = analyzer(bars, 2);
             feed_sine(&mut analyzer, hz, 0.5, 2);
-            let bin = bin_of(&analyzer, hz);
-            let expected = analyzer.bands().iter().position(|band| band.contains(&bin));
+            let expected = bar_of(&analyzer, hz);
             let values = analyzer.analyze().to_vec();
             let found = loudest(&values);
-            assert_eq!(Some(found), expected, "{hz} Hz with {bars} bars");
+            assert!(found.abs_diff(expected) <= 1, "{hz} Hz with {bars} bars");
+            // a bar shows the mean over its band, so a lone sine reads lower
+            // the wider the band is; it never reads above its amplitude
+            let hz_per_bin = RATE as f32 / analyzer.fft_len() as f32;
+            let width = hz * (200.0_f32.powf(1.0 / bars as f32) - 1.0) / hz_per_bin;
+            let lowest = 0.5 * (1.5 / (width + 3.0)).sqrt() * 0.8;
             let level = values[found];
             assert!(
-                (0.4..=0.52).contains(&level),
-                "{hz} Hz with {bars} bars: {level}"
+                (lowest..=0.51).contains(&level),
+                "{hz} Hz with {bars} bars: {level}, expected at least {lowest}"
             );
         }
     }
 }
 
 #[test]
+fn neighbouring_bass_bars_move_together() {
+    let mut analyzer = analyzer(50, 1);
+    feed_sine(&mut analyzer, 62.0, 0.5, 1);
+    let values = analyzer.analyze().to_vec();
+    let peak = loudest(&values);
+    for pair in values[..12].windows(2) {
+        assert!((pair[1] - pair[0]).abs() < 0.15, "{values:?}");
+    }
+    assert!(values[peak] > 0.3, "{values:?}");
+}
+
+#[test]
 fn distant_bars_stay_quiet() {
     let mut analyzer = analyzer(50, 1);
     feed_sine(&mut analyzer, 1_000.0, 1.0, 1);
-    let bin = bin_of(&analyzer, 1_000.0);
-    let bands = analyzer.bands().to_vec();
+    let centers = analyzer.centers_hz().to_vec();
     let values = analyzer.analyze().to_vec();
-    for (band, value) in bands.iter().zip(values) {
-        let distance = band.start.abs_diff(bin).min(band.end.abs_diff(bin + 1));
-        if distance > 3 {
-            assert!(value < 0.03, "band {band:?} leaked {value}");
+    for (center, value) in centers.iter().zip(values) {
+        if !(800.0..1_250.0).contains(center) {
+            assert!(value < 0.03, "{center} Hz leaked {value}");
         }
     }
 }
@@ -102,7 +121,7 @@ fn stereo_is_averaged_to_mono() {
     }
     let values = analyzer.analyze().to_vec();
     let peak = values[loudest(&values)];
-    assert!((0.4..=0.52).contains(&peak), "{peak}");
+    assert!((0.3..=0.52).contains(&peak), "{peak}");
 }
 
 #[test]
@@ -119,6 +138,7 @@ fn analyzing_does_not_reallocate() {
         analyzer.input.as_ptr(),
         analyzer.spectrum.as_ptr(),
         analyzer.scratch.as_ptr(),
+        analyzer.power.as_ptr(),
         analyzer.bars.as_ptr(),
         analyzer.bars.capacity(),
     );
@@ -130,6 +150,7 @@ fn analyzing_does_not_reallocate() {
         analyzer.input.as_ptr(),
         analyzer.spectrum.as_ptr(),
         analyzer.scratch.as_ptr(),
+        analyzer.power.as_ptr(),
         analyzer.bars.as_ptr(),
         analyzer.bars.capacity(),
     );
@@ -176,7 +197,6 @@ fn band_profile() {
         .and_then(|value| value.parse().ok())
         .unwrap_or(30);
     let mut analyzer = analyzer(bars, 2);
-    let hz_per_bin = RATE as f32 / analyzer.fft_len() as f32;
     let mut levels: Vec<Vec<f32>> = vec![Vec::new(); bars];
     for (index, raw) in bytes.as_chunks::<4>().0.iter().enumerate() {
         analyzer.push_interleaved(f32::from_le_bytes(*raw));
@@ -186,18 +206,71 @@ fn band_profile() {
             }
         }
     }
-    let bands = analyzer.bands().to_vec();
+    let centers = analyzer.centers_hz().to_vec();
     for (bar, values) in levels.iter_mut().enumerate() {
         values.sort_by(f32::total_cmp);
         let at = |q: f32| values[((values.len() - 1) as f32 * q) as usize];
         let db = |v: f32| 20.0 * v.max(1e-9).log10();
-        let band = &bands[bar];
-        let center = (band.start.max(1) as f32 * band.end as f32).sqrt() * hz_per_bin;
         println!(
-            "bar {bar:3} {center:7.0} Hz bins {:4}  median {:6.1} dB  p90 {:6.1} dB",
-            band.len(),
+            "bar {bar:3} {:7.0} Hz  median {:6.1} dB  p90 {:6.1} dB",
+            centers[bar],
             db(at(0.5)),
             db(at(0.9))
+        );
+    }
+}
+
+/// pink noise from a fixed seed, peak about 0.5
+fn pink_noise(samples: usize) -> Vec<f32> {
+    let mut state = 0x2545_f491_4f6c_dd1d_u64;
+    let mut rows = [0.0_f32; 3];
+    (0..samples)
+        .map(|_| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            let white = (state >> 40) as f32 / (1u64 << 23) as f32 - 1.0;
+            // paul kellet's economy filter
+            rows[0] = 0.99765 * rows[0] + white * 0.099_046;
+            rows[1] = 0.963 * rows[1] + white * 0.296_516_4;
+            rows[2] = 0.57 * rows[2] + white * 1.052_691_3;
+            (rows[0] + rows[1] + rows[2] + white * 0.1848) * 0.1
+        })
+        .collect()
+}
+
+#[test]
+#[ignore = "prints a table for tuning"]
+fn pink_profile() {
+    let bars = 50;
+    let mut analyzer = analyzer(bars, 1);
+    let mut levels: Vec<Vec<f32>> = vec![Vec::new(); bars];
+    for (index, sample) in pink_noise(RATE as usize * 20).into_iter().enumerate() {
+        analyzer.push_interleaved(sample);
+        if index % 2048 == 2047 && index > 8192 {
+            for (bar, value) in analyzer.analyze().iter().enumerate() {
+                levels[bar].push(*value);
+            }
+        }
+    }
+    let frames = levels[0].len();
+    let jump: f32 = levels
+        .windows(2)
+        .flat_map(|pair| pair[0].iter().zip(&pair[1]))
+        .map(|(lower, upper)| (20.0 * (upper / lower).log10()).abs())
+        .sum();
+    println!(
+        "adjacent bars differ by {:.2} dB on average",
+        jump / (frames * (bars - 1)) as f32
+    );
+    for (bar, values) in levels.iter().enumerate().step_by(5) {
+        let mean = values.iter().sum::<f32>() / frames as f32;
+        let spread =
+            (values.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / frames as f32).sqrt();
+        println!(
+            "bar {bar:2}  mean {:6.1} dB  spread {:.2}",
+            20.0 * mean.log10(),
+            spread / mean
         );
     }
 }

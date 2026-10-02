@@ -34,8 +34,8 @@ pub use path::{ConfigPathError, default_path, env_path};
 pub use resolve::{OverlaySettings, SurfaceConfig};
 pub use theme::{AvailableTheme, LoadedTheme, THEME_KEYS, Theme, ThemeError, ThemeOrigin};
 pub use types::{
-    ColorMode, Edge, FrameMirrorMode, GradientDirection, HorizontalAlignment, ImageFit, Layer,
-    Layout, LineMode, MirrorOrientation, ShowOn, VerticalAlignment,
+    BarOrder, ColorMode, Edge, FrameMirrorMode, GradientDirection, HorizontalAlignment, ImageFit,
+    Layer, Layout, LineMode, MirrorOrientation, ShowOn, VerticalAlignment,
 };
 pub use visualizer::{VisualizerConfig, VisualizerOverrides, default_frame_edges};
 

@@ -115,6 +115,18 @@ pub enum Layout {
     Floating,
 }
 
+/// how frequencies are laid out along the bars, visualizer.bar_order
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BarOrder {
+    #[default]
+    LowToHigh,
+    /// bass in the middle, treble towards both ends
+    BassCenter,
+    /// bass at both ends, treble in the middle
+    BassEdges,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LineMode {

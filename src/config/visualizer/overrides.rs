@@ -6,7 +6,8 @@ use super::{VisualizerConfig, default_frame_edges};
 use crate::config::bounds::Bounds;
 use crate::config::color::Rgba;
 use crate::config::types::{
-    ColorMode, Edge, FrameMirrorMode, GradientDirection, Layout, LineMode, MirrorOrientation,
+    BarOrder, ColorMode, Edge, FrameMirrorMode, GradientDirection, Layout, LineMode,
+    MirrorOrientation,
 };
 
 /// a `[visualizer]` or `[output.NAME.visualizer]` table; `None` means unset
@@ -28,6 +29,7 @@ pub struct VisualizerOverrides {
     #[serde(alias = "frame_mirror")]
     pub frame_mirror_mode: Option<FrameMirrorMode>,
     pub bars: Option<usize>,
+    pub bar_order: Option<BarOrder>,
     pub bar_width: Option<u32>,
     pub bar_corner_radius: Option<f32>,
     pub segmented_bars: Option<bool>,
@@ -85,6 +87,7 @@ impl VisualizerOverrides {
                 frame_edges,
                 frame_mirror_mode,
                 bars,
+                bar_order,
                 bar_width,
                 bar_corner_radius,
                 segmented_bars,
@@ -173,6 +176,7 @@ impl VisualizerOverrides {
         let mut bounds = Bounds::new(table, warnings);
         let reason = "cannot be set per output";
         bounds.unsupported("bars", &mut self.bars, reason);
+        bounds.unsupported("bar_order", &mut self.bar_order, reason);
         bounds.unsupported("framerate", &mut self.framerate, reason);
         bounds.unsupported("theme", &mut self.theme, reason);
         bounds.unsupported("theme_opacity", &mut self.theme_opacity, reason);

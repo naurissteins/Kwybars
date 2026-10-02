@@ -1,7 +1,7 @@
 use super::{assert_close, parse_err, parse_ok};
 use crate::config::{
-    ColorMode, Config, Edge, FrameMirrorMode, GradientDirection, HorizontalAlignment, ImageFit,
-    Layer, Layout, LineMode, MirrorOrientation, Rgba, ShowOn, VerticalAlignment,
+    BarOrder, ColorMode, Config, Edge, FrameMirrorMode, GradientDirection, HorizontalAlignment,
+    ImageFit, Layer, Layout, LineMode, MirrorOrientation, Rgba, ShowOn, VerticalAlignment,
 };
 
 const FULL: &str = r#"
@@ -275,6 +275,31 @@ fn defaults_match_the_documented_values() {
 fn output_without_monitor_is_an_error() {
     let err = parse_err("[[overlay.outputs]]\nposition = \"bottom\"\n");
     assert_eq!(err, "overlay.outputs[0]: missing `monitor`");
+}
+
+#[test]
+fn bar_order_takes_its_three_spellings() {
+    let order = |raw: &str| parse_ok(raw).config.visualizer.bar_order;
+    assert_eq!(order(""), BarOrder::LowToHigh);
+    for (value, expected) in [
+        ("low_to_high", BarOrder::LowToHigh),
+        ("bass_center", BarOrder::BassCenter),
+        ("bass_edges", BarOrder::BassEdges),
+    ] {
+        let raw = format!("[visualizer]\nbar_order = \"{value}\"\n");
+        assert_eq!(order(&raw), expected, "{value}");
+    }
+    let err = parse_err("[visualizer]\nbar_order = \"center\"\n");
+    assert!(
+        err.contains("line 2") && err.contains("bass_center"),
+        "{err}"
+    );
+
+    let parsed = parse_ok("[output.DP-1.visualizer]\nbar_order = \"bass_center\"\n");
+    assert_eq!(
+        parsed.warnings,
+        vec!["output.DP-1.visualizer.bar_order: cannot be set per output, ignored"]
+    );
 }
 
 #[test]
