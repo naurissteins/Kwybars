@@ -17,7 +17,7 @@ layout = "line"
 gap = 10
 theme_opacity = 0.5
 
-[output.DP-1]
+[output.DP-1.overlay]
 position = "top"
 fade_in_ms = 50
 

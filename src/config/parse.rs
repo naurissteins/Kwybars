@@ -10,7 +10,7 @@ use super::activity::{self, ActivityTable, DaemonTable};
 use super::audio::AudioConfig;
 use super::compat;
 use super::image::ImageOverlayConfig;
-use super::overlay::{self, OutputConfig, OverlayTable};
+use super::overlay::{self, OutputSection, OverlayTable};
 use super::visualizer::{VisualizerConfig, VisualizerOverrides};
 
 /// a parsed config plus warnings about keys that were ignored or fixed
@@ -36,7 +36,7 @@ struct ConfigFile {
     theme: Option<String>,
     theme_opacity: Option<f32>,
     overlay: OverlayTable,
-    output: BTreeMap<String, OutputConfig>,
+    output: BTreeMap<String, OutputSection>,
     visualizer: VisualizerOverrides,
     image_overlay: ImageOverlayConfig,
     activity: ActivityTable,

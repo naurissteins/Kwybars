@@ -31,8 +31,22 @@ pub fn hint(key_path: &str) -> Option<&'static str> {
         _ if key_path.starts_with("outputs.") || key_path == "outputs" => {
             Some("per-monitor sections are written [output.NAME]")
         }
+        _ if key_path.starts_with("output.") && chooses_monitors(key_path) => {
+            Some("monitors are chosen with `show_on` in the main [overlay]")
+        }
         _ => None,
     }
+}
+
+/// an [overlay] key that selects monitors, written in a per-monitor overlay table
+fn chooses_monitors(key_path: &str) -> bool {
+    ["show_on", "monitor_mode", "monitors", "outputs"]
+        .iter()
+        .any(|key| {
+            key_path
+                .strip_suffix(key)
+                .is_some_and(|table| table.ends_with(".overlay."))
+        })
 }
 
 /// one warning per reason, listing its keys in the order they were found

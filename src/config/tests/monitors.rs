@@ -1,5 +1,5 @@
 use super::{parse_err, parse_ok};
-use crate::config::{Edge, ImageFit, Layout, ShowOn};
+use crate::config::{Edge, ImageFit, Layer, Layout, ShowOn};
 
 fn named(names: &[&str]) -> ShowOn {
     ShowOn::Named(names.iter().map(|name| (*name).to_owned()).collect())
@@ -37,7 +37,7 @@ fn show_on_takes_a_word_a_name_or_a_list() {
 fn a_section_is_named_by_its_monitor() {
     let parsed = parse_ok(
         "[overlay]\nshow_on = [\"DP-2\"]\n\
-         [output.DP-2]\nheight = 300\nposition = \"top\"\n\
+         [output.DP-2.overlay]\nheight = 300\nposition = \"top\"\n\
          [output.DP-2.visualizer]\nlayout = \"wave\"\n\
          [output.\"index:3\"]\nenabled = false\n",
     );
@@ -47,12 +47,51 @@ fn a_section_is_named_by_its_monitor() {
     let [first, second] = overlay.outputs.as_slice() else {
         panic!("expected two sections, got {:?}", overlay.outputs);
     };
-    assert_eq!((first.monitor.as_str(), first.height), ("DP-2", Some(300)));
-    assert_eq!(first.position, Some(Edge::Top));
+    assert_eq!(
+        (first.monitor.as_str(), first.overlay.height),
+        ("DP-2", Some(300))
+    );
+    assert_eq!(first.overlay.position, Some(Edge::Top));
     assert_eq!(first.visualizer.layout, Some(Layout::Wave));
     assert_eq!(
         (second.monitor.as_str(), second.enabled),
         ("index:3", false)
+    );
+}
+
+#[test]
+fn placement_keys_beside_the_overlay_table_still_work() {
+    let parsed = parse_ok(
+        "[output.DP-1]\nheight = 300\nposition = \"top\"\n\
+         [output.DP-1.overlay]\nheight = 120\nlayer = \"top\"\n",
+    );
+    assert_eq!(
+        parsed.warnings,
+        vec!["output.DP-1.height: also set in [output.DP-1.overlay], which is used"]
+    );
+    let [section] = parsed.config.overlay.outputs.as_slice() else {
+        panic!("expected one section");
+    };
+    let placement = &section.overlay;
+    assert_eq!(
+        (placement.height, placement.layer),
+        (Some(120), Some(Layer::Top))
+    );
+    assert_eq!(placement.position, Some(Edge::Top));
+
+    let legacy = parse_ok("[[overlay.outputs]]\nmonitor = \"DP-9\"\nwidth = 40\n");
+    assert_eq!(legacy.config.overlay.outputs[0].overlay.width, Some(40));
+}
+
+#[test]
+fn a_section_cannot_choose_monitors() {
+    let parsed = parse_ok("[output.DP-1.overlay]\nshow_on = \"all\"\nfoo = 1\n");
+    assert_eq!(
+        parsed.warnings,
+        vec![
+            "output.DP-1.overlay.foo: unknown key, ignored",
+            "output.DP-1.overlay.show_on: unknown key, ignored (monitors are chosen with `show_on` in the main [overlay])",
+        ]
     );
 }
 

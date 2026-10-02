@@ -1,6 +1,6 @@
 # Example Kwybars config
-# If you do not create a config file, Kwybars already uses these built-in defaults.
-# The other files in this directory are presets, one per layout.
+# If you do not create a config file, Kwybars already uses these built-in defaults
+# The other files in this directory are presets, one per layout
 
 [overlay]
 show_on = "primary"
@@ -15,10 +15,11 @@ fade_in_ms = 180
 fade_out_ms = 350
 
 # show_on chooses the monitors: "primary", "all", or a list of names such as
-# ["DP-1", "HDMI-A-1"]. `kwybars doctor` prints the names.
+# ["DP-1", "HDMI-A-1"]. `kwybars doctor` prints the names
 #
-# Optional per-monitor sections change settings for one monitor.
-# [output.DP-1]
+# Per-monitor sections change settings for one monitor. Under
+# [output.NAME] you can repeat [overlay], [visualizer], and [image_overlay].
+# [output.DP-1.overlay]
 # position = "bottom"
 # height = 180
 #
@@ -75,4 +76,4 @@ auto_sensitivity = true
 low_cutoff_hz = 50
 high_cutoff_hz = 10000
 # 0 follows the audio exactly, higher values (up to 0.95) move more calmly.
-smoothing = 0.7
+smoothing = 0.9

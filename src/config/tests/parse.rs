@@ -132,10 +132,10 @@ fn parses_every_section() {
     assert!(first.enabled);
     assert_eq!(
         (
-            first.position,
-            first.height,
-            first.margin_left,
-            first.fade_out_ms
+            first.overlay.position,
+            first.overlay.height,
+            first.overlay.margin_left,
+            first.overlay.fade_out_ms
         ),
         (Some(Edge::Bottom), Some(180), Some(40), Some(500))
     );

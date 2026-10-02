@@ -28,7 +28,7 @@ pub use colors::{COLORS_FILE, ColorOverrides};
 pub use error::ConfigError;
 pub use image::{ImageOverlayConfig, ImageOverlayOverrides};
 pub use load::{Loaded, LoadedImage, Source, colors_candidates, link_target, load, themes};
-pub use overlay::{OutputConfig, OverlayConfig};
+pub use overlay::{OutputConfig, OverlayConfig, PlacementOverrides};
 pub use parse::{ParseError, Parsed, parse};
 pub use path::{ConfigPathError, default_path, env_path};
 pub use resolve::{OverlaySettings, SurfaceConfig};

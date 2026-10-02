@@ -5,7 +5,7 @@ use serde::Deserialize;
 use serde::de::value::MapAccessDeserializer;
 use serde::de::{self, Deserializer, MapAccess, Visitor};
 
-use super::{OutputConfig, OverlayConfig};
+use super::{OutputConfig, OutputSection, OverlayConfig};
 use crate::config::types::{
     Edge, HorizontalAlignment, Layer, MonitorMode, ShowOn, VerticalAlignment, clean_names,
 };
@@ -36,7 +36,7 @@ pub struct OverlayTable {
 
 /// one [[overlay.outputs]] entry
 #[derive(Debug)]
-struct LegacyOutput(OutputConfig);
+struct LegacyOutput(OutputSection);
 
 impl<'de> Deserialize<'de> for LegacyOutput {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -57,7 +57,7 @@ impl<'de> Deserialize<'de> for LegacyOutput {
             }
 
             fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<LegacyOutput, A::Error> {
-                OutputConfig::deserialize(MapAccessDeserializer::new(map)).map(LegacyOutput)
+                OutputSection::deserialize(MapAccessDeserializer::new(map)).map(LegacyOutput)
             }
         }
 
@@ -77,7 +77,7 @@ macro_rules! apply_set_fields {
 
 pub fn resolve(
     table: OverlayTable,
-    sections: BTreeMap<String, OutputConfig>,
+    sections: BTreeMap<String, OutputSection>,
     warnings: &mut Vec<String>,
 ) -> Result<OverlayConfig, String> {
     let mut overlay = OverlayConfig::default();
@@ -141,23 +141,22 @@ pub fn resolve(
 
 /// the [output.NAME] sections, named by their key
 fn named_sections(
-    sections: BTreeMap<String, OutputConfig>,
+    sections: BTreeMap<String, OutputSection>,
     warnings: &mut Vec<String>,
 ) -> Vec<OutputConfig> {
     let mut outputs = Vec::with_capacity(sections.len());
-    for (name, mut output) in sections {
+    for (name, section) in sections {
         let name = name.trim();
         if name.is_empty() {
             warnings.push("[output.\"\"]: a section needs a monitor name, ignored".to_owned());
             continue;
         }
-        if !output.monitor.is_empty() {
+        if !section.monitor().is_empty() {
             warnings.push(format!(
                 "output.{name}.monitor: the section name is the monitor, ignored"
             ));
         }
-        output.monitor = name.to_owned();
-        outputs.push(output);
+        outputs.push(section.into_config(name, &format!("output.{name}"), warnings));
     }
     outputs
 }
@@ -167,12 +166,13 @@ fn legacy_outputs(
     warnings: &mut Vec<String>,
 ) -> Result<Vec<OutputConfig>, String> {
     let mut outputs = Vec::with_capacity(entries.len());
-    for (index, LegacyOutput(mut output)) in entries.into_iter().enumerate() {
-        output.monitor = output.monitor.trim().to_owned();
-        if output.monitor.is_empty() {
-            return Err(format!("overlay.outputs[{index}]: missing `monitor`"));
+    for (index, LegacyOutput(section)) in entries.into_iter().enumerate() {
+        let table = format!("overlay.outputs[{index}]");
+        let monitor = section.monitor().trim().to_owned();
+        if monitor.is_empty() {
+            return Err(format!("{table}: missing `monitor`"));
         }
-        outputs.push(output);
+        outputs.push(section.into_config(&monitor, &table, warnings));
     }
     if let Some(first) = outputs.first() {
         warnings.push(format!(

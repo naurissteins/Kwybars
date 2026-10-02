@@ -1,5 +1,6 @@
 //! `[overlay]` placement and `[output.NAME]` per-output overrides
 
+mod section;
 mod table;
 
 use serde::Deserialize;
@@ -8,6 +9,7 @@ use super::image::ImageOverlayOverrides;
 use super::types::{Edge, HorizontalAlignment, Layer, ShowOn, VerticalAlignment};
 use super::visualizer::VisualizerOverrides;
 
+pub(super) use section::OutputSection;
 pub(super) use table::{OverlayTable, resolve};
 
 /// the resolved `[overlay]` table with the per-output sections
@@ -55,12 +57,33 @@ impl Default for OverlayConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(default)]
+/// one monitor's overrides, from its `[output.NAME]` section
+#[derive(Debug, Clone, PartialEq)]
 pub struct OutputConfig {
     /// output name such as DP-1, primary, or a 1-based index
     pub monitor: String,
     pub enabled: bool,
+    pub overlay: PlacementOverrides,
+    pub visualizer: VisualizerOverrides,
+    pub image_overlay: ImageOverlayOverrides,
+}
+
+impl Default for OutputConfig {
+    fn default() -> Self {
+        Self {
+            monitor: String::new(),
+            enabled: true,
+            overlay: PlacementOverrides::default(),
+            visualizer: VisualizerOverrides::default(),
+            image_overlay: ImageOverlayOverrides::default(),
+        }
+    }
+}
+
+/// the [output.NAME.overlay] table, None keeps the [overlay] value
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct PlacementOverrides {
     pub position: Option<Edge>,
     pub layer: Option<Layer>,
     pub anchor_margin: Option<u32>,
@@ -75,31 +98,4 @@ pub struct OutputConfig {
     pub height: Option<u32>,
     pub horizontal_alignment: Option<HorizontalAlignment>,
     pub vertical_alignment: Option<VerticalAlignment>,
-    pub visualizer: VisualizerOverrides,
-    pub image_overlay: ImageOverlayOverrides,
-}
-
-impl Default for OutputConfig {
-    fn default() -> Self {
-        Self {
-            monitor: String::new(),
-            enabled: true,
-            position: None,
-            layer: None,
-            anchor_margin: None,
-            margin_left: None,
-            margin_right: None,
-            margin_top: None,
-            margin_bottom: None,
-            fade_in_ms: None,
-            fade_out_ms: None,
-            full_length: None,
-            width: None,
-            height: None,
-            horizontal_alignment: None,
-            vertical_alignment: None,
-            visualizer: VisualizerOverrides::default(),
-            image_overlay: ImageOverlayOverrides::default(),
-        }
-    }
 }

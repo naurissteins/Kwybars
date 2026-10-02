@@ -3,7 +3,7 @@
 use super::Config;
 use super::color::Rgba;
 use super::image::ImageOverlayConfig;
-use super::overlay::{OutputConfig, OverlayConfig};
+use super::overlay::{OutputConfig, OverlayConfig, PlacementOverrides};
 use super::theme::Theme;
 use super::types::{Edge, HorizontalAlignment, Layer, VerticalAlignment};
 use super::visualizer::{VisualizerConfig, VisualizerOverrides};
@@ -67,8 +67,8 @@ macro_rules! apply_set_fields {
     };
 }
 
-impl OutputConfig {
-    /// copies every set placement key onto `settings`
+impl PlacementOverrides {
+    /// copies every set placement key onto settings
     pub fn apply_to(&self, settings: &mut OverlaySettings) {
         apply_set_fields!(
             self,
@@ -110,7 +110,7 @@ impl Config {
         let mut visualizer = self.visualizer.clone();
         let mut use_theme = true;
         if let Some(output) = output {
-            output.apply_to(&mut overlay);
+            output.overlay.apply_to(&mut overlay);
             output.visualizer.apply_to(&mut visualizer);
             use_theme = !sets_direct_colors(&output.visualizer);
         }
