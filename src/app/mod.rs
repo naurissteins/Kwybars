@@ -27,7 +27,7 @@ use crate::audio::motion::Motion;
 use crate::audio::spectrum::SpectrumConfig;
 use crate::config::{Config, Theme};
 use crate::reload::Reloader;
-use crate::render::image::Overlay;
+use crate::render::image::Overlays;
 use crate::wayland::Wayland;
 use crate::{config, xdg};
 use animation::Animation;
@@ -68,7 +68,7 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
     let handle = event_loop.handle();
     let reloader = reload::start(&handle, config_path, &loaded);
     let warnings = loaded.messages().cloned().collect();
-    let image = image::overlay(&loaded.config, loaded.image, None);
+    let images = image::overlays(&loaded, &Overlays::default());
     let mut app = App {
         running: true,
         animation: Animation::new(motion, frame_time),
@@ -80,7 +80,7 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
         reloader,
         config: loaded.config,
         theme: loaded.theme.map(|loaded| loaded.theme),
-        image,
+        images,
         warnings,
     };
     image::start(&handle, &mut app)?;
@@ -116,7 +116,7 @@ struct App {
     reloader: Option<Reloader>,
     config: Config,
     theme: Option<Theme>,
-    image: Option<Overlay>,
+    images: Overlays,
     warnings: Vec<String>,
 }
 

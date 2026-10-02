@@ -28,6 +28,9 @@ fade_out_ms = 350
 # color_mode = "solid"
 # color_rgba = "rgba(175, 198, 255, 0.75)"
 #
+# [output.DP-1.image_overlay]
+# path = "~/.config/kwybars/overlays/other.png"
+#
 # [output.HDMI-A-1]
 # enabled = false
 

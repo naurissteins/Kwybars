@@ -6,11 +6,11 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use super::Config;
 use super::colors;
 use super::error::ConfigError;
 use super::parse::{ParseError, parse};
 use super::theme::{self, AvailableTheme, LoadedTheme};
+use super::{Config, ImageOverlayConfig};
 use crate::render::image;
 
 /// where a loaded config came from
@@ -32,6 +32,7 @@ pub struct Loaded {
     pub source: Source,
     pub colors_path: Option<PathBuf>,
     pub image: Option<LoadedImage>,
+    pub output_images: Vec<Option<LoadedImage>>,
 }
 
 /// the image overlay's file and its pixels, or why it cannot be shown
@@ -45,6 +46,17 @@ impl Loaded {
     /// warnings, then problems
     pub fn messages(&self) -> impl Iterator<Item = &String> {
         self.warnings.iter().chain(&self.problems)
+    }
+
+    /// every image file in use, each once
+    pub fn image_files(&self) -> Vec<PathBuf> {
+        let mut files: Vec<PathBuf> = Vec::new();
+        for image in self.image.iter().chain(self.output_images.iter().flatten()) {
+            if !files.contains(&image.path) {
+                files.push(image.path.clone());
+            }
+        }
+        files
     }
 }
 
@@ -80,15 +92,30 @@ pub fn load(path: &Path, env: &dyn Fn(&str) -> Option<OsString>) -> Result<Loade
             .ok()
     });
 
-    let image = config.image_overlay.file(path, env).map(|file| {
+    // each file is decoded once, however many outputs show it
+    let mut opened: Vec<LoadedImage> = Vec::new();
+    let mut open = |settings: &ImageOverlayConfig| {
+        let file = settings.file(path, env)?;
+        if let Some(known) = opened.iter().find(|image| image.path == file) {
+            return Some(known.clone());
+        }
         let source = image::Source::open(&file)
             .map(Arc::new)
             .map_err(|err| err.to_string());
         if let Err(err) = &source {
             problems.push(format!("image overlay {}: {err}", file.display()));
         }
-        LoadedImage { path: file, source }
-    });
+        let image = LoadedImage { path: file, source };
+        opened.push(image.clone());
+        Some(image)
+    };
+    let image = open(&config.image_overlay);
+    let output_images = config
+        .overlay
+        .outputs
+        .iter()
+        .map(|output| open(&config.image(Some(output))))
+        .collect();
 
     Ok(Loaded {
         config,
@@ -99,6 +126,7 @@ pub fn load(path: &Path, env: &dyn Fn(&str) -> Option<OsString>) -> Result<Loade
         source,
         colors_path,
         image,
+        output_images,
     })
 }
 

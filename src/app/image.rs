@@ -6,8 +6,8 @@ use calloop::LoopHandle;
 use calloop::channel;
 
 use super::App;
-use crate::config::{Config, LoadedImage};
-use crate::render::image::Overlay;
+use crate::config::{ImageOverlayConfig, Loaded, LoadedImage};
+use crate::render::image::{Overlay, Overlays};
 
 /// lets image workers reach the surfaces they scale for
 pub(super) fn start(
@@ -23,73 +23,140 @@ pub(super) fn start(
         })
         .map_err(|err| err.error)?;
     app.wayland.set_image_jobs(jobs);
-    app.wayland.set_image(app.image.clone());
+    app.wayland.set_images(app.images.clone());
     Ok(())
 }
 
-pub(super) fn overlay(
-    config: &Config,
-    loaded: Option<LoadedImage>,
-    showing: Option<&Overlay>,
+/// the images to show after a load; a file that could not be read keeps
+/// the pixels its surface is showing, with the new settings
+pub(super) fn overlays(loaded: &Loaded, showing: &Overlays) -> Overlays {
+    let config = &loaded.config;
+    Overlays {
+        base: overlay(
+            config.image(None),
+            loaded.image.as_ref(),
+            showing.base.as_ref(),
+            showing,
+        ),
+        outputs: config
+            .overlay
+            .outputs
+            .iter()
+            .enumerate()
+            .map(|(entry, output)| {
+                overlay(
+                    config.image(Some(output)),
+                    loaded.output_images.get(entry).and_then(Option::as_ref),
+                    showing.of(Some(entry)),
+                    showing,
+                )
+            })
+            .collect(),
+    }
+}
+
+fn overlay(
+    config: ImageOverlayConfig,
+    loaded: Option<&LoadedImage>,
+    previous: Option<&Overlay>,
+    showing: &Overlays,
 ) -> Option<Overlay> {
-    let source = match loaded?.source {
-        Ok(source) => match showing {
-            Some(showing) if showing.source == source => Arc::clone(&showing.source),
-            _ => source,
-        },
-        Err(_) => Arc::clone(&showing?.source),
+    let source = match &loaded?.source {
+        Ok(source) => Arc::clone(showing.holding(source).unwrap_or(source)),
+        Err(_) => Arc::clone(&previous?.source),
     };
-    Some(Overlay {
-        source,
-        config: config.image_overlay.clone(),
-    })
+    Some(Overlay { source, config })
 }
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
     use std::sync::Arc;
 
     use image::{Rgba, RgbaImage};
 
-    use super::overlay;
-    use crate::config::{Config, LoadedImage};
-    use crate::render::image::Source;
+    use super::overlays;
+    use crate::config::tests::TempDir;
+    use crate::config::{self, Loaded};
+    use crate::render::image::Overlays;
+    use crate::xdg::fake_env;
 
-    fn loaded(shade: Option<u8>) -> Option<LoadedImage> {
-        Some(LoadedImage {
-            path: PathBuf::from("/overlays/a.png"),
-            source: match shade {
-                Some(shade) => {
-                    let pixels = RgbaImage::from_pixel(2, 2, Rgba([shade, 0, 0, 255]));
-                    Ok(Arc::new(Source::from_rgba(pixels)))
-                }
-                None => Err("broken".to_owned()),
-            },
-        })
+    fn save(dir: &TempDir, name: &str, shade: u8) {
+        let pixels = RgbaImage::from_pixel(2, 2, Rgba([shade, 0, 0, 255]));
+        let saved = pixels.save(dir.path().join(name));
+        assert!(saved.is_ok(), "{saved:?}");
     }
+
+    fn load(dir: &TempDir, raw: &str) -> Loaded {
+        let path = dir.write("config.toml", raw);
+        match config::load(&path, &fake_env(&[])) {
+            Ok(loaded) => loaded,
+            Err(err) => panic!("{err}"),
+        }
+    }
+
+    const ONE: &str = "[image_overlay]\nenabled = true\npath = \"a.png\"\n";
 
     #[test]
     fn a_broken_image_keeps_the_one_showing() {
-        let config = Config::default();
-        assert_eq!(overlay(&config, None, None), None);
-        assert_eq!(overlay(&config, loaded(None), None), None);
-        let Some(first) = overlay(&config, loaded(Some(7)), None) else {
+        let dir = TempDir::new("app-image");
+        let none = Overlays::default();
+        assert_eq!(overlays(&load(&dir, ""), &none), none);
+        // a file that cannot be read shows nothing at first
+        dir.write("a.png", "not an image");
+        assert_eq!(overlays(&load(&dir, ONE), &none).base, None);
+
+        save(&dir, "a.png", 7);
+        let first = overlays(&load(&dir, ONE), &none);
+        let Some(shown) = &first.base else {
             panic!("an image that loads is shown");
         };
         // the same pixels again: the very same image, so nothing is rescaled
-        let again = overlay(&config, loaded(Some(7)), Some(&first));
-        assert!(again.is_some_and(|again| Arc::ptr_eq(&again.source, &first.source)));
-        let other = overlay(&config, loaded(Some(8)), Some(&first));
-        assert!(other.is_some_and(|other| other.source != first.source));
+        let again = overlays(&load(&dir, ONE), &first);
+        assert!(
+            again
+                .base
+                .is_some_and(|again| Arc::ptr_eq(&again.source, &shown.source))
+        );
+        save(&dir, "a.png", 8);
+        let other = overlays(&load(&dir, ONE), &first);
+        assert!(other.base.is_some_and(|other| other.source != shown.source));
         // broken: the old pixels with the new settings
-        let mut moved = config.clone();
-        moved.image_overlay.offset_x = 12.0;
-        let kept = overlay(&moved, loaded(None), Some(&first));
-        assert!(kept.is_some_and(|kept| {
-            Arc::ptr_eq(&kept.source, &first.source) && kept.config.offset_x == 12.0
+        dir.write("a.png", "not an image");
+        let kept = overlays(&load(&dir, &format!("{ONE}offset_x = 12\n")), &first);
+        assert!(kept.base.is_some_and(|kept| {
+            Arc::ptr_eq(&kept.source, &shown.source) && kept.config.offset_x == 12.0
         }));
-        // turned off or without a path: nothing
-        assert_eq!(overlay(&config, None, Some(&first)), None);
+        // turned off: nothing
+        assert_eq!(overlays(&load(&dir, ""), &first), none);
+    }
+
+    #[test]
+    fn each_output_section_can_have_its_own_image() {
+        let dir = TempDir::new("app-images");
+        save(&dir, "a.png", 1);
+        save(&dir, "b.png", 2);
+        let loaded = load(
+            &dir,
+            &format!(
+                "{ONE}[output.DP-1.image_overlay]\npath = \"b.png\"\nopacity = 0.5\n\
+                 [output.DP-2]\nheight = 100\n\
+                 [output.DP-3.image_overlay]\nenabled = false\n"
+            ),
+        );
+        let shown = overlays(&loaded, &Overlays::default());
+        let Some(base) = &shown.base else {
+            panic!("the base image shows");
+        };
+        let [Some(own), Some(same), None] = shown.outputs.as_slice() else {
+            panic!("expected two images and none, got {:?}", shown.outputs);
+        };
+        assert!(own.source != base.source);
+        assert_eq!((own.config.opacity, base.config.opacity), (0.5, 1.0));
+        // a section without image keys shows the base image, decoded once
+        assert!(Arc::ptr_eq(&same.source, &base.source));
+        assert_eq!(shown.of(Some(0)), Some(own));
+        assert_eq!(shown.of(None), Some(base));
+        assert_eq!(shown.of(Some(2)), None);
+        assert_eq!(loaded.image_files().len(), 2);
     }
 }

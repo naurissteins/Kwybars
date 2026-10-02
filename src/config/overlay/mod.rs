@@ -4,6 +4,7 @@ mod table;
 
 use serde::Deserialize;
 
+use super::image::ImageOverlayOverrides;
 use super::types::{Edge, HorizontalAlignment, Layer, ShowOn, VerticalAlignment};
 use super::visualizer::VisualizerOverrides;
 
@@ -75,6 +76,7 @@ pub struct OutputConfig {
     pub horizontal_alignment: Option<HorizontalAlignment>,
     pub vertical_alignment: Option<VerticalAlignment>,
     pub visualizer: VisualizerOverrides,
+    pub image_overlay: ImageOverlayOverrides,
 }
 
 impl Default for OutputConfig {
@@ -97,6 +99,7 @@ impl Default for OutputConfig {
             horizontal_alignment: None,
             vertical_alignment: None,
             visualizer: VisualizerOverrides::default(),
+            image_overlay: ImageOverlayOverrides::default(),
         }
     }
 }

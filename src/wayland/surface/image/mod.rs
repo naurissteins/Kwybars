@@ -37,8 +37,7 @@ pub struct ImageGlobals<'a> {
 /// everything a scaled image depends on
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImageKey {
-    /// counts the images shown since startup
-    generation: u64,
+    source: Arc<Source>,
     config: ImageOverlayConfig,
     logical: (u32, u32),
     buffer: (u32, u32),
@@ -68,17 +67,13 @@ pub struct ImageSlot {
 }
 
 impl OutputSurface {
-    pub fn update_image(
-        &mut self,
-        overlay: Option<&(Overlay, u64)>,
-        jobs: Option<&Sender<ImageReady>>,
-    ) {
-        let Some((overlay, generation)) = overlay else {
+    pub fn update_image(&mut self, overlay: Option<&Overlay>, jobs: Option<&Sender<ImageReady>>) {
+        let Some(overlay) = overlay else {
             self.hide_image();
             return;
         };
         // a hidden surface must not come back with an image that was replaced
-        let replaced = |key: &ImageKey| key.generation != *generation;
+        let replaced = |key: &ImageKey| !Arc::ptr_eq(&key.source, &overlay.source);
         if !self.shown && self.image.shown.as_ref().is_some_and(replaced) {
             self.hide_image();
         }
@@ -87,7 +82,7 @@ impl OutputSurface {
         };
         // compared in place: this runs every frame and must not allocate
         let same = |key: &ImageKey| {
-            key.generation == *generation
+            Arc::ptr_eq(&key.source, &overlay.source)
                 && key.config == overlay.config
                 && (key.logical, key.buffer, key.scale) == (logical, buffer, self.scale)
         };
@@ -97,7 +92,7 @@ impl OutputSurface {
             return;
         }
         let key = ImageKey {
-            generation: *generation,
+            source: Arc::clone(&overlay.source),
             config: overlay.config.clone(),
             logical,
             buffer,

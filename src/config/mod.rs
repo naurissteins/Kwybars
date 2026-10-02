@@ -26,7 +26,7 @@ pub use audio::AudioConfig;
 pub use color::{ColorParseError, Rgba};
 pub use colors::{COLORS_FILE, ColorOverrides};
 pub use error::ConfigError;
-pub use image::ImageOverlayConfig;
+pub use image::{ImageOverlayConfig, ImageOverlayOverrides};
 pub use load::{Loaded, LoadedImage, Source, colors_candidates, link_target, load, themes};
 pub use overlay::{OutputConfig, OverlayConfig};
 pub use parse::{ParseError, Parsed, parse};

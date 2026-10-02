@@ -40,6 +40,34 @@ pub struct Overlay {
     pub config: ImageOverlayConfig,
 }
 
+/// the image of every surface, none where no image shows
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Overlays {
+    pub base: Option<Overlay>,
+    pub outputs: Vec<Option<Overlay>>,
+}
+
+impl Overlays {
+    /// the image of a surface selected by section `entry`, or by none
+    pub fn of(&self, entry: Option<usize>) -> Option<&Overlay> {
+        match entry {
+            Some(entry) => self.outputs.get(entry)?.as_ref(),
+            None => self.base.as_ref(),
+        }
+    }
+
+    fn all(&self) -> impl Iterator<Item = &Overlay> {
+        self.base.iter().chain(self.outputs.iter().flatten())
+    }
+
+    /// an image already held with these pixels, so it is not scaled again
+    pub fn holding(&self, source: &Arc<Source>) -> Option<&Arc<Source>> {
+        self.all()
+            .map(|overlay| &overlay.source)
+            .find(|held| *held == source)
+    }
+}
+
 /// a decoded image, premultiplied RGBA
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Source {

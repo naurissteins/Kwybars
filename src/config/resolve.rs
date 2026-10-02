@@ -2,6 +2,7 @@
 
 use super::Config;
 use super::color::Rgba;
+use super::image::ImageOverlayConfig;
 use super::overlay::{OutputConfig, OverlayConfig};
 use super::theme::Theme;
 use super::types::{Edge, HorizontalAlignment, Layer, VerticalAlignment};
@@ -93,6 +94,14 @@ impl OutputConfig {
 }
 
 impl Config {
+    /// the image settings of a surface; `output` is its `[output.NAME]` section, if any
+    pub fn image(&self, output: Option<&OutputConfig>) -> ImageOverlayConfig {
+        match output {
+            Some(output) => output.image_overlay.over(&self.image_overlay),
+            None => self.image_overlay.clone(),
+        }
+    }
+
     /// settings for a surface; `output` is its `[output.NAME]` section, if any
     ///
     /// the theme applies unless the output sets any of its own color keys

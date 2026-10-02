@@ -115,6 +115,8 @@ pub fn resolve(
         let table = format!("output.{}.visualizer", output.monitor);
         output.visualizer.drop_global_keys(&table, warnings);
         output.visualizer.normalize(&table, warnings);
+        let table = format!("output.{}.image_overlay", output.monitor);
+        output.image_overlay.normalize(&table, warnings);
     }
 
     let legacy = LegacySelection {

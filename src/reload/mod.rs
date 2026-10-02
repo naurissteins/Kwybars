@@ -39,7 +39,7 @@ type Watched = Vec<(WatchDescriptor, Vec<OsString>)>;
 /// the files beside the config a load used or looked for
 #[derive(Debug, Clone, Default)]
 struct Sources {
-    image: Option<PathBuf>,
+    images: Vec<PathBuf>,
     /// where the configured theme may be, also while no such file exists
     themes: Vec<PathBuf>,
 }
@@ -47,7 +47,7 @@ struct Sources {
 impl Sources {
     fn of(loaded: &Loaded) -> Self {
         Self {
-            image: loaded.image.as_ref().map(|image| image.path.clone()),
+            images: loaded.image_files(),
             themes: loaded.theme_candidates.clone(),
         }
     }
@@ -205,19 +205,14 @@ impl Reloader {
 fn watch(watches: &mut Watches, config_path: &Path, sources: &Sources) -> Watched {
     let canonical = fs::canonicalize(config_path).ok();
     let canonical = canonical.as_deref().filter(|real| *real != config_path);
-    targets(
-        config_path,
-        canonical,
-        sources.image.as_slice(),
-        &sources.themes,
-    )
-    .into_iter()
-    .filter_map(|target| match watches.add(&target.dir, MASK) {
-        Ok(wd) => Some((wd, target.names)),
-        Err(err) => {
-            debug!("not watching {}: {err}", target.dir.display());
-            None
-        }
-    })
-    .collect()
+    targets(config_path, canonical, &sources.images, &sources.themes)
+        .into_iter()
+        .filter_map(|target| match watches.add(&target.dir, MASK) {
+            Ok(wd) => Some((wd, target.names)),
+            Err(err) => {
+                debug!("not watching {}: {err}", target.dir.display());
+                None
+            }
+        })
+        .collect()
 }

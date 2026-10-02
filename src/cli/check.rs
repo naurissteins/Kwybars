@@ -5,7 +5,10 @@ use std::path::PathBuf;
 
 use super::report::Report;
 use crate::app::RunOptions;
-use crate::config::{self, ConfigPathError, Loaded, LoadedImage, Source, ThemeOrigin};
+use crate::config::{
+    self, ConfigPathError, ImageOverlayConfig, ImageOverlayOverrides, Loaded, LoadedImage, Source,
+    ThemeOrigin,
+};
 
 /// the config file a subcommand looks at
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,21 +101,49 @@ fn theme(report: &mut Report, loaded: &Loaded) {
 }
 
 fn image(report: &mut Report, loaded: &Loaded) {
-    match &loaded.image {
-        None if loaded.config.image_overlay.enabled => {
-            report.error("image_overlay is enabled but image_overlay.path is empty");
+    let config = &loaded.config;
+    image_line(
+        report,
+        "image overlay",
+        &config.image(None),
+        loaded.image.as_ref(),
+    );
+    // only the sections that change the image get a line of their own
+    for (entry, output) in config.overlay.outputs.iter().enumerate() {
+        if output.image_overlay == ImageOverlayOverrides::default() {
+            continue;
         }
-        None => report.line("image overlay: disabled"),
+        image_line(
+            report,
+            &format!("image overlay on {}", output.monitor),
+            &config.image(Some(output)),
+            loaded.output_images.get(entry).and_then(Option::as_ref),
+        );
+    }
+}
+
+fn image_line(
+    report: &mut Report,
+    label: &str,
+    settings: &ImageOverlayConfig,
+    image: Option<&LoadedImage>,
+) {
+    match image {
+        None if settings.enabled => {
+            report.error(format!("{label}: enabled but no path is set"));
+        }
+        None => report.line(format!("{label}: disabled")),
         Some(LoadedImage {
             path,
             source: Ok(source),
         }) => {
             let (width, height) = source.size();
             report.line(format!(
-                "image overlay: {} (ok, {width}x{height})",
+                "{label}: {} (ok, {width}x{height})",
                 path.display()
             ));
         }
+        // the reason is among the problems
         Some(_) => {}
     }
 }

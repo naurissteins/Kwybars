@@ -320,9 +320,9 @@ fn unusable_colors_theme_and_image_fail_validation() {
     let empty = dir.write("empty.toml", "[image_overlay]\nenabled = true\n");
     let report = validate::report(&options(&empty), &fake_env(&[]));
     assert!(
-        report.lines().contains(
-            &"error: image_overlay is enabled but image_overlay.path is empty".to_owned()
-        ),
+        report
+            .lines()
+            .contains(&"error: image overlay: enabled but no path is set".to_owned()),
         "{:?}",
         report.lines()
     );

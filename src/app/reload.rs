@@ -110,12 +110,12 @@ impl App {
         if loaded.source == Source::Defaults {
             warn!("the config file is gone, using built-in defaults");
         }
+        let images = image::overlays(&loaded, &self.images);
         let config = loaded.config;
         let theme = loaded.theme.map(|loaded| loaded.theme);
-        let image = image::overlay(&config, loaded.image, self.image.as_ref());
         let scope = Scope::between(
-            (&self.config, self.theme.as_ref(), self.image.as_ref()),
-            (&config, theme.as_ref(), image.as_ref()),
+            (&self.config, self.theme.as_ref(), &self.images),
+            (&config, theme.as_ref(), &images),
         );
         if scope.is_empty() {
             info!("config reloaded, nothing changed");
@@ -150,11 +150,11 @@ impl App {
                 .reconfigure(config.clone(), theme.clone(), Instant::now());
         }
         if scope.image {
-            self.wayland.set_image(image.clone());
+            self.wayland.set_images(images.clone());
         }
         self.config = config;
         self.theme = theme;
-        self.image = image;
+        self.images = images;
         self.render();
     }
 }

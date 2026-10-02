@@ -1,5 +1,5 @@
 use super::{parse_err, parse_ok};
-use crate::config::{Edge, Layout, ShowOn};
+use crate::config::{Edge, ImageFit, Layout, ShowOn};
 
 fn named(names: &[&str]) -> ShowOn {
     ShowOn::Named(names.iter().map(|name| (*name).to_owned()).collect())
@@ -158,5 +158,40 @@ fn keys_of_other_programs_point_at_the_right_one() {
             "overlay.outputs does not take monitor names; to show the bars on \"DP-2\" write `show_on = [\"DP-2\"]` in [overlay]"
         ),
         "{err}"
+    );
+}
+
+#[test]
+fn a_section_can_change_the_image() {
+    let parsed = parse_ok(
+        "[image_overlay]\nenabled = true\npath = \"a.png\"\nopacity = 0.8\nwidth = 300\n\
+         [output.DP-1.image_overlay]\npath = \" b.png \"\nfit = \"cover\"\noffset_y = -40\n\
+         [output.DP-2.image_overlay]\nenabled = false\nopacity = 4.0\n\
+         [output.DP-3]\nheight = 100\n",
+    );
+    assert_eq!(
+        parsed.warnings,
+        vec!["output.DP-2.image_overlay.opacity: 4 is outside 0..=1, using 1"]
+    );
+    let config = parsed.config;
+    let [first, second, third] = config.overlay.outputs.as_slice() else {
+        panic!("expected three sections");
+    };
+    let own = config.image(Some(first));
+    assert_eq!(own.path.as_deref(), Some("b.png"));
+    assert_eq!((own.fit, own.offset_y), (ImageFit::Cover, -40.0));
+    // what the section leaves out comes from [image_overlay]
+    assert_eq!((own.enabled, own.opacity, own.width), (true, 0.8, 300));
+    assert!(!config.image(Some(second)).enabled);
+    assert_eq!(config.image(Some(third)), config.image_overlay);
+    assert_eq!(config.image(None), config.image_overlay);
+}
+
+#[test]
+fn unknown_image_keys_in_a_section_are_named() {
+    let parsed = parse_ok("[output.DP-1.image_overlay]\npth = \"a.png\"\n");
+    assert_eq!(
+        parsed.warnings,
+        vec!["output.DP-1.image_overlay.pth: unknown key, ignored"]
     );
 }

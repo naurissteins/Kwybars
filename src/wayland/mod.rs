@@ -37,7 +37,7 @@ pub use probe::{Probe, ProbedOutput, probe};
 use crate::activity::Presence;
 use crate::config::{Config, Theme};
 use crate::render::Frame;
-use crate::render::image::Overlay;
+use crate::render::image::Overlays;
 use handlers::NoEvents;
 use scale::Scale;
 use surface::{ImageGlobals, OutputSurface};
@@ -56,7 +56,7 @@ pub struct Wayland {
     fractional: Option<WpFractionalScaleManagerV1>,
     subcompositor: Option<SubcompositorState>,
     alpha: Option<WpAlphaModifierV1>,
-    image: Option<(Overlay, u64)>,
+    images: Overlays,
     image_jobs: Option<Sender<ImageReady>>,
     config: Config,
     theme: Option<Theme>,
@@ -105,7 +105,7 @@ impl Wayland {
             fractional,
             subcompositor,
             alpha,
-            image: None,
+            images: Overlays::default(),
             image_jobs: None,
             config,
             theme,
@@ -166,7 +166,8 @@ impl Wayland {
     pub fn render(&mut self, frame: &Frame<'_>) -> usize {
         let mut drawn = 0;
         for surface in &mut self.surfaces {
-            surface.update_image(self.image.as_ref(), self.image_jobs.as_ref());
+            let overlay = self.images.of(surface.entry());
+            surface.update_image(overlay, self.image_jobs.as_ref());
             drawn += usize::from(surface.render(frame, &self.shm, &self.queue));
         }
         drawn
@@ -176,13 +177,9 @@ impl Wayland {
         self.image_jobs = Some(jobs);
     }
 
-    /// the image overlay to show from now on, none to show none
-    pub fn set_image(&mut self, overlay: Option<Overlay>) {
-        let generation = self
-            .image
-            .as_ref()
-            .map_or(0, |(_, generation)| generation + 1);
-        self.image = overlay.map(|overlay| (overlay, generation));
+    /// the image overlays to show from now on
+    pub fn set_images(&mut self, images: Overlays) {
+        self.images = images;
     }
 
     /// a worker's scaled image, for the surface that asked for it

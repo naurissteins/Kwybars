@@ -5,7 +5,7 @@ use std::fmt;
 use crate::audio::dynamics::DynamicsConfig;
 use crate::audio::spectrum::SpectrumConfig;
 use crate::config::{Config, Theme};
-use crate::render::image::Overlay;
+use crate::render::image::Overlays;
 
 /// the parts of the running overlay a new config touches
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -18,10 +18,10 @@ pub struct Scope {
 }
 
 impl Scope {
-    /// each side is a config, its theme, and its overlay image
+    /// each side is a config, its theme, and its overlay images
     pub fn between(
-        (old, old_theme, old_image): (&Config, Option<&Theme>, Option<&Overlay>),
-        (new, new_theme, new_image): (&Config, Option<&Theme>, Option<&Overlay>),
+        (old, old_theme, old_images): (&Config, Option<&Theme>, &Overlays),
+        (new, new_theme, new_images): (&Config, Option<&Theme>, &Overlays),
     ) -> Self {
         let framerate = old.visualizer.framerate != new.visualizer.framerate;
         Self {
@@ -33,7 +33,7 @@ impl Scope {
             surfaces: old.overlay != new.overlay
                 || old.visualizer != new.visualizer
                 || old_theme != new_theme,
-            image: old_image != new_image,
+            image: old_images != new_images,
         }
     }
 
@@ -71,13 +71,16 @@ mod tests {
 
     use super::Scope;
     use crate::config::{Config, Rgba, Theme};
-    use crate::render::image::{Overlay, Source};
+    use crate::render::image::{Overlay, Overlays, Source};
 
     fn scope(edit: impl FnOnce(&mut Config)) -> Scope {
         let old = Config::default();
         let mut new = old.clone();
         edit(&mut new);
-        Scope::between((&old, None, None), (&new, None, None))
+        Scope::between(
+            (&old, None, &Overlays::default()),
+            (&new, None, &Overlays::default()),
+        )
     }
 
     #[test]
@@ -118,7 +121,10 @@ mod tests {
             name: "test".to_owned(),
             colors: [Rgba::new(1.0, 0.0, 0.0, 1.0); 6],
         };
-        let found = Scope::between((&config, None, None), (&config, Some(&theme), None));
+        let found = Scope::between(
+            (&config, None, &Overlays::default()),
+            (&config, Some(&theme), &Overlays::default()),
+        );
         assert_eq!(found.to_string(), "surfaces");
     }
 
@@ -135,7 +141,11 @@ mod tests {
             }
         };
         let between = |old: Option<&Overlay>, new: Option<&Overlay>| {
-            Scope::between((&config, None, old), (&config, None, new))
+            let images = |base: Option<&Overlay>| Overlays {
+                base: base.cloned(),
+                outputs: Vec::new(),
+            };
+            Scope::between((&config, None, &images(old)), (&config, None, &images(new)))
         };
         let shown = overlay(1.0, 9);
         assert_eq!(between(None, Some(&shown)).to_string(), "image");
