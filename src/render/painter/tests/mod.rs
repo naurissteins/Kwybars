@@ -55,7 +55,7 @@ fn assert_fading_patching_matches(surface: &SurfaceConfig, frames: &[[f32; 6]], 
         let mut fresh = Painter::new(surface, 6, SIZE, 1.0, ByteOrder::Rgba);
         fresh.layout(heights, *opacity, Instant::now());
         let mut expected = blank();
-        let mut fresh_contents = fresh.new_contents();
+        let mut fresh_contents = fresh.blank_contents();
         paint(&fresh, &mut expected, &mut fresh_contents);
         assert!(
             data == expected,
@@ -76,7 +76,7 @@ pub(super) fn assert_timed_patching_matches(surface: &SurfaceConfig, opacities: 
         painter.layout(heights, *opacity, now);
         paint(&painter, &mut data, &mut contents);
         let mut expected = blank();
-        paint(&painter, &mut expected, &mut painter.new_contents());
+        paint(&painter, &mut expected, &mut painter.blank_contents());
         assert!(data == expected, "patched pixels differ at frame {frame}");
     }
 }
@@ -195,6 +195,28 @@ fn silent_bars_keep_a_small_stub() {
     let lit = |y: u32| (0..SIZE.0).any(|x| data[((y * SIZE.0 + x) * 4 + 3) as usize] > 0);
     // 2 logical pixels at scale 1.5 are 3 rows
     assert_eq!((0..SIZE.1).filter(|y| lit(*y)).count(), 3);
+}
+
+#[test]
+fn a_blank_buffer_is_cleared_once_another_painter_takes_it() {
+    let mut first = Painter::new(&config(|_| {}), 6, SIZE, 1.0, ByteOrder::Rgba);
+    let mut second = Painter::new(
+        &config(|c| c.visualizer.gap = 2),
+        6,
+        SIZE,
+        1.0,
+        ByteOrder::Rgba,
+    );
+    let mut data = blank();
+    let mut contents = first.blank_contents();
+    first.layout(&[1.0; 6], 255, Instant::now());
+    paint(&first, &mut data, &mut contents);
+
+    second.layout(&[0.2; 6], 255, Instant::now());
+    paint(&second, &mut data, &mut contents);
+    let mut expected = blank();
+    paint(&second, &mut expected, &mut second.new_contents());
+    assert!(data == expected);
 }
 
 #[test]

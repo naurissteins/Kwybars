@@ -64,10 +64,12 @@ impl BufferRing {
         &mut self,
         shm: &Shm,
         size: (u32, u32),
-        new_contents: impl FnOnce() -> BufferContents,
+        blank_contents: impl FnOnce() -> BufferContents,
     ) -> Result<Option<(&mut Slot, &mut [u8])>, DrawError> {
         if size != self.size {
+            // freed slots leave drawn memory behind, so the pool goes with them
             self.slots.clear();
+            self.pool = None;
             self.size = size;
         }
         self.draws += 1;
@@ -92,7 +94,7 @@ impl BufferRing {
                 let (buffer, _) = pool.create_buffer(width, height, stride, self.format)?;
                 self.slots.push(Slot {
                     buffer,
-                    contents: new_contents(),
+                    contents: blank_contents(),
                     drawn: 0,
                 });
                 self.slots.len() - 1

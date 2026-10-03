@@ -108,7 +108,7 @@ impl OutputSurface {
         let Some(painter) = self.painter.as_mut() else {
             return Ok(false);
         };
-        let Some((slot, bytes)) = self.ring.acquire(shm, size, || painter.new_contents())? else {
+        let Some((slot, bytes)) = self.ring.acquire(shm, size, || painter.blank_contents())? else {
             return Ok(false);
         };
         let mut canvas = Canvas::new(bytes, size).ok_or(DrawError::TooLarge)?;

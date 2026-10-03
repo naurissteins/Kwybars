@@ -12,7 +12,10 @@ impl Painter {
     ) {
         let fresh = contents.painter != self.id;
         if fresh {
-            canvas.clear(PixelRect::full(canvas.size()));
+            if !contents.blank {
+                canvas.clear(PixelRect::full(canvas.size()));
+            }
+            contents.blank = false;
             contents.wave.clear();
         } else if contents.version == wave.version() && contents.opacity == self.opacity {
             return;

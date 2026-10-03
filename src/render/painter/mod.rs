@@ -26,6 +26,7 @@ pub struct BufferContents {
     version: u64,
     opacity: u8,
     painter: u64,
+    blank: bool,
 }
 
 /// lays out bars for one surface and paints the difference into buffers
@@ -131,6 +132,14 @@ impl Painter {
             version: 0,
             opacity: 0,
             painter: 0,
+            blank: false,
+        }
+    }
+
+    pub fn blank_contents(&self) -> BufferContents {
+        BufferContents {
+            blank: true,
+            ..self.new_contents()
         }
     }
 
@@ -141,7 +150,11 @@ impl Painter {
         }
         // a buffer drawn with other geometry, or never, is drawn whole
         if contents.painter != self.id || contents.poses.len() != self.next.len() {
-            canvas.clear(PixelRect::full(canvas.size()));
+            // clearing untouched memory would only make every page resident
+            if !contents.blank {
+                canvas.clear(PixelRect::full(canvas.size()));
+            }
+            contents.blank = false;
             for (index, pose) in self.next.iter().enumerate() {
                 if let Some(area) = self.layout.area(index, *pose) {
                     self.layout.paint(canvas, index, *pose, area, &self.fills);

@@ -105,7 +105,7 @@ fn patching_a_few_bars_redraws_their_neighbors() {
         painter.layout(&heights, 255, start + Duration::from_millis(16 * frame));
         paint(&painter, &mut data, &mut contents);
         let mut expected = blank();
-        paint(&painter, &mut expected, &mut painter.new_contents());
+        paint(&painter, &mut expected, &mut painter.blank_contents());
         assert!(data == expected, "patched pixels differ at frame {frame}");
     }
 }
