@@ -108,7 +108,7 @@ impl App {
         }
         self.warnings = warnings;
         if loaded.source == Source::Defaults {
-            warn!("the config file is gone, using built-in defaults");
+            warn!("no config file, using built-in defaults");
         }
         let images = image::overlays(&loaded, &self.images);
         let config = loaded.config;

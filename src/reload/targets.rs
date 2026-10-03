@@ -24,6 +24,8 @@ pub fn targets(
         add(&mut targets, path);
         add(&mut targets, &dir_of(path).join(COLORS_FILE));
     }
+    // the config directory created or recreated is seen from its parent
+    add(&mut targets, &dir_of(config));
     for file in files {
         add(&mut targets, file);
     }
@@ -91,6 +93,7 @@ mod tests {
                     "/cfg/kwybars/custom",
                     &["line.toml", "colors.toml", "themes"]
                 ),
+                target("/cfg", &["kwybars"]),
                 target("/cfg/kwybars/overlays", &["02.jpg"]),
                 target("/cfg/kwybars/themes", &["mocha.toml"]),
                 target("/cfg/kwybars/custom/themes", &["mocha.toml"]),
@@ -110,10 +113,10 @@ mod tests {
         );
         assert_eq!(
             found,
-            vec![target(
-                "/cfg",
-                &["config.toml", "colors.toml", "theme.toml"]
-            )]
+            vec![
+                target("/cfg", &["config.toml", "colors.toml", "theme.toml"]),
+                target("/", &["cfg"]),
+            ]
         );
     }
 

@@ -10,6 +10,9 @@ use super::types::{
     MirrorOrientation,
 };
 
+/// bars above this is clamped, every bar sizes the frame slot, bands and painters
+pub const MAX_BARS: usize = 1024;
+
 /// fully resolved visualizer settings
 #[derive(Debug, Clone, PartialEq)]
 pub struct VisualizerConfig {
