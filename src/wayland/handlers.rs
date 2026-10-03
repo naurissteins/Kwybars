@@ -4,7 +4,10 @@ use smithay_client_toolkit::compositor::CompositorHandler;
 use smithay_client_toolkit::dispatch2::Dispatch2;
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
 use smithay_client_toolkit::reexports::client::backend::ObjectId;
-use smithay_client_toolkit::reexports::client::protocol::{wl_output, wl_surface};
+use smithay_client_toolkit::reexports::client::protocol::{
+    wl_callback::{self, WlCallback},
+    wl_output, wl_surface,
+};
 use smithay_client_toolkit::reexports::client::{Connection, Proxy, QueueHandle};
 use smithay_client_toolkit::reexports::protocols::wp::alpha_modifier::v1::client::{
     wp_alpha_modifier_surface_v1::WpAlphaModifierSurfaceV1, wp_alpha_modifier_v1::WpAlphaModifierV1,
@@ -33,6 +36,27 @@ pub struct NoEvents;
 /// user data of a surface's wp_fractional_scale_v1
 pub struct ScaleData {
     pub surface: ObjectId,
+}
+
+pub struct SyncData {
+    pub surface: ObjectId,
+}
+
+impl Dispatch2<WlCallback, Wayland> for SyncData {
+    fn event(
+        &self,
+        state: &mut Wayland,
+        _: &WlCallback,
+        event: wl_callback::Event,
+        _: &Connection,
+        _: &QueueHandle<Wayland>,
+    ) {
+        if let wl_callback::Event::Done { .. } = event
+            && let Some(surface) = state.surface_mut(&self.surface)
+        {
+            surface.synced();
+        }
+    }
 }
 
 impl Dispatch2<WpViewporter, Wayland> for NoEvents {
