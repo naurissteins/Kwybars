@@ -69,6 +69,24 @@ fn auto_gain_settles_loud_input_just_below_the_top() {
 }
 
 #[test]
+fn auto_gain_reaches_quiet_music_within_half_a_second() {
+    let mut dynamics = one_bar(DynamicsConfig::default());
+    let height = run(&mut dynamics, Some(&[0.002]), 0.5, DT);
+    assert!(height > 0.5, "{height}");
+
+    let mut smooth = one_bar(DynamicsConfig {
+        smoothing: 0.9,
+        ..DynamicsConfig::default()
+    });
+    let mut highest = 0.0_f32;
+    for _ in 0..120 {
+        smooth.update(Some(&[0.002]), DT);
+        highest = highest.max(smooth.effective_gain());
+    }
+    assert!(highest < 700.0, "{highest}");
+}
+
+#[test]
 fn manual_gain_is_the_sensitivity() {
     let config = DynamicsConfig {
         sensitivity: 2.0,
