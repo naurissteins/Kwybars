@@ -3,6 +3,7 @@
 use std::ffi::OsString;
 use std::fs;
 use std::io::ErrorKind;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -40,6 +41,31 @@ pub struct Loaded {
 pub struct LoadedImage {
     pub path: PathBuf,
     pub source: Result<Arc<image::Source>, String>,
+    /// the file as it was before decoding, none when it could not be read
+    pub stamp: Option<Stamp>,
+}
+
+/// tells an image file apart from the one decoded last time
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Stamp {
+    dev: u64,
+    ino: u64,
+    len: u64,
+    mtime: (i64, i64),
+    ctime: (i64, i64),
+}
+
+impl Stamp {
+    fn of(path: &Path) -> Option<Self> {
+        let meta = fs::metadata(path).ok()?;
+        Some(Self {
+            dev: meta.dev(),
+            ino: meta.ino(),
+            len: meta.size(),
+            mtime: (meta.mtime(), meta.mtime_nsec()),
+            ctime: (meta.ctime(), meta.ctime_nsec()),
+        })
+    }
 }
 
 impl Loaded {
@@ -76,6 +102,14 @@ pub fn themes(path: &Path, env: &dyn Fn(&str) -> Option<OsString>) -> Vec<Availa
 }
 
 pub fn load(path: &Path, env: &dyn Fn(&str) -> Option<OsString>) -> Result<Loaded, ConfigError> {
+    load_reusing(path, env, &[])
+}
+
+pub fn load_reusing(
+    path: &Path,
+    env: &dyn Fn(&str) -> Option<OsString>,
+    known: &[LoadedImage],
+) -> Result<Loaded, ConfigError> {
     let (mut config, source, warnings) = read_config(path)?;
     let mut problems = Vec::new();
     let canonical = link_target(path);
@@ -99,13 +133,25 @@ pub fn load(path: &Path, env: &dyn Fn(&str) -> Option<OsString>) -> Result<Loade
         if let Some(known) = opened.iter().find(|image| image.path == file) {
             return Some(known.clone());
         }
-        let source = image::Source::open(&file)
-            .map(Arc::new)
-            .map_err(|err| err.to_string());
+        // read before decoding, write during the decode is seen next time
+        let stamp = Stamp::of(&file);
+        let unchanged = known
+            .iter()
+            .find(|image| image.path == file && stamp.is_some() && image.stamp == stamp);
+        let source = match unchanged {
+            Some(image) => image.source.clone(),
+            None => image::Source::open(&file)
+                .map(Arc::new)
+                .map_err(|err| err.to_string()),
+        };
         if let Err(err) = &source {
             problems.push(format!("image overlay {}: {err}", file.display()));
         }
-        let image = LoadedImage { path: file, source };
+        let image = LoadedImage {
+            path: file,
+            source,
+            stamp,
+        };
         opened.push(image.clone());
         Some(image)
     };
