@@ -67,10 +67,8 @@ impl Motion {
         true
     }
 
-    pub fn wait(&mut self) -> bool {
-        self.refresh();
+    pub fn pause(&mut self) {
         self.last_advance = None;
-        self.frames.request_wake(self.seen)
     }
 
     /// peak sample level of the newest frame, 0 while silent
@@ -172,18 +170,16 @@ mod tests {
     }
 
     #[test]
-    fn waiting_reports_the_level_and_asks_for_the_next_frame() {
+    fn a_paused_reader_reports_the_level_without_asking_for_frames() {
         let (frames, mut motion) = motion(1);
         assert_eq!(motion.level(), 0.0);
         frames.publish(&[0.4], 0.2);
         assert_eq!(motion.level(), 0.2);
-        // still moving towards the frame, but a waiting reader is woken anyway
-        assert!(motion.wait());
-        assert!(frames.publish(&[0.4], 0.3));
+        motion.pause();
+        assert!(!frames.publish(&[0.4], 0.3));
+        assert_eq!(motion.level(), 0.3);
         frames.publish_silence();
         assert_eq!(motion.level(), 0.0);
-        assert!(motion.wait());
-        assert!(frames.publish(&[0.4], 0.3));
     }
 
     #[test]

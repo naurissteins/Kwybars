@@ -133,15 +133,15 @@ fn a_self_animating_layout_ticks_only_while_shown() {
         assert_eq!(frame.generation, generation + 1);
         generation = frame.generation;
     }
-    // hidden, the same layout gets no frames and the loop waits for audio
+    // hidden, the same layout gets no frames and asks for no wakes
     let hidden = animation.frame(start + FRAME * 11, HIDDEN);
     assert!(!hidden.animating);
     assert_eq!(hidden.generation, generation);
-    assert!(frames.publish(&[0.5, 0.5], 0.5));
+    assert!(!frames.publish(&[0.5, 0.5], 0.5));
 }
 
 #[test]
-fn hidden_bars_do_not_step_but_wait_for_audio() {
+fn hidden_bars_neither_step_nor_wake_per_frame() {
     let (frames, mut animation) = animation();
     frames.publish(&[0.5, 0.5], 0.5);
     let start = Instant::now();
@@ -149,7 +149,8 @@ fn hidden_bars_do_not_step_but_wait_for_audio() {
     let hidden = animation.frame(start + FRAME, HIDDEN);
     assert!(!hidden.animating);
     assert_eq!(hidden.generation, generation);
-    // sound is still playing, yet the next frame wakes the loop
-    assert!(frames.publish(&[0.5, 0.5], 0.5));
-    assert_eq!(animation.level(), 0.5);
+    // sound is still playing, only the capture thread's threshold crossings
+    // wake the loop now, and the level is read when it does
+    assert!(!frames.publish(&[0.5, 0.5], 0.4));
+    assert_eq!(animation.level(), 0.4);
 }

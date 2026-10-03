@@ -47,7 +47,7 @@ impl Animation {
         &mut self.motion
     }
 
-    /// swaps in `motion`, for a new bar count; the next frame starts from it
+    /// swaps in motion, for a new bar count; the next frame starts from it
     pub fn set_motion(&mut self, motion: Motion) {
         self.motion = motion;
         self.ticking = false;
@@ -71,9 +71,9 @@ impl Animation {
             self.pace(now, presence.restless());
         } else {
             self.stop();
-            // no bars to move, only the level of every new frame matters; a
-            // frame that races the request is read on the next wake
-            while !self.motion.wait() {}
+            // no bars to move and no wake per frame: the capture thread pings
+            // when the level crosses the activity threshold
+            self.motion.pause();
         }
         Frame {
             heights: self.motion.heights(),
