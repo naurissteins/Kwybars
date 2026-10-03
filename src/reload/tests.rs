@@ -254,3 +254,27 @@ fn a_file_that_shadows_a_built_in_theme_is_seen() {
     write(&dir.0.join("themes/nord.toml"), THEME);
     assert!(reloader.drain());
 }
+
+#[test]
+fn a_config_directory_created_or_recreated_later_is_watched() {
+    let dir = TempDir::new();
+    let kwybars = dir.0.join("kwybars");
+    let path = kwybars.join("config.toml");
+    let (mut reloader, channel) = reloader(&path);
+    let mut results = Results::new(channel);
+    let bars = |loaded: Result<Loaded, ConfigError>| loaded.ok().map(|l| l.config.visualizer.bars);
+
+    for round in [40, 41] {
+        assert!(fs::create_dir(&kwybars).is_ok());
+        assert!(reloader.drain());
+        assert_eq!(bars(results.load(&mut reloader)), Some(50));
+
+        write(&path, &format!("[visualizer]\nbars = {round}\n"));
+        assert!(reloader.drain());
+        assert_eq!(bars(results.load(&mut reloader)), Some(round));
+
+        assert!(fs::remove_dir_all(&kwybars).is_ok());
+        assert!(reloader.drain());
+        assert_eq!(bars(results.load(&mut reloader)), Some(50));
+    }
+}

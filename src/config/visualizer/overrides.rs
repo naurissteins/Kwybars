@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-use super::{VisualizerConfig, default_frame_edges};
+use super::{MAX_BARS, VisualizerConfig, default_frame_edges};
 use crate::config::bounds::Bounds;
 use crate::config::color::Rgba;
 use crate::config::types::{
@@ -126,7 +126,7 @@ impl VisualizerOverrides {
         bounds.at_least("radial_inner_radius", &mut self.radial_inner_radius, 1);
         bounds.at_least("polygon_sides", &mut self.polygon_sides, 3);
         bounds.at_least("polygon_radius", &mut self.polygon_radius, 1);
-        bounds.at_least("bars", &mut self.bars, 1);
+        bounds.between("bars", &mut self.bars, 1, MAX_BARS);
         bounds.at_least("framerate", &mut self.framerate, 1);
         for (key, value) in [
             ("wave_smoothing", &mut self.wave_smoothing),

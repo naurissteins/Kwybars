@@ -28,6 +28,23 @@ impl<'a> Bounds<'a> {
         }
     }
 
+    /// clamps a value into `min..=max`
+    pub fn between<T: PartialOrd + Copy + Display>(
+        &mut self,
+        key: &str,
+        value: &mut Option<T>,
+        min: T,
+        max: T,
+    ) {
+        self.at_least(key, value, min);
+        if let Some(current) = value.as_mut()
+            && *current > max
+        {
+            self.warn(key, format!("{current} is above {max}, using {max}"));
+            *current = max;
+        }
+    }
+
     /// clamps a float into `min..=max`, dropping non-finite values
     pub fn within(&mut self, key: &str, value: &mut Option<f32>, min: f32, max: f32) {
         self.finite(key, value);
@@ -79,14 +96,20 @@ mod tests {
         bounds.within("theme_opacity", &mut opacity, 0.0, 1.0);
         let mut angle = Some(f32::NAN);
         bounds.finite("radial_start_angle", &mut angle);
+        let mut bars = Some(2_000_000_000_usize);
+        bounds.between("bars", &mut bars, 1, 1024);
         let mut untouched = Some(10_u32);
-        bounds.at_least("bars", &mut untouched, 1);
+        bounds.between("bars", &mut untouched, 1, 1024);
 
         assert_eq!(
-            (sides, opacity, angle, untouched),
-            (Some(3), Some(1.0), None, Some(10))
+            (sides, opacity, angle, bars, untouched),
+            (Some(3), Some(1.0), None, Some(1024), Some(10))
         );
-        assert_eq!(warnings.len(), 3);
+        assert_eq!(warnings.len(), 4);
+        assert_eq!(
+            warnings[3],
+            "visualizer.bars: 2000000000 is above 1024, using 1024"
+        );
         assert!(warnings[0].starts_with("visualizer.polygon_sides: "));
     }
 }
