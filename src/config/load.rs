@@ -86,6 +86,26 @@ impl Loaded {
     }
 }
 
+/// the result for `file` from `known` while the file is unchanged, else a decode
+fn decode_or_reuse(file: PathBuf, known: &[LoadedImage]) -> LoadedImage {
+    // read before decoding, write during the decode is seen next time
+    let stamp = Stamp::of(&file);
+    let unchanged = known
+        .iter()
+        .find(|image| image.path == file && stamp.is_some() && image.stamp == stamp);
+    let source = match unchanged {
+        Some(image) => image.source.clone(),
+        None => image::Source::open(&file)
+            .map(Arc::new)
+            .map_err(|err| err.to_string()),
+    };
+    LoadedImage {
+        path: file,
+        source,
+        stamp,
+    }
+}
+
 /// the file a symlinked config points at
 pub fn link_target(path: &Path) -> Option<PathBuf> {
     fs::canonicalize(path).ok().filter(|real| real != path)
@@ -133,25 +153,10 @@ pub fn load_reusing(
         if let Some(known) = opened.iter().find(|image| image.path == file) {
             return Some(known.clone());
         }
-        // read before decoding, write during the decode is seen next time
-        let stamp = Stamp::of(&file);
-        let unchanged = known
-            .iter()
-            .find(|image| image.path == file && stamp.is_some() && image.stamp == stamp);
-        let source = match unchanged {
-            Some(image) => image.source.clone(),
-            None => image::Source::open(&file)
-                .map(Arc::new)
-                .map_err(|err| err.to_string()),
-        };
-        if let Err(err) = &source {
-            problems.push(format!("image overlay {}: {err}", file.display()));
+        let image = decode_or_reuse(file, known);
+        if let Err(err) = &image.source {
+            problems.push(format!("image overlay {}: {err}", image.path.display()));
         }
-        let image = LoadedImage {
-            path: file,
-            source,
-            stamp,
-        };
         opened.push(image.clone());
         Some(image)
     };
