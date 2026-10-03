@@ -2,11 +2,9 @@
 
 use std::time::{Duration, Instant};
 
-use smithay_client_toolkit::shell::WaylandSurface;
 use tracing::debug;
 
 use super::OutputSurface;
-use super::layer::place;
 use crate::config::SurfaceConfig;
 use crate::wayland::placement::Placement;
 
@@ -23,8 +21,7 @@ impl OutputSurface {
             self.placement = placement;
             // a hidden surface gets it with the next map
             if self.shown {
-                place(&self.layer, &self.placement);
-                self.layer.commit();
+                self.commit_placement();
             }
             debug!("{}: new placement {:?}", self.label, self.placement);
         }

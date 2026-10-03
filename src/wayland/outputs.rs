@@ -108,11 +108,13 @@ impl Wayland {
     ) -> OutputSurface {
         let output_entry = entry.and_then(|index| self.config.overlay.outputs.get(index));
         let config = self.config.surface(output_entry, self.theme.as_ref());
+        let display = self.connection.display();
         let globals = Globals {
             compositor: &self.compositor,
             layer_shell: &self.layer_shell,
             viewporter: self.viewporter.as_ref(),
             fractional: self.fractional.as_ref(),
+            display: &display,
             format: self.format,
         };
         OutputSurface::new(

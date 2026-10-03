@@ -5,19 +5,20 @@ use smithay_client_toolkit::shell::wlr_layer::{
 };
 
 use smithay_client_toolkit::compositor::Region;
-use smithay_client_toolkit::reexports::client::QueueHandle;
 use smithay_client_toolkit::reexports::client::protocol::{
     wl_output::WlOutput, wl_surface::WlSurface,
 };
+use smithay_client_toolkit::reexports::client::{Proxy, QueueHandle};
 use smithay_client_toolkit::shell::WaylandSurface;
 use tracing::{info, warn};
 
-use super::{Globals, NAMESPACE};
+use super::{Globals, NAMESPACE, OutputSurface};
 use crate::config::Layer;
 use crate::wayland::Wayland;
+use crate::wayland::handlers::SyncData;
 use crate::wayland::placement::{Anchors, Placement};
 
-/// makes `wl_surface` a click-through layer surface on `output`; nothing
+/// makes wl_surface a click-through layer surface on output, nothing
 /// is committed yet
 pub(super) fn create_layer(
     globals: &Globals<'_>,
@@ -47,6 +48,18 @@ pub(super) fn create_layer(
         placement.layer, placement.anchors, placement.margins, placement.width, placement.height
     );
     layer
+}
+
+impl OutputSurface {
+    pub(super) fn commit_placement(&mut self) {
+        place(&self.layer, &self.placement);
+        self.layer.commit();
+        let data = SyncData {
+            surface: self.layer.wl_surface().id(),
+        };
+        self.display.sync(&self.queue, data);
+        self.syncs += 1;
+    }
 }
 
 /// sends the layer state, which an unmap resets

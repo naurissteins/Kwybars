@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use smithay_client_toolkit::compositor::CompositorState;
 use smithay_client_toolkit::reexports::client::protocol::{
-    wl_output::WlOutput, wl_shm, wl_surface::WlSurface,
+    wl_display::WlDisplay, wl_output::WlOutput, wl_shm, wl_surface::WlSurface,
 };
 use smithay_client_toolkit::reexports::client::{Proxy, QueueHandle, backend::ObjectId};
 use smithay_client_toolkit::reexports::protocols::wp::fractional_scale::v1::client::{
@@ -47,6 +47,7 @@ pub struct Globals<'a> {
     pub layer_shell: &'a LayerShell,
     pub viewporter: Option<&'a WpViewporter>,
     pub fractional: Option<&'a WpFractionalScaleManagerV1>,
+    pub display: &'a WlDisplay,
     /// the shm format buffers use
     pub format: wl_shm::Format,
 }
@@ -77,6 +78,11 @@ pub struct OutputSurface {
     fade: Fade,
     /// committed since creation or the last unmap, so mapped or about to be
     shown: bool,
+    display: WlDisplay,
+    queue: QueueHandle<Wayland>,
+    /// syncs sent after a layer-state commit and not yet done; a configure
+    /// answering that commit may still be on its way until they are
+    syncs: u32,
 }
 
 impl OutputSurface {
@@ -125,6 +131,9 @@ impl OutputSurface {
                 Duration::from_millis(config.overlay.fade_out_ms),
             ),
             shown: false,
+            display: globals.display.clone(),
+            queue: qh.clone(),
+            syncs: 0,
             config,
         }
     }
@@ -157,6 +166,10 @@ impl OutputSurface {
 
     /// the compositor sent a size; the next render redraws when it changed
     pub fn configure(&mut self, size: (u32, u32)) {
+        // answers a commit from before the last unmap
+        if !self.shown {
+            return;
+        }
         debug!("{}: configured {}x{}", self.label, size.0, size.1);
         if self.configured != Some(size) {
             self.configured = Some(size);
@@ -180,6 +193,11 @@ impl OutputSurface {
         }
         self.scale = scale;
         self.drawn = None;
+    }
+
+    /// a sync sent after a layer-state commit came back
+    pub fn synced(&mut self) {
+        self.syncs = self.syncs.saturating_sub(1);
     }
 
     /// the frame callback requested with the last commit arrived

@@ -6,7 +6,6 @@ use smithay_client_toolkit::shell::WaylandSurface;
 use tracing::debug;
 
 use super::OutputSurface;
-use super::layer::place;
 use crate::render::Painter;
 
 impl OutputSurface {
@@ -14,13 +13,14 @@ impl OutputSurface {
         self.fade.set_visible(active, now);
         if active && !self.shown {
             self.map();
-        } else if !active && self.shown && self.fade.opacity(now) <= 0.0 {
+        } else if !active && self.shown && self.syncs == 0 && self.fade.opacity(now) <= 0.0 {
             self.unmap();
         }
     }
 
     pub fn hide_deadline(&self) -> Option<Instant> {
-        if self.shown && !self.fade.is_visible() {
+        // with syncs out, their done renders again
+        if self.shown && self.syncs == 0 && !self.fade.is_visible() {
             self.fade.end()
         } else {
             None
@@ -43,8 +43,7 @@ impl OutputSurface {
     }
 
     fn map(&mut self) {
-        place(&self.layer, &self.placement);
-        self.layer.commit();
+        self.commit_placement();
         self.shown = true;
         debug!("{}: showing", self.label);
     }
