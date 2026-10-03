@@ -142,7 +142,7 @@ impl App {
     }
 
     fn watch_deadline(&mut self) {
-        let deadlines = [self.activity.deadline(), self.wayland.hide_deadline()];
+        let deadlines = [self.activity.deadline(), self.wayland.deadline()];
         let Some(deadline) = deadlines.into_iter().flatten().min() else {
             return;
         };

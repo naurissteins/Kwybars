@@ -161,10 +161,10 @@ impl Wayland {
         presence
     }
 
-    pub fn hide_deadline(&self) -> Option<Instant> {
+    pub fn deadline(&self) -> Option<Instant> {
         self.surfaces
             .iter()
-            .filter_map(OutputSurface::hide_deadline)
+            .filter_map(OutputSurface::deadline)
             .min()
     }
 
