@@ -1,7 +1,8 @@
 use std::os::unix::fs::symlink;
+use std::sync::Arc;
 
 use super::TempDir;
-use crate::config::{Config, Loaded, Rgba, Source, ThemeOrigin, load};
+use crate::config::{Config, Loaded, Rgba, Source, ThemeOrigin, load, load_reusing};
 use crate::xdg::fake_env;
 
 const RED: &str = "color_rgba = \"rgba(255, 0, 0, 1)\"\n";
@@ -183,4 +184,47 @@ fn the_overlay_image_is_decoded_and_a_broken_one_is_a_warning() {
         "[image_overlay]\nenabled = false\npath = \"art.png\"\n",
     );
     assert!(load_ok(&off).image.is_none());
+}
+
+#[test]
+fn an_unchanged_image_file_is_not_decoded_again() {
+    let dir = TempDir::new("load-image-reuse");
+    let file = dir.path().join("art.png");
+    let save = |width: u32| {
+        let saved = image::RgbaImage::from_pixel(width, 3, image::Rgba([1, 2, 3, 255])).save(&file);
+        assert!(saved.is_ok(), "{saved:?}");
+    };
+    save(4);
+    let path = dir.write(
+        "config.toml",
+        "[image_overlay]\nenabled = true\npath = \"art.png\"\n",
+    );
+    let reload = |known: &Loaded| {
+        let known: Vec<_> = known.image.iter().cloned().collect();
+        load_reusing(&path, &fake_env(&[]), &known).unwrap_or_else(|err| panic!("{err}"))
+    };
+    let source = |loaded: &Loaded| match loaded.image.as_ref().map(|image| &image.source) {
+        Some(Ok(source)) => Arc::clone(source),
+        other => panic!("no image: {other:?}"),
+    };
+    let first = load_ok(&path);
+    let again = reload(&first);
+    assert!(Arc::ptr_eq(&source(&first), &source(&again)));
+
+    // rewritten in place, then replaced by a rename: decoded again
+    save(5);
+    let rewritten = reload(&again);
+    assert_eq!(source(&rewritten).size(), (5, 3));
+    let other = dir.path().join("other.png");
+    let saved = image::RgbaImage::from_pixel(6, 3, image::Rgba([1, 2, 3, 255])).save(&other);
+    assert!(saved.is_ok() && std::fs::rename(&other, &file).is_ok());
+    let replaced = reload(&rewritten);
+    assert_eq!(source(&replaced).size(), (6, 3));
+
+    // broken file that stays broken still reports why
+    dir.write("art.png", "not an image");
+    let broken = reload(&replaced);
+    let still = reload(&broken);
+    assert!(still.image.is_some_and(|image| image.source.is_err()));
+    assert_eq!(still.problems.len(), 1, "{:?}", still.problems);
 }

@@ -136,6 +136,7 @@ fn image_line(
         Some(LoadedImage {
             path,
             source: Ok(source),
+            ..
         }) => {
             let (width, height) = source.size();
             report.line(format!(
