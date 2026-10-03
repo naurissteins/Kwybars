@@ -8,7 +8,8 @@ use crate::config::Config;
 const GRAVITY: f32 = 9.0;
 const GAIN_FALL_PER_SECOND: f32 = 1.2;
 const GAIN_RISE_PER_SECOND: f32 = 0.08;
-const GAIN_WARMUP_PER_SECOND: f32 = 3.0;
+const GAIN_WARMUP_PER_SECOND: f32 = 15.0;
+const GAIN_START: f32 = 50.0;
 const GAIN_RANGE: (f32, f32) = (0.01, 5_000.0);
 const SMOOTHING_RATE_HZ: f32 = 60.0;
 
@@ -59,7 +60,7 @@ impl Dynamics {
             fall_from: vec![0.0; bars],
             fall_time: vec![0.0; bars],
             heights: vec![0.0; bars],
-            gain: 1.0,
+            gain: GAIN_START,
             warming_up: config.auto_sensitivity,
             config,
         }
@@ -77,6 +78,7 @@ impl Dynamics {
         let keep = self.config.smoothing.powf(dt * SMOOTHING_RATE_HZ);
         let gain = self.effective_gain();
         let mut loudest = 0.0_f32;
+        let mut peak = 0.0_f32;
 
         for index in 0..self.heights.len() {
             let target = raw
@@ -84,6 +86,7 @@ impl Dynamics {
                 .map_or(0.0, |value| value * gain);
             // a nan or infinite target would stay in the smoothed state for good
             let target = if target.is_finite() { target } else { 0.0 };
+            peak = peak.max(target);
             let Some(smoothed) = self.smoothed.get_mut(index) else {
                 continue;
             };
@@ -97,7 +100,7 @@ impl Dynamics {
         }
 
         if raw.is_some() && self.config.auto_sensitivity {
-            self.adapt_gain(loudest, dt);
+            self.adapt_gain(loudest, peak, dt);
         }
         &self.heights
     }
@@ -138,7 +141,10 @@ impl Dynamics {
         (*from - GRAVITY * *time * *time).max(target)
     }
 
-    fn adapt_gain(&mut self, loudest: f32, dt: f32) {
+    fn adapt_gain(&mut self, loudest: f32, peak: f32, dt: f32) {
+        if peak > 1.0 {
+            self.warming_up = false;
+        }
         let rate = if loudest > 1.0 {
             self.warming_up = false;
             -GAIN_FALL_PER_SECOND
