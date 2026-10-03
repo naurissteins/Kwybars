@@ -13,7 +13,7 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 inotify = { version = "0.11.5", default-features = false }
 lexopt = "0.3"
 pipewire = "0.10"
-realfft = "3.5"
+realfft = { version = "3.5", default-features = false, features = ["avx", "neon"] }
 serde = { version = "1", features = ["derive"] }
 serde_ignored = "0.1"
 smithay-client-toolkit = { version = "0.21", default-features = false, features = ["calloop"] }
