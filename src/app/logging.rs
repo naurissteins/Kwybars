@@ -19,6 +19,7 @@ use crate::xdg;
 
 /// environment variable naming an explicit log file
 const LOG_FILE_ENV: &str = "KWYBARS_LOG_FILE";
+const MAX_LOG_BYTES: u64 = 1024 * 1024;
 
 /// outcome of logging setup, reported once the subscriber is installed
 pub struct LogSetup {
@@ -129,7 +130,16 @@ fn open_log_file(path: &Path) -> io::Result<File> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
+    move_aside_if_over(path, MAX_LOG_BYTES);
     OpenOptions::new().create(true).append(true).open(path)
+}
+
+fn move_aside_if_over(path: &Path, max: u64) {
+    if fs::metadata(path).is_ok_and(|meta| meta.is_file() && meta.len() > max) {
+        let mut old = path.as_os_str().to_owned();
+        old.push(".old");
+        let _ = fs::rename(path, old);
+    }
 }
 
 #[cfg(test)]
@@ -138,8 +148,24 @@ mod tests {
 
     use tracing::Level;
 
-    use super::{filter_from_env, log_file_path};
+    use super::{filter_from_env, log_file_path, move_aside_if_over};
+    use crate::config::tests::TempDir;
     use crate::xdg::fake_env;
+
+    #[test]
+    fn a_large_log_is_moved_aside_and_a_small_one_kept() {
+        let dir = TempDir::new("log-size");
+        let log = dir.write("kwybars.log", "0123456789");
+        move_aside_if_over(&log, 10);
+        assert!(log.exists());
+
+        dir.write("kwybars.log.old", "older");
+        dir.write("kwybars.log", "0123456789a");
+        move_aside_if_over(&log, 10);
+        assert!(!log.exists());
+        let old = std::fs::read_to_string(dir.path().join("kwybars.log.old"));
+        assert_eq!(old.ok().as_deref(), Some("0123456789a"));
+    }
 
     #[test]
     fn explicit_log_file_wins() {

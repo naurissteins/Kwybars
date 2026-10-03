@@ -150,7 +150,9 @@ Packaged user service.
 .I ~/.local/state/kwybars/kwybars.log
 Default log file when
 .B XDG_STATE_HOME
-is unset.
+is unset. A log over 1 MiB at startup is renamed to
+.I kwybars.log.old
+first.
 .SH ENVIRONMENT
 .TP
 .B KWYBARS_CONFIG
