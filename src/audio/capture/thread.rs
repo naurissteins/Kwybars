@@ -3,7 +3,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use pipewire::channel::Receiver;
 use pipewire::main_loop::MainLoopRc;
@@ -64,8 +64,13 @@ pub(super) fn run(
             Ok(session) => {
                 info!("capturing the default output through pipewire");
                 reported_unavailable = false;
-                retry = FIRST_RETRY;
+                let started = Instant::now();
                 mainloop.run();
+                // only a session that held up resets the backoff, one that
+                // fails right after connecting keeps backing off
+                if started.elapsed() >= MAX_RETRY {
+                    retry = FIRST_RETRY;
+                }
                 if session.lost() && !stop.get() {
                     warn!("lost the pipewire connection, reconnecting");
                 }

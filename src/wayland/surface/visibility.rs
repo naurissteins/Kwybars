@@ -18,13 +18,16 @@ impl OutputSurface {
         }
     }
 
-    pub fn hide_deadline(&self) -> Option<Instant> {
-        // with syncs out, their done renders again
-        if self.shown && self.syncs == 0 && !self.fade.is_visible() {
-            self.fade.end()
-        } else {
-            None
+    /// when a render is due without an event: a fade-out ends or a draw retries
+    pub fn deadline(&self) -> Option<Instant> {
+        if !self.shown {
+            return None;
         }
+        // with syncs out, their done renders again
+        let hide = (self.syncs == 0 && !self.fade.is_visible())
+            .then(|| self.fade.end())
+            .flatten();
+        hide.into_iter().chain(self.retry_at).min()
     }
 
     /// mapped, or asked to be
@@ -57,6 +60,7 @@ impl OutputSurface {
         self.applied = None;
         self.drawn = None;
         self.frame_pending = false;
+        self.retry_at = None;
         self.ring.release();
         self.painter = None;
         debug!("{}: hidden, buffers released", self.label);

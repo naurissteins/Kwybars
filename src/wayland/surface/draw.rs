@@ -1,5 +1,7 @@
 //! showing frames: pacing by frame callbacks, patching buffers, damage
 
+use std::time::{Duration, Instant};
+
 use smithay_client_toolkit::compositor::FrameCallbackData;
 use smithay_client_toolkit::reexports::client::QueueHandle;
 use smithay_client_toolkit::reexports::client::protocol::wl_surface::WlSurface;
@@ -14,6 +16,9 @@ use crate::render::{Canvas, Frame, Painter};
 use crate::wayland::Wayland;
 use crate::wayland::scale::Scale;
 
+/// wait before drawing again after shared memory could not be had
+const DRAW_RETRY: Duration = Duration::from_secs(1);
+
 impl OutputSurface {
     pub fn render(&mut self, frame: &Frame<'_>, shm: &Shm, qh: &QueueHandle<Wayland>) -> bool {
         if !self.shown {
@@ -25,6 +30,12 @@ impl OutputSurface {
         };
         if self.frame_pending {
             return false;
+        }
+        if let Some(at) = self.retry_at {
+            if Instant::now() < at {
+                return false;
+            }
+            self.retry_at = None;
         }
         if self.drawn == Some(frame.generation) || !self.layout(frame, size, shm) {
             self.drawn = Some(frame.generation);
@@ -56,6 +67,9 @@ impl OutputSurface {
                     warn!("could not draw the overlay on {}: {err}", self.label);
                     self.failed = true;
                 }
+                // no frame callback comes for a surface without a buffer, so a timer retries
+                self.drawn = None;
+                self.retry_at = Some(Instant::now() + DRAW_RETRY);
                 false
             }
         }

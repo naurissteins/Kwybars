@@ -7,7 +7,7 @@ mod layer;
 mod settings;
 mod visibility;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use smithay_client_toolkit::compositor::CompositorState;
 use smithay_client_toolkit::reexports::client::protocol::{
@@ -73,6 +73,8 @@ pub struct OutputSurface {
     frame_pending: bool,
     drawn: Option<u64>,
     failed: bool,
+    /// when to draw again after a failed draw, taken by the attempt
+    retry_at: Option<Instant>,
 
     image: ImageSlot,
     fade: Fade,
@@ -125,6 +127,7 @@ impl OutputSurface {
             frame_pending: false,
             drawn: None,
             failed: false,
+            retry_at: None,
             image: ImageSlot::default(),
             fade: Fade::new(
                 Duration::from_millis(config.overlay.fade_in_ms),
