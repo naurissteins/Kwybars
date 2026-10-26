@@ -285,7 +285,7 @@ fn output_without_monitor_is_an_error() {
 #[test]
 fn bar_order_takes_its_three_spellings() {
     let order = |raw: &str| parse_ok(raw).config.visualizer.bar_order;
-    assert_eq!(order(""), BarOrder::LowToHigh);
+    assert_eq!(order(""), BarOrder::BassCenter);
     for (value, expected) in [
         ("low_to_high", BarOrder::LowToHigh),
         ("bass_center", BarOrder::BassCenter),

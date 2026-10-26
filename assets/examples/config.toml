@@ -41,7 +41,7 @@ bar_corner_radius = 20
 bars = 50
 # Where the bass is: "low_to_high" (bass first, treble last), "bass_center"
 # (bass in the middle, treble towards both ends), or "bass_edges".
-bar_order = "low_to_high"
+bar_order = "bass_center"
 bar_width = 8
 gap = 20
 framerate = 60

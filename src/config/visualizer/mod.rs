@@ -80,7 +80,7 @@ impl Default for VisualizerConfig {
             frame_edges: default_frame_edges(),
             frame_mirror_mode: FrameMirrorMode::Pairs,
             bars: 50,
-            bar_order: BarOrder::LowToHigh,
+            bar_order: BarOrder::BassCenter,
             bar_width: 8,
             bar_corner_radius: 20.0,
             segmented_bars: false,
