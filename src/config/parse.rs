@@ -11,6 +11,7 @@ use super::audio::AudioConfig;
 use super::compat;
 use super::image::ImageOverlayConfig;
 use super::overlay::{self, OutputSection, OverlayTable};
+use super::theme::ThemeChoice;
 use super::visualizer::{VisualizerConfig, VisualizerOverrides};
 
 /// a parsed config plus warnings about keys that were ignored or fixed
@@ -29,11 +30,11 @@ pub enum ParseError {
     Invalid(String),
 }
 
-/// the file layout; root `theme` keys are a shorthand for `[visualizer]`
+/// the file layout; root `theme` keys and `[theme]` are a shorthand for `[visualizer]`
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 struct ConfigFile {
-    theme: Option<String>,
+    theme: Option<ThemeChoice>,
     theme_opacity: Option<f32>,
     overlay: OverlayTable,
     output: BTreeMap<String, OutputSection>,
@@ -80,6 +81,8 @@ fn build(file: ConfigFile, warnings: &mut Vec<String>) -> Result<Config, ParseEr
     // [visualizer] wins over the root shorthand
     if overrides.theme.is_none() {
         overrides.theme = theme;
+    } else if theme.is_some() {
+        warnings.push("theme: also set in [visualizer], which wins; remove one of them".to_owned());
     }
     if overrides.theme_opacity.is_none() {
         overrides.theme_opacity = theme_opacity;

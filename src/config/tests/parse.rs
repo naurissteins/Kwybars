@@ -1,8 +1,13 @@
 use super::{assert_close, parse_err, parse_ok};
 use crate::config::{
     BarOrder, ColorMode, Config, Edge, FrameMirrorMode, GradientDirection, HorizontalAlignment,
-    ImageFit, Layer, Layout, LineMode, MirrorOrientation, Rgba, ShowOn, VerticalAlignment,
+    ImageFit, Layer, Layout, LineMode, MirrorOrientation, Rgba, ShowOn, Theme, ThemeChoice,
+    VerticalAlignment,
 };
+
+fn named(name: &str) -> Option<ThemeChoice> {
+    Some(ThemeChoice::Named(name.to_owned()))
+}
 
 const FULL: &str = r#"
 [overlay]
@@ -189,7 +194,7 @@ fn parses_every_section() {
     assert_eq!(v.gradient_direction, GradientDirection::Horizontal);
     assert_eq!(v.color_rgba, Rgba::new(1.0, 1.0, 1.0, 0.5));
     assert_eq!(v.color2_rgba, Rgba::new(1.0, 0.0, 0.0, 1.0));
-    assert_eq!(v.theme.as_deref(), Some("catppuccin-mocha"));
+    assert_eq!(v.theme, named("catppuccin-mocha"));
     assert_close(v.theme_opacity, 0.8);
 
     let image = &parsed.config.image_overlay;
@@ -327,11 +332,60 @@ fn legacy_frame_mirror_alias() {
 #[test]
 fn root_theme_keys_are_a_shorthand() {
     let parsed = parse_ok("theme = \"nord\"\ntheme_opacity = 0.7\n[overlay]\n");
-    assert_eq!(parsed.config.visualizer.theme.as_deref(), Some("nord"));
+    assert_eq!(parsed.config.visualizer.theme, named("nord"));
     assert_close(parsed.config.visualizer.theme_opacity, 0.7);
 
     let parsed = parse_ok("theme = \"nord\"\n[visualizer]\ntheme = \"dracula\"\n");
-    assert_eq!(parsed.config.visualizer.theme.as_deref(), Some("dracula"));
+    assert_eq!(parsed.config.visualizer.theme, named("dracula"));
+    assert_eq!(parsed.warnings.len(), 1, "{:?}", parsed.warnings);
+}
+
+const PALETTE: &str = "red = \"#ff0000\"\ngreen = \"#00ff00\"\nyellow = \"#ffff00\"\nblue = \"#0000ff\"\nmagenta = \"#ff00ff\"\ncyan = \"#00ffff80\"\n";
+
+fn inline(name: &str) -> Option<ThemeChoice> {
+    let [off, on, half] = [0.0, 1.0, 128.0 / 255.0];
+    Some(ThemeChoice::Inline(Theme {
+        name: name.to_owned(),
+        colors: [
+            Rgba::new(on, off, off, on),
+            Rgba::new(off, on, off, on),
+            Rgba::new(on, on, off, on),
+            Rgba::new(off, off, on, on),
+            Rgba::new(on, off, on, on),
+            Rgba::new(off, on, on, half),
+        ],
+    }))
+}
+
+#[test]
+fn themes_can_be_written_inline() {
+    for raw in [
+        format!("[visualizer.theme]\n{PALETTE}"),
+        format!("[theme]\n{PALETTE}"),
+        format!(
+            "[visualizer]\ntheme = {{ {} }}\n",
+            PALETTE.trim().replace('\n', ", ")
+        ),
+    ] {
+        let parsed = parse_ok(&raw);
+        assert_eq!(parsed.config.visualizer.theme, inline("inline"), "{raw}");
+        assert!(parsed.warnings.is_empty(), "{:?}", parsed.warnings);
+    }
+
+    let parsed = parse_ok(&format!("[theme]\nname = \"mine\"\n{PALETTE}"));
+    assert_eq!(parsed.config.visualizer.theme, inline("mine"));
+}
+
+#[test]
+fn inline_theme_errors_name_the_key() {
+    let missing = parse_err(&format!("[theme]\n{}", PALETTE.replace("cyan", "cyna")));
+    assert!(missing.contains("missing field `cyan`"), "{missing}");
+
+    let bad = parse_err(&format!("[theme]\n{}", PALETTE.replace("#0000ff", "blue")));
+    assert!(bad.contains("line 5") && bad.contains("#rrggbb"), "{bad}");
+
+    let parsed = parse_ok(&format!("[theme]\nwhite = \"#ffffff\"\n{PALETTE}"));
+    assert_eq!(parsed.warnings, vec!["theme.white: unknown key, ignored"]);
 }
 
 #[test]

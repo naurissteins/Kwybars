@@ -5,6 +5,7 @@ mod overrides;
 pub use overrides::VisualizerOverrides;
 
 use super::color::Rgba;
+use super::theme::ThemeChoice;
 use super::types::{
     BarOrder, ColorMode, Edge, FrameMirrorMode, GradientDirection, Layout, LineMode,
     MirrorOrientation,
@@ -53,8 +54,7 @@ pub struct VisualizerConfig {
     pub gradient_direction: GradientDirection,
     pub color_rgba: Rgba,
     pub color2_rgba: Rgba,
-    /// theme name, resolved against user and built-in themes
-    pub theme: Option<String>,
+    pub theme: Option<ThemeChoice>,
     pub theme_opacity: f32,
 }
 

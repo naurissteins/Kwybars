@@ -1,6 +1,7 @@
 //! theme palettes: six colors that replace the direct bar colors
 
 mod builtin;
+mod choice;
 mod list;
 mod lookup;
 
@@ -8,6 +9,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+pub use choice::ThemeChoice;
 pub use list::{AvailableTheme, available};
 pub use lookup::search_dirs;
 
@@ -29,6 +31,8 @@ pub struct Theme {
 pub enum ThemeOrigin {
     File(PathBuf),
     BuiltIn,
+    /// written in the config itself
+    Inline,
 }
 
 /// a theme plus where it came from

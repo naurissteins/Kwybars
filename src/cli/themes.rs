@@ -21,6 +21,7 @@ pub fn report(options: &RunOptions, env: &dyn Fn(&str) -> Option<OsString>) -> R
         report.line(match theme.origin {
             ThemeOrigin::File(path) => format!("- {} ({})", theme.name, path.display()),
             ThemeOrigin::BuiltIn => format!("- {} (built-in)", theme.name),
+            ThemeOrigin::Inline => format!("- {} (inline)", theme.name),
         });
     }
     report

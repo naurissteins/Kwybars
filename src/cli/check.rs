@@ -95,6 +95,7 @@ fn theme(report: &mut Report, loaded: &Loaded) {
         (Some(_), Some(found)) => report.line(match &found.origin {
             ThemeOrigin::File(path) => format!("theme: {} ({})", found.theme.name, path.display()),
             ThemeOrigin::BuiltIn => format!("theme: {} (built-in)", found.theme.name),
+            ThemeOrigin::Inline => format!("theme: {} (inline)", found.theme.name),
         }),
         (Some(_), None) => {}
     }

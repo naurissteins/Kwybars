@@ -5,6 +5,7 @@ use serde::Deserialize;
 use super::{MAX_BARS, VisualizerConfig, default_frame_edges};
 use crate::config::bounds::Bounds;
 use crate::config::color::Rgba;
+use crate::config::theme::ThemeChoice;
 use crate::config::types::{
     BarOrder, ColorMode, Edge, FrameMirrorMode, GradientDirection, Layout, LineMode,
     MirrorOrientation,
@@ -52,7 +53,7 @@ pub struct VisualizerOverrides {
     pub gradient_direction: Option<GradientDirection>,
     pub color_rgba: Option<Rgba>,
     pub color2_rgba: Option<Rgba>,
-    pub theme: Option<String>,
+    pub theme: Option<ThemeChoice>,
     pub theme_opacity: Option<f32>,
 }
 
@@ -163,12 +164,10 @@ impl VisualizerOverrides {
             };
         }
 
-        self.theme = self
-            .theme
-            .as_deref()
-            .map(str::trim)
-            .filter(|name| !name.is_empty())
-            .map(str::to_owned);
+        if let Some(ThemeChoice::Named(name)) = &self.theme {
+            let name = name.trim();
+            self.theme = (!name.is_empty()).then(|| ThemeChoice::Named(name.to_owned()));
+        }
     }
 
     /// drops keys that only make sense for the whole visualizer
