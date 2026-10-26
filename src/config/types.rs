@@ -119,9 +119,9 @@ pub enum Layout {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BarOrder {
-    #[default]
     LowToHigh,
     /// bass in the middle, treble towards both ends
+    #[default]
     BassCenter,
     /// bass at both ends, treble in the middle
     BassEdges,
