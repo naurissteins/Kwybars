@@ -3,3 +3,4 @@ scripts/measure
 .idea
 .vscode
 **/*.rs.bk
+.direnv
