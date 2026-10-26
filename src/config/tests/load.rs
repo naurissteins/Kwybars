@@ -108,6 +108,21 @@ fn themes_load_from_the_config_dir_or_builtin() {
 }
 
 #[test]
+fn inline_themes_skip_the_lookup() {
+    let dir = TempDir::new("load-inline-theme");
+    let path = dir.write(
+        "config.toml",
+        "[theme]\nred = \"#000000\"\ngreen = \"#000000\"\nyellow = \"#000000\"\nblue = \"#000000\"\nmagenta = \"#000000\"\ncyan = \"#000000\"\n",
+    );
+    let loaded = load_ok(&path);
+    assert!(loaded.theme_candidates.is_empty() && loaded.problems.is_empty());
+    assert_eq!(
+        loaded.theme.map(|theme| theme.origin),
+        Some(ThemeOrigin::Inline)
+    );
+}
+
+#[test]
 fn missing_theme_is_a_warning() {
     let dir = TempDir::new("load-no-theme");
     let path = dir.write("config.toml", "theme = \"nope\"\n");

@@ -34,7 +34,9 @@ pub use overlay::{OutputConfig, OverlayConfig, PlacementOverrides};
 pub use parse::{ParseError, Parsed, parse};
 pub use path::{ConfigPathError, default_path, env_path};
 pub use resolve::{OverlaySettings, SurfaceConfig};
-pub use theme::{AvailableTheme, LoadedTheme, THEME_KEYS, Theme, ThemeError, ThemeOrigin};
+pub use theme::{
+    AvailableTheme, LoadedTheme, THEME_KEYS, Theme, ThemeChoice, ThemeError, ThemeOrigin,
+};
 pub use types::{
     BarOrder, ColorMode, Edge, FrameMirrorMode, GradientDirection, HorizontalAlignment, ImageFit,
     Layer, Layout, LineMode, MirrorOrientation, ShowOn, VerticalAlignment,

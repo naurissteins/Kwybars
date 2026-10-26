@@ -238,6 +238,7 @@ fn load_config(config_path: &Path) -> Result<config::Loaded, AppError> {
             config::ThemeOrigin::BuiltIn => {
                 info!("theme: {} (built-in)", loaded_theme.theme.name);
             }
+            config::ThemeOrigin::Inline => info!("theme: {} (inline)", loaded_theme.theme.name),
         }
     }
     Ok(loaded)

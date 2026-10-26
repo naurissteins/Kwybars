@@ -10,7 +10,7 @@ use std::sync::Arc;
 use super::colors;
 use super::error::ConfigError;
 use super::parse::{ParseError, parse};
-use super::theme::{self, AvailableTheme, LoadedTheme};
+use super::theme::{self, AvailableTheme, LoadedTheme, ThemeChoice, ThemeOrigin};
 use super::{Config, ImageOverlayConfig};
 use crate::render::image;
 
@@ -138,13 +138,20 @@ pub fn load_reusing(
     let colors_path = apply_colors(&mut config, path, canonical, &mut problems);
 
     let mut theme_candidates = Vec::new();
-    let theme = config.visualizer.theme.as_deref().and_then(|name| {
-        let dirs = theme::search_dirs(path, canonical, env);
-        theme_candidates = theme::candidates(name, &dirs);
-        theme::load(name, &dirs)
-            .inspect_err(|err| problems.push(format!("{err}, using the configured colors")))
-            .ok()
-    });
+    let theme = match &config.visualizer.theme {
+        None => None,
+        Some(ThemeChoice::Inline(theme)) => Some(LoadedTheme {
+            theme: theme.clone(),
+            origin: ThemeOrigin::Inline,
+        }),
+        Some(ThemeChoice::Named(name)) => {
+            let dirs = theme::search_dirs(path, canonical, env);
+            theme_candidates = theme::candidates(name, &dirs);
+            theme::load(name, &dirs)
+                .inspect_err(|err| problems.push(format!("{err}, using the configured colors")))
+                .ok()
+        }
+    };
 
     // each file is decoded once, however many outputs show it
     let mut opened: Vec<LoadedImage> = Vec::new();
