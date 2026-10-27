@@ -7,15 +7,13 @@
 ![AUR Version](https://img.shields.io/aur/version/kwybars-bin?style=for-the-badge&labelColor=181825&color=b4befe)
 ![GitHub Repo stars](https://img.shields.io/github/stars/naurissteins/kwybars?style=for-the-badge&labelColor=181825&color=f9e2af)
 
+Kwybars is a light desktop audio visualizer for GNU/Linux (Wayland) that renders real-time audio bars on your screen
 </div>
 
-Kwybars is a light desktop audio visualizer for GNU/Linux (Wayland) that renders real-time audio bars on your screen.
-
-Think of it like `cava`... but instead of living in the terminal, it becomes a transparent overlay on your desktop. Place visualizer on any screen edge: top, bottom, left, right or center and watch your music bounce in real time. Kwybars is highly customizable with multiple layouts, segmented bars, gradients, themes, and extensive configuration options.
-
-It is a single small binary that reads audio straight from PipeWire. It shows up when something plays, hides when it stops, and does nothing at all in between.
-
 https://github.com/user-attachments/assets/5fe84372-86be-49a8-b9c0-6564e81f1eaa
+
+> [!IMPORTANT]
+> Major changes! `kwybars-daemon`, `kwybars-overlay` and `kwybarsctl` are now the single `kwybars` command. `CAVA` and `GTK` are no longer needed. Existing configs keep working. See the upgrade page in [documentation](https://naurissteins.com/kwybars)
 
 ## 🔥 Features
 
@@ -46,11 +44,6 @@ https://github.com/user-attachments/assets/5fe84372-86be-49a8-b9c0-6564e81f1eaa
   
 </div>
 
-## Requirements
-
--   A Wayland compositor with layer-shell support (Hyprland, Sway, niri, river, KDE Plasma, ...)
--   PipeWire
-
 ## Installation
 ### AUR (Arch Linux)
 
@@ -75,7 +68,7 @@ exec-once = uwsm app -- kwybars
 exec-once = kwybars
 ```
 
-If you prefer a `systemd` user service:
+If you prefer a `systemd` user service (recommended):
 ```bash
 systemctl --user enable --now kwybars.service
 ```
@@ -145,17 +138,3 @@ nix build github:naurissteins/Kwybars
 # or run the flake app directly
 nix run github:naurissteins/Kwybars
 ```
-
-### Other distributions
-
-Debian/Ubuntu and Fedora packages, and building from source, are covered in the [documentation](https://naurissteins.com/kwybars).
-
-## Upgrading from 0.2
-
-`kwybars-daemon`, `kwybars-overlay`, and `kwybarsctl` are now the single `kwybars` command, and Cava and GTK are no longer needed. Existing configs keep working. See the upgrade page in the [documentation](https://naurissteins.com/kwybars).
-
-## Docs
-
-Full installation, configuration, preset configs and usage docs:
-
-https://naurissteins.com/kwybars
