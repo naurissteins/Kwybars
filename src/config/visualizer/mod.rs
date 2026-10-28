@@ -7,7 +7,7 @@ pub use overrides::VisualizerOverrides;
 use super::color::Rgba;
 use super::theme::ThemeChoice;
 use super::types::{
-    BarOrder, ColorMode, Edge, FrameMirrorMode, GradientDirection, Layout, LineMode,
+    BarOrder, ColorMode, Edge, FrameMirrorMode, GradientDirection, GrowFrom, Layout, LineMode,
     MirrorOrientation,
 };
 
@@ -18,6 +18,7 @@ pub const MAX_BARS: usize = 1024;
 #[derive(Debug, Clone, PartialEq)]
 pub struct VisualizerConfig {
     pub layout: Layout,
+    pub grow_from: GrowFrom,
     pub line_mode: LineMode,
     pub line_split_gap: u32,
     pub mirror_orientation: MirrorOrientation,
@@ -67,6 +68,7 @@ impl Default for VisualizerConfig {
     fn default() -> Self {
         Self {
             layout: Layout::Line,
+            grow_from: GrowFrom::Edge,
             line_mode: LineMode::Continuous,
             line_split_gap: 200,
             mirror_orientation: MirrorOrientation::Horizontal,

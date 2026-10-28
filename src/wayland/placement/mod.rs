@@ -3,7 +3,9 @@
 #[cfg(test)]
 mod tests;
 
-use crate::config::{Edge, HorizontalAlignment, Layer, Layout, OverlaySettings, VerticalAlignment};
+use crate::config::{
+    Edge, ExclusiveZone, HorizontalAlignment, Layer, Layout, OverlaySettings, VerticalAlignment,
+};
 
 /// screen edges a surface is attached to
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -27,6 +29,7 @@ pub struct Margins {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Placement {
     pub layer: Layer,
+    pub exclusive_zone: ExclusiveZone,
     pub anchors: Anchors,
     pub margins: Margins,
     /// logical width; 0 stretches between the left and right anchors
@@ -57,6 +60,7 @@ impl Placement {
             };
             return Self {
                 layer: overlay.layer,
+                exclusive_zone: overlay.exclusive_zone,
                 anchors,
                 margins,
                 width: 0,
@@ -116,6 +120,7 @@ impl Placement {
         };
         Self {
             layer: overlay.layer,
+            exclusive_zone: overlay.exclusive_zone,
             anchors,
             margins,
             width,

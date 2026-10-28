@@ -38,8 +38,9 @@ pub use theme::{
     AvailableTheme, LoadedTheme, THEME_KEYS, Theme, ThemeChoice, ThemeError, ThemeOrigin,
 };
 pub use types::{
-    BarOrder, ColorMode, Edge, FrameMirrorMode, GradientDirection, HorizontalAlignment, ImageFit,
-    Layer, Layout, LineMode, MirrorOrientation, ShowOn, VerticalAlignment,
+    BarOrder, ColorMode, Edge, ExclusiveZone, FrameMirrorMode, GradientDirection, GrowFrom,
+    HorizontalAlignment, ImageFit, Layer, Layout, LineMode, MirrorOrientation, ShowOn,
+    VerticalAlignment,
 };
 pub use visualizer::{VisualizerConfig, VisualizerOverrides, default_frame_edges};
 

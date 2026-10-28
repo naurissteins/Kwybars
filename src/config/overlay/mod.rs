@@ -6,7 +6,7 @@ mod table;
 use serde::Deserialize;
 
 use super::image::ImageOverlayOverrides;
-use super::types::{Edge, HorizontalAlignment, Layer, ShowOn, VerticalAlignment};
+use super::types::{Edge, ExclusiveZone, HorizontalAlignment, Layer, ShowOn, VerticalAlignment};
 use super::visualizer::VisualizerOverrides;
 
 pub(super) use section::OutputSection;
@@ -17,6 +17,7 @@ pub(super) use table::{OverlayTable, resolve};
 pub struct OverlayConfig {
     pub position: Edge,
     pub layer: Layer,
+    pub exclusive_zone: ExclusiveZone,
     pub anchor_margin: u32,
     pub margin_left: u32,
     pub margin_right: u32,
@@ -39,6 +40,7 @@ impl Default for OverlayConfig {
         Self {
             position: Edge::Bottom,
             layer: Layer::Background,
+            exclusive_zone: ExclusiveZone::Respect,
             anchor_margin: 20,
             margin_left: 20,
             margin_right: 20,
@@ -86,6 +88,7 @@ impl Default for OutputConfig {
 pub struct PlacementOverrides {
     pub position: Option<Edge>,
     pub layer: Option<Layer>,
+    pub exclusive_zone: Option<ExclusiveZone>,
     pub anchor_margin: Option<u32>,
     pub margin_left: Option<u32>,
     pub margin_right: Option<u32>,

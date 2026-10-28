@@ -7,7 +7,8 @@ use serde::de::{self, Deserializer, MapAccess, Visitor};
 
 use super::{OutputConfig, OutputSection, OverlayConfig};
 use crate::config::types::{
-    Edge, HorizontalAlignment, Layer, MonitorMode, ShowOn, VerticalAlignment, clean_names,
+    Edge, ExclusiveZone, HorizontalAlignment, Layer, MonitorMode, ShowOn, VerticalAlignment,
+    clean_names,
 };
 
 /// the [overlay] table, None keeps the default
@@ -16,6 +17,7 @@ use crate::config::types::{
 pub struct OverlayTable {
     position: Option<Edge>,
     layer: Option<Layer>,
+    exclusive_zone: Option<ExclusiveZone>,
     anchor_margin: Option<u32>,
     margin_left: Option<u32>,
     margin_right: Option<u32>,
@@ -87,6 +89,7 @@ pub fn resolve(
         [
             position,
             layer,
+            exclusive_zone,
             anchor_margin,
             margin_left,
             margin_right,

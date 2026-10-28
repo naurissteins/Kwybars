@@ -26,7 +26,7 @@ pub struct WaveShape {
 impl WaveShape {
     pub fn new(config: &SurfaceConfig, size: (u32, u32), scale: f32, bars: usize) -> Self {
         let visualizer = &config.visualizer;
-        let edge = config.overlay.position;
+        let edge = config.bar_edge();
         let along_x = matches!(edge, Edge::Bottom | Edge::Top);
         let from_start = matches!(edge, Edge::Top | Edge::Left);
         let (length, depth) = if along_x {

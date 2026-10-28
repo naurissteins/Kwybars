@@ -30,7 +30,7 @@ struct Part {
 impl Geometry {
     pub fn new(config: &SurfaceConfig, size: (u32, u32), scale: f32, bars: usize) -> Self {
         let visualizer = &config.visualizer;
-        let edge = config.overlay.position;
+        let edge = config.bar_edge();
         let mut parts = Vec::new();
         let mut first = 0;
         let mut push = |shape: Shape, values: Range<usize>| {

@@ -1,5 +1,5 @@
 use super::{parse_err, parse_ok};
-use crate::config::{Edge, ImageFit, Layer, Layout, ShowOn};
+use crate::config::{Edge, ExclusiveZone, GrowFrom, ImageFit, Layer, Layout, ShowOn};
 
 fn named(names: &[&str]) -> ShowOn {
     ShowOn::Named(names.iter().map(|name| (*name).to_owned()).collect())
@@ -233,4 +233,43 @@ fn unknown_image_keys_in_a_section_are_named() {
         parsed.warnings,
         vec!["output.DP-1.image_overlay.pth: unknown key, ignored"]
     );
+}
+
+#[test]
+fn exclusive_zone_defaults_to_respect_and_outputs_can_ignore_it() {
+    let parsed = parse_ok(
+        "[overlay]\nexclusive_zone = \"ignore\"\n\
+         [output.DP-1.overlay]\nexclusive_zone = \"respect\"\n",
+    );
+    assert!(parsed.warnings.is_empty(), "{:?}", parsed.warnings);
+    let config = &parsed.config;
+    let section = config.overlay.outputs.first();
+    assert_eq!(
+        config.surface(None, None).overlay.exclusive_zone,
+        ExclusiveZone::Ignore
+    );
+    assert_eq!(
+        config.surface(section, None).overlay.exclusive_zone,
+        ExclusiveZone::Respect
+    );
+    assert_eq!(
+        parse_ok("").config.overlay.exclusive_zone,
+        ExclusiveZone::Respect
+    );
+    let bad = parse_err("[overlay]\nexclusive_zone = true\n");
+    assert!(bad.contains("exclusive_zone"), "{bad}");
+}
+
+#[test]
+fn grow_from_flips_the_bar_edge_and_can_be_set_per_output() {
+    let parsed = parse_ok(
+        "[overlay]\nposition = \"top\"\n[visualizer]\ngrow_from = \"opposite\"\n\
+         [output.DP-1.visualizer]\ngrow_from = \"edge\"\n",
+    );
+    assert!(parsed.warnings.is_empty(), "{:?}", parsed.warnings);
+    let config = &parsed.config;
+    assert_eq!(config.visualizer.grow_from, GrowFrom::Opposite);
+    assert_eq!(config.surface(None, None).bar_edge(), Edge::Bottom);
+    let section = config.overlay.outputs.first();
+    assert_eq!(config.surface(section, None).bar_edge(), Edge::Top);
 }

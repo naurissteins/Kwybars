@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use super::{BufferContents, Painter};
 use crate::config::{
-    ColorMode, Config, Edge, FrameMirrorMode, GradientDirection, Layout, LineMode,
+    ColorMode, Config, Edge, FrameMirrorMode, GradientDirection, GrowFrom, Layout, LineMode,
     MirrorOrientation, Rgba, SurfaceConfig,
 };
 use crate::render::{ByteOrder, Canvas, PixelRect};
@@ -89,6 +89,38 @@ const FRAMES: [[f32; 6]; 6] = [
     [0.7, 0.71, 0.1, 0.1, 0.49, 0.0],
     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
 ];
+
+fn fresh_paint(surface: &SurfaceConfig, heights: &[f32; 6]) -> Vec<u8> {
+    let mut painter = Painter::new(surface, 6, SIZE, 1.0, ByteOrder::Rgba);
+    painter.layout(heights, 255, Instant::now());
+    let mut data = blank();
+    paint(&painter, &mut data, &mut painter.blank_contents());
+    data
+}
+
+#[test]
+fn growing_from_the_opposite_edge_draws_as_the_opposite_position() {
+    let pairs = [(Edge::Top, Edge::Bottom), (Edge::Left, Edge::Right)];
+    for layout in [Layout::Line, Layout::Wave, Layout::Particle] {
+        for (position, opposite) in pairs.into_iter().flat_map(|(a, b)| [(a, b), (b, a)]) {
+            let flipped = config(|c| {
+                c.visualizer.layout = layout;
+                c.overlay.position = position;
+                c.visualizer.grow_from = GrowFrom::Opposite;
+            });
+            let plain = config(|c| {
+                c.visualizer.layout = layout;
+                c.overlay.position = opposite;
+            });
+            for heights in &FRAMES[..2] {
+                assert!(
+                    fresh_paint(&flipped, heights) == fresh_paint(&plain, heights),
+                    "{layout:?} at {position:?} does not grow from {opposite:?}"
+                );
+            }
+        }
+    }
+}
 
 #[test]
 fn patching_matches_a_fresh_paint_for_plain_bars() {

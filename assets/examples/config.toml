@@ -5,6 +5,8 @@
 [overlay]
 show_on = "primary"
 layer = "background"
+# "ignore" lets the bars draw on top of a status bar
+exclusive_zone = "respect"
 position = "bottom"
 full_length = true
 height = 500
@@ -37,6 +39,8 @@ fade_out_ms = 350
 
 [visualizer]
 layout = "line"
+# "opposite" grows the bars away from the screen edge, upward on a top overlay
+grow_from = "edge"
 bar_corner_radius = 20
 bars = 50
 # Where the bass is: "low_to_high" (bass first, treble last), "bass_center"
