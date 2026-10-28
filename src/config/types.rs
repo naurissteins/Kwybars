@@ -15,6 +15,27 @@ pub enum Edge {
     Right,
 }
 
+impl Edge {
+    pub fn opposite(self) -> Self {
+        match self {
+            Self::Bottom => Self::Top,
+            Self::Top => Self::Bottom,
+            Self::Left => Self::Right,
+            Self::Right => Self::Left,
+        }
+    }
+}
+
+/// which edge of the surface the bars grow from, relative to `overlay.position`
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GrowFrom {
+    #[default]
+    Edge,
+    /// the side facing away from the screen edge, as for bars inside a status bar
+    Opposite,
+}
+
 /// layer-shell layer the overlay lives on
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -22,6 +43,16 @@ pub enum Layer {
     Background,
     Bottom,
     Top,
+}
+
+/// whether the overlay keeps out of the space panels reserve
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExclusiveZone {
+    #[default]
+    Respect,
+    /// draws over panels such as a status bar
+    Ignore,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

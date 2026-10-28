@@ -1,6 +1,7 @@
 use super::{Anchors, Margins, Placement};
 use crate::config::{
-    Edge, HorizontalAlignment, Layer, Layout, OverlayConfig, OverlaySettings, VerticalAlignment,
+    Edge, ExclusiveZone, HorizontalAlignment, Layer, Layout, OverlayConfig, OverlaySettings,
+    VerticalAlignment,
 };
 
 fn defaults() -> OverlaySettings {
@@ -23,6 +24,7 @@ fn default_is_a_full_length_bar_on_the_bottom_edge() {
         placement,
         Placement {
             layer: Layer::Background,
+            exclusive_zone: ExclusiveZone::Respect,
             anchors: anchors(false, true, true, true),
             margins: Margins {
                 top: 0,
@@ -47,8 +49,10 @@ fn fixed_length_top_right() {
     overlay.horizontal_alignment = HorizontalAlignment::Right;
     overlay.margin_right = 32;
     overlay.anchor_margin = 18;
+    overlay.exclusive_zone = ExclusiveZone::Ignore;
     let placement = Placement::new(&overlay, Layout::Line);
     assert_eq!(placement.layer, Layer::Top);
+    assert_eq!(placement.exclusive_zone, ExclusiveZone::Ignore);
     assert_eq!(placement.anchors, anchors(true, false, false, true));
     assert_eq!(
         placement.margins,

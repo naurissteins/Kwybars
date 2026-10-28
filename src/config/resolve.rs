@@ -5,7 +5,7 @@ use super::color::Rgba;
 use super::image::ImageOverlayConfig;
 use super::overlay::{OutputConfig, OverlayConfig, PlacementOverrides};
 use super::theme::Theme;
-use super::types::{Edge, HorizontalAlignment, Layer, VerticalAlignment};
+use super::types::{Edge, ExclusiveZone, GrowFrom, HorizontalAlignment, Layer, VerticalAlignment};
 use super::visualizer::{VisualizerConfig, VisualizerOverrides};
 
 /// placement and fades for one surface
@@ -13,6 +13,7 @@ use super::visualizer::{VisualizerConfig, VisualizerOverrides};
 pub struct OverlaySettings {
     pub position: Edge,
     pub layer: Layer,
+    pub exclusive_zone: ExclusiveZone,
     pub anchor_margin: u32,
     pub margin_left: u32,
     pub margin_right: u32,
@@ -36,11 +37,22 @@ pub struct SurfaceConfig {
     pub theme_colors: Option<[Rgba; 6]>,
 }
 
+impl SurfaceConfig {
+    /// the edge the bars of the edge layouts grow from
+    pub fn bar_edge(&self) -> Edge {
+        match self.visualizer.grow_from {
+            GrowFrom::Edge => self.overlay.position,
+            GrowFrom::Opposite => self.overlay.position.opposite(),
+        }
+    }
+}
+
 impl From<&OverlayConfig> for OverlaySettings {
     fn from(overlay: &OverlayConfig) -> Self {
         Self {
             position: overlay.position,
             layer: overlay.layer,
+            exclusive_zone: overlay.exclusive_zone,
             anchor_margin: overlay.anchor_margin,
             margin_left: overlay.margin_left,
             margin_right: overlay.margin_right,
@@ -76,6 +88,7 @@ impl PlacementOverrides {
             [
                 position,
                 layer,
+                exclusive_zone,
                 anchor_margin,
                 margin_left,
                 margin_right,

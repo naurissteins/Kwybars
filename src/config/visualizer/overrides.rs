@@ -7,7 +7,7 @@ use crate::config::bounds::Bounds;
 use crate::config::color::Rgba;
 use crate::config::theme::ThemeChoice;
 use crate::config::types::{
-    BarOrder, ColorMode, Edge, FrameMirrorMode, GradientDirection, Layout, LineMode,
+    BarOrder, ColorMode, Edge, FrameMirrorMode, GradientDirection, GrowFrom, Layout, LineMode,
     MirrorOrientation,
 };
 
@@ -16,6 +16,7 @@ use crate::config::types::{
 #[serde(default)]
 pub struct VisualizerOverrides {
     pub layout: Option<Layout>,
+    pub grow_from: Option<GrowFrom>,
     pub line_mode: Option<LineMode>,
     pub line_split_gap: Option<u32>,
     pub mirror_orientation: Option<MirrorOrientation>,
@@ -75,6 +76,7 @@ impl VisualizerOverrides {
             target,
             [
                 layout,
+                grow_from,
                 line_mode,
                 line_split_gap,
                 mirror_orientation,

@@ -13,7 +13,7 @@ use smithay_client_toolkit::shell::WaylandSurface;
 use tracing::{info, warn};
 
 use super::{Globals, NAMESPACE, OutputSurface};
-use crate::config::Layer;
+use crate::config::{ExclusiveZone, Layer};
 use crate::wayland::Wayland;
 use crate::wayland::handlers::SyncData;
 use crate::wayland::placement::{Anchors, Placement};
@@ -68,7 +68,11 @@ pub(super) fn place(layer: &LayerSurface, placement: &Placement) {
     let margins = placement.margins;
     layer.set_margin(margins.top, margins.right, margins.bottom, margins.left);
     layer.set_size(placement.width, placement.height);
-    layer.set_exclusive_zone(0);
+    // -1 asks the compositor not to move the surface out of other panels' zones
+    layer.set_exclusive_zone(match placement.exclusive_zone {
+        ExclusiveZone::Respect => 0,
+        ExclusiveZone::Ignore => -1,
+    });
     layer.set_keyboard_interactivity(KeyboardInteractivity::None);
 }
 
