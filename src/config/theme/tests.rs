@@ -117,7 +117,7 @@ fn search_order_is_config_dir_target_dir_user_env_system() {
         "/home/u/.config/kwybars/custom/themes",
         "/nix/themes",
         "/opt/themes",
-        "/usr/share/kwybars/themes",
+        super::lookup::SYSTEM_THEMES_DIR,
     ]
     .iter()
     .map(PathBuf::from)
