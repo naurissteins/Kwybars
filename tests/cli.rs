@@ -126,7 +126,11 @@ fn list_themes_exits_with_0() {
     let home = TempDir::new("themes");
     let (code, stdout, _) = kwybars(&home.0, &["list-themes"]);
     assert_eq!(code, Some(0));
-    assert!(stdout.starts_with("available themes\n- ayu-dark (built-in)\n"));
+    // an installed kwybars lists its theme files in place of the built-ins
+    assert!(
+        stdout.starts_with("available themes\n- ayu-dark ("),
+        "{stdout}"
+    );
 }
 
 #[test]

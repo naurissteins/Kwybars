@@ -8,7 +8,11 @@ use crate::xdg;
 
 /// extra theme directories, colon separated, used by packages such as nix
 const THEMES_DIR_ENV: &str = "KWYBARS_THEMES_DIR";
+#[cfg(not(test))]
 const SYSTEM_THEMES_DIR: &str = "/usr/share/kwybars/themes";
+// unit tests must not see the themes of a kwybars installed on the build machine
+#[cfg(test)]
+pub(super) const SYSTEM_THEMES_DIR: &str = "/nonexistent/kwybars/themes";
 
 pub fn search_dirs(
     config_path: &Path,
