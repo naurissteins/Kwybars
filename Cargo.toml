@@ -9,20 +9,38 @@ repository.workspace = true
 
 [dependencies]
 calloop = { version = "0.14", features = ["signals"] }
-image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+image = { version = "0.25", default-features = false, features = [
+    "jpeg",
+    "png",
+    "webp",
+] }
 inotify = { version = "0.11.5", default-features = false }
 lexopt = "0.3"
 pipewire = "0.10"
-realfft = { version = "3.5", default-features = false, features = ["avx", "neon"] }
+realfft = { version = "3.5", default-features = false, features = [
+    "avx",
+    "neon",
+] }
 serde = { version = "1", features = ["derive"] }
 serde_ignored = "0.1"
-smithay-client-toolkit = { version = "0.21", default-features = false, features = ["calloop"] }
+smithay-client-toolkit = { version = "0.21", default-features = false, features = [
+    "calloop",
+] }
 thiserror = "2"
 time = { version = "0.3", features = ["local-offset", "macros"] }
-toml = { version = "1.1", default-features = false, features = ["parse", "serde", "std"] }
+toml = { version = "1.1", default-features = false, features = [
+    "parse",
+    "serde",
+    "std",
+] }
 toml_edit = "0.25"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
-tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "fmt", "std", "time"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+    "ansi",
+    "fmt",
+    "std",
+    "time",
+] }
 
 [lints]
 workspace = true
@@ -33,7 +51,7 @@ resolver = "3"
 [workspace.package]
 edition = "2024"
 license = "GPL-3.0-or-later"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Nauris Steins"]
 repository = "https://github.com/naurissteins/kwybars"
 
