@@ -5,7 +5,8 @@ mod tests;
 
 use crate::config::Config;
 
-const GRAVITY: f32 = 9.0;
+/// how fast a bar falls, in height per second
+const FALL_SPEED: f32 = 2.0;
 const GAIN_FALL_PER_SECOND: f32 = 1.2;
 const GAIN_RISE_PER_SECOND: f32 = 0.08;
 const GAIN_WARMUP_PER_SECOND: f32 = 15.0;
@@ -46,8 +47,6 @@ impl Default for DynamicsConfig {
 pub struct Dynamics {
     config: DynamicsConfig,
     smoothed: Vec<f32>,
-    fall_from: Vec<f32>,
-    fall_time: Vec<f32>,
     heights: Vec<f32>,
     gain: f32,
     warming_up: bool,
@@ -57,8 +56,6 @@ impl Dynamics {
     pub fn new(bars: usize, config: DynamicsConfig) -> Self {
         Self {
             smoothed: vec![0.0; bars],
-            fall_from: vec![0.0; bars],
-            fall_time: vec![0.0; bars],
             heights: vec![0.0; bars],
             gain: GAIN_START,
             warming_up: config.auto_sensitivity,
@@ -124,21 +121,15 @@ impl Dynamics {
         }
     }
 
-    /// rising targets are taken at once, falling ones follow gravity
-    fn fall(&mut self, index: usize, target: f32, dt: f32) -> f32 {
-        let (Some(from), Some(time)) =
-            (self.fall_from.get_mut(index), self.fall_time.get_mut(index))
-        else {
-            return target;
-        };
-        let falling = *from - GRAVITY * *time * *time;
-        if target >= falling {
-            *from = target;
-            *time = 0.0;
+    /// rising targets are taken at once, falling ones drop at a fixed rate from
+    /// where the bar is now; a per bar clock would let bars that receive the
+    /// same input drift apart and show up as spikes and valleys
+    fn fall(&self, index: usize, target: f32, dt: f32) -> f32 {
+        let height = self.heights.get(index).copied().unwrap_or(target);
+        if target >= height {
             return target;
         }
-        *time += dt;
-        (*from - GRAVITY * *time * *time).max(target)
+        (height - FALL_SPEED * dt).max(target)
     }
 
     fn adapt_gain(&mut self, loudest: f32, peak: f32, dt: f32) {
