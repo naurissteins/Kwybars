@@ -41,8 +41,29 @@ fn falls_with_gravity_and_never_below_the_input() {
         );
         previous = height;
     }
-    // full height falls to the floor in about a third of a second
+    // the fall is a fixed rate, so the floor arrives within half a second
     assert!((run(&mut dynamics, Some(&[0.2]), 0.5, DT) - 0.2).abs() < 1e-6);
+}
+
+/// one frame of difference in when two bars start falling must not grow into
+/// the notches that a per bar fall clock used to produce
+#[test]
+fn bars_falling_on_the_same_input_keep_their_gap() {
+    let mut dynamics = Dynamics::new(2, manual(0.0));
+    dynamics.update(Some(&[1.0, 1.0]), DT);
+    // the second bar rises on the frame the first one starts to fall
+    dynamics.update(Some(&[0.2, 1.0]), DT);
+    let seed = {
+        let heights = dynamics.heights();
+        (heights[0] - heights[1]).abs()
+    };
+    let mut widest = seed;
+    for _ in 0..15 {
+        let heights = dynamics.update(Some(&[0.2, 0.2]), DT);
+        widest = widest.max((heights[0] - heights[1]).abs());
+    }
+    assert!(seed > 0.0, "the frames must not start in step");
+    assert!(widest <= seed * 1.05, "gap grew from {seed} to {widest}");
 }
 
 #[test]
@@ -112,7 +133,10 @@ fn behaves_the_same_at_different_update_rates() {
     let a = run(&mut fast, None, 0.25, 1.0 / 60.0);
     let b = run(&mut slow, None, 0.25, 1.0 / 24.0);
     assert!((a - b).abs() < 0.01, "fall: 60 Hz {a}, 24 Hz {b}");
-    assert!((a - (0.9 - 9.0 * 0.25 * 0.25)).abs() < 0.01, "gravity: {a}");
+    assert!(
+        (a - (0.9 - super::FALL_SPEED * 0.25)).abs() < 0.01,
+        "fall speed: {a}"
+    );
 }
 
 #[test]
@@ -134,20 +158,12 @@ fn non_finite_input_does_not_stick() {
 #[test]
 fn updating_does_not_reallocate() {
     let mut dynamics = Dynamics::new(3, DynamicsConfig::default());
-    let before = (
-        dynamics.heights.as_ptr(),
-        dynamics.fall_from.as_ptr(),
-        dynamics.fall_time.as_ptr(),
-    );
+    let before = (dynamics.heights.as_ptr(), dynamics.smoothed.as_ptr());
     for round in 0..200 {
         let level = (round % 7) as f32 / 7.0;
         dynamics.update(Some(&[level, level, level]), DT);
         dynamics.update(None, DT);
     }
-    let after = (
-        dynamics.heights.as_ptr(),
-        dynamics.fall_from.as_ptr(),
-        dynamics.fall_time.as_ptr(),
-    );
+    let after = (dynamics.heights.as_ptr(), dynamics.smoothed.as_ptr());
     assert_eq!(before, after);
 }
