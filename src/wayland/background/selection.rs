@@ -7,6 +7,7 @@ use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
 
 use super::{Surface, Wayland};
+use crate::config::BackgroundSource;
 
 impl Wayland {
     pub(in crate::wayland) fn reconcile_backgrounds(
@@ -17,18 +18,42 @@ impl Wayland {
         self.background
             .closed
             .retain(|closed| self.outputs.info(closed).is_some());
+        let following: Vec<_> = wanted
+            .iter()
+            .filter_map(|(output, entry)| {
+                let section = entry.and_then(|entry| self.config.overlay.outputs.get(entry));
+                let settings = self.config.background(section);
+                (settings.enabled && settings.source == BackgroundSource::Sweetbg)
+                    .then(|| self.output_label(output))
+            })
+            .collect();
+        if self.background.following != following {
+            self.background.following = following;
+            self.background.selection = self.background.selection.wrapping_add(1);
+        }
         let mut wanted: Vec<_> = wanted
             .iter()
             .filter_map(|(output, entry)| {
                 let section = entry.and_then(|entry| self.config.overlay.outputs.get(entry));
                 let config = self.config.background(section);
-                let image = self.background.images.of(*entry)?;
-                (config.enabled && !self.background.closed.contains(output)).then_some((
-                    *output,
-                    *entry,
-                    config,
-                    &image.source,
-                ))
+                let source = match config.source {
+                    BackgroundSource::File => {
+                        Arc::clone(&self.background.images.of(*entry)?.source)
+                    }
+                    BackgroundSource::Sweetbg => {
+                        let label = self.output_label(output);
+                        Arc::clone(
+                            &self
+                                .background
+                                .external
+                                .iter()
+                                .find(|(name, _)| *name == label)?
+                                .1,
+                        )
+                    }
+                };
+                (config.enabled && !self.background.closed.contains(output))
+                    .then_some((*output, *entry, config, source))
             })
             .collect();
         if self.viewporter.is_none() {
@@ -52,8 +77,9 @@ impl Wayland {
                 .iter_mut()
                 .find(|surface| surface.output == *output && surface.entry == entry)
             {
+                surface.granted = self.background.grants.contains(&surface.label);
                 surface.config = config;
-                surface.source = Arc::clone(source);
+                surface.source = Arc::clone(&source);
                 continue;
             }
             let Some(viewporter) = self.viewporter.as_ref() else {
@@ -69,9 +95,12 @@ impl Wayland {
                 entry,
                 self.output_label(output),
                 config,
-                Arc::clone(source),
+                Arc::clone(&source),
             ) {
-                Ok(surface) => self.background.surfaces.push(surface),
+                Ok(mut surface) => {
+                    surface.granted = self.background.grants.contains(&surface.label);
+                    self.background.surfaces.push(surface);
+                }
                 Err(error) => tracing::warn!(
                     "could not create background on {}: {error}",
                     self.output_label(output)

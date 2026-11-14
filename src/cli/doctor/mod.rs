@@ -3,6 +3,7 @@
 mod audio;
 mod desktop;
 mod service;
+mod sweetbg;
 #[cfg(test)]
 mod tests;
 
@@ -31,6 +32,9 @@ pub fn report(options: &RunOptions, env: &dyn Fn(&str) -> Option<OsString>) -> R
     let config = loaded.map(|loaded| loaded.config);
     if let Some(config) = &config {
         settings(&mut report, config);
+        if config.uses_sweetbg() {
+            sweetbg::check(&mut report, env);
+        }
     }
 
     desktop::session(&mut report, env);

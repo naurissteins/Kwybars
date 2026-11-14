@@ -8,6 +8,7 @@ mod image;
 mod logging;
 mod reload;
 mod render;
+mod sweetbg;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -86,6 +87,9 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
         backgrounds,
         background_again: None,
         warnings,
+        sweetbg: None,
+        sweetbg_epoch: 0,
+        sweetbg_failed: false,
     };
     let result = (|| {
         image::start(&handle, &mut app)?;
@@ -105,6 +109,7 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
     })();
     // teardown order: the audio thread, then surfaces and buffers, then the
     // connection, which closes when the loop and its wayland source drop
+    app.stop_sweetbg();
     app.capture.shutdown();
     app.wayland.shutdown();
     info!("kwybars stopped");
@@ -127,6 +132,9 @@ struct App {
     backgrounds: Overlays<Encoded>,
     background_again: Option<Instant>,
     warnings: Vec<String>,
+    sweetbg: Option<sweetbg::Provider>,
+    sweetbg_epoch: u64,
+    sweetbg_failed: bool,
 }
 
 impl AsMut<Wayland> for App {
@@ -139,12 +147,14 @@ impl AsMut<Wayland> for App {
 fn dispatch(event_loop: &mut EventLoop<'static, App>, app: &mut App) -> Result<(), AppError> {
     // a frame may have arrived before anyone asked to be woken
     app.render();
+    app.sweetbg_poll();
     while app.running {
         if let Err(err) = event_loop.dispatch(None, app) {
             // name the compositor when the connection is what failed
             app.wayland.check_connection()?;
             return Err(err.into());
         }
+        app.sweetbg_poll();
     }
     Ok(())
 }

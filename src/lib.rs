@@ -9,3 +9,5 @@ pub mod reload;
 pub mod render;
 pub mod wayland;
 mod xdg;
+
+mod sweetbg;

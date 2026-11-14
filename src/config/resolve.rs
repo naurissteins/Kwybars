@@ -114,6 +114,16 @@ impl Config {
         )
     }
 
+    pub fn uses_sweetbg(&self) -> bool {
+        let base = &self.background;
+        (base.enabled && base.source == super::BackgroundSource::Sweetbg)
+            || self.overlay.outputs.iter().any(|output| {
+                output.background.enabled.unwrap_or(base.enabled)
+                    && output.background.source.unwrap_or(base.source)
+                        == super::BackgroundSource::Sweetbg
+            })
+    }
+
     pub fn has_background(&self) -> bool {
         self.background.enabled
             || self

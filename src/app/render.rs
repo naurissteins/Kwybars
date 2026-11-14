@@ -34,6 +34,7 @@ impl App {
         {
             self.background_again = Some(now + frame_time(self.config.visualizer.framerate));
         }
+        self.follow_backgrounds();
         self.watch_deadline();
     }
 

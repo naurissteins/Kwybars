@@ -177,3 +177,10 @@ impl<T, F: Fn(&Path) -> Result<T, image::ImageError>> Loader<'_, T, F> {
         Some(image)
     }
 }
+
+pub(crate) fn background(
+    file: PathBuf,
+    known: &[LoadedImage<image::Encoded>],
+) -> LoadedImage<image::Encoded> {
+    decode_or_reuse(file, known, image::Encoded::open)
+}
