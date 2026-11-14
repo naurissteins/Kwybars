@@ -148,6 +148,14 @@ It follows
 .B overlay.show_on
 and accepts per-output image and motion overrides in
 .BR [output.NAME.background] .
+The optional
+.B [background.mid]
+section reacts to sudden midrange changes, with independent sensitivity,
+threshold, zoom, shake and attack/release times. It is disabled by default;
+set its enabled key to true to add a short pulse. It follows frequency energy
+changes, not particular instruments. Per-output motion overrides use
+.BR [output.NAME.background.mid] .
+Combined zoom and shake are capped at the larger configured amount for each.
 .B low_cutoff_hz
 and
 .B high_cutoff_hz

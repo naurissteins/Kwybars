@@ -107,6 +107,15 @@ impl PlacementOverrides {
 }
 
 impl Config {
+    pub fn has_mid_background(&self) -> bool {
+        let base = &self.background;
+        (base.enabled && base.mid.enabled)
+            || self.overlay.outputs.iter().any(|output| {
+                output.background.enabled.unwrap_or(base.enabled)
+                    && output.background.mid.enabled.unwrap_or(base.mid.enabled)
+            })
+    }
+
     pub fn background(&self, output: Option<&OutputConfig>) -> super::BackgroundConfig {
         output.map_or_else(
             || self.background.clone(),

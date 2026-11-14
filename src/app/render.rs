@@ -22,7 +22,8 @@ impl App {
         }
         let presence = self.wayland.set_active(self.activity.is_active(), now);
         let audio = self.capture.frames().read_into(&mut []);
-        let background_moving = self.wayland.render_backgrounds(now, audio.bass);
+        let mid = self.capture.frames().take_mid_peak();
+        let background_moving = self.wayland.render_backgrounds(now, audio.bass, mid);
         let frame = self.animation.frame(now, presence);
         let animating = frame.animating || background_moving;
         let drawn = self.wayland.render(&frame);

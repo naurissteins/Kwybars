@@ -55,6 +55,7 @@ pub(super) struct Surface {
     granted: bool,
     previous: Option<Crop>,
     motion: Motion,
+    mid_peak: f32,
     last_frame: Option<Instant>,
     due: Option<Instant>,
     retry_at: Option<Instant>,
@@ -73,10 +74,11 @@ impl Wayland {
         self.reconcile(&queue, None);
     }
 
-    pub fn render_backgrounds(&mut self, now: Instant, bass: f32) -> bool {
+    pub fn render_backgrounds(&mut self, now: Instant, bass: f32, mid: f32) -> bool {
         let frame_time =
             std::time::Duration::from_secs(1) / self.config.visualizer.framerate.max(1);
         for surface in &mut self.background.surfaces {
+            surface.mid_peak = surface.mid_peak.max(mid);
             if surface.retry_at.is_some_and(|at| at > now) {
                 continue;
             }

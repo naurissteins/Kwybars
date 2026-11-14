@@ -1,4 +1,4 @@
-//! bass-response motion and bounded wallpaper cropping, free of Wayland types
+//! bass and transient motion and bounded wallpaper cropping, free of Wayland types
 
 #[cfg(test)]
 mod tests;

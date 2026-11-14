@@ -83,6 +83,7 @@ impl StreamData {
             return;
         }
         self.generation = generation;
+        self.tuning.borrow().frames.take_mid_peak();
         self.pacing = Pacing::new(interval);
         if self.pipeline.is_some() {
             self.build_pipeline();
@@ -93,6 +94,10 @@ impl StreamData {
     pub(super) fn state_changed(&mut self, state: CaptureState) {
         self.shared.status.set_state(state);
         if state != CaptureState::Streaming {
+            if let Some(pipeline) = &mut self.pipeline {
+                pipeline.reset_transients();
+            }
+            self.tuning.borrow().frames.take_mid_peak();
             self.shared.publish(&self.tuning.borrow().frames, None, 0.0);
         }
     }

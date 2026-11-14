@@ -46,19 +46,139 @@ fn wallpaper_motion_restarts_smoothly_and_stops_after_silence() {
     let config = crate::config::BackgroundConfig::default();
     let mut motion = Motion::default();
     let now = Instant::now();
-    assert!(!motion.pose(&config, 0.0, now).animated);
-    let wake = motion.pose(&config, 1.0, now + Duration::from_secs(30));
+    assert!(!motion.pose(&config, 0.0, 0.0, now).animated);
+    let wake = motion.pose(&config, 1.0, 0.0, now + Duration::from_secs(30));
     assert_eq!(wake.zoom, 1.0);
     assert!(wake.animated);
     let moved = motion.pose(
         &config,
         1.0,
+        0.0,
         now + Duration::from_secs(30) + Duration::from_millis(16),
     );
     assert!(moved.zoom > 1.0 && moved.zoom <= 1.04 + 1e-6);
-    let rest = motion.pose(&config, 0.0, now + Duration::from_secs(35));
+    let rest = motion.pose(&config, 0.0, 0.0, now + Duration::from_secs(35));
     assert!(!rest.animated);
     assert_eq!(rest.zoom, 1.0);
+}
+
+#[test]
+fn a_single_mid_hit_survives_slow_paints_and_settles_without_new_audio() {
+    use crate::config::{BackgroundConfig, MidConfig};
+    use std::time::Instant;
+    let config = BackgroundConfig {
+        zoom: 0.0,
+        mid: MidConfig {
+            enabled: true,
+            zoom: 0.02,
+            ..MidConfig::default()
+        },
+        ..BackgroundConfig::default()
+    };
+    let now = Instant::now();
+    let mut motion = Motion::default();
+    assert!(motion.pose(&config, 0.0, 1.0, now).animated);
+    // Even a 10 fps renderer receives a pulse; the complete hold/decay is integrated.
+    let pulse = motion.pose(&config, 0.0, 0.0, now + Duration::from_millis(100));
+    assert!(pulse.zoom > 1.006 + 0.005 && pulse.animated);
+    let rest = motion.pose(&config, 0.0, 0.0, now + Duration::from_secs(5));
+    assert!(!rest.animated);
+    assert!((rest.zoom - 1.006).abs() < 1e-6);
+    assert_eq!(rest.offset, (0.0, 0.0));
+}
+
+#[test]
+fn mid_pulse_timing_is_independent_of_render_rate() {
+    use crate::config::{BackgroundConfig, MidConfig};
+    use std::time::Instant;
+    let config = BackgroundConfig {
+        zoom: 0.0,
+        mid: MidConfig {
+            enabled: true,
+            zoom: 0.02,
+            shake: 0.0,
+            ..MidConfig::default()
+        },
+        ..BackgroundConfig::default()
+    };
+    let simulate = |hz: u32| {
+        let mut motion = Motion::default();
+        let now = Instant::now();
+        motion.pose(&config, 0.0, 1.0, now);
+        for i in 1..hz / 2 {
+            motion.pose(
+                &config,
+                0.0,
+                0.0,
+                now + Duration::from_secs_f64(f64::from(i) / f64::from(hz)),
+            );
+        }
+        motion
+            .pose(&config, 0.0, 0.0, now + Duration::from_millis(500))
+            .zoom
+    };
+    assert!((simulate(30) - simulate(144)).abs() < 1e-6);
+}
+
+#[test]
+fn smaller_following_hits_do_not_hold_an_old_peak_indefinitely() {
+    use crate::config::{BackgroundConfig, MidConfig};
+    use std::time::Instant;
+    let config = BackgroundConfig {
+        zoom: 0.0,
+        mid: MidConfig {
+            enabled: true,
+            zoom: 0.02,
+            shake: 0.0,
+            ..MidConfig::default()
+        },
+        ..BackgroundConfig::default()
+    };
+    let now = Instant::now();
+    let mut motion = Motion::default();
+    motion.pose(&config, 0.0, 1.0, now);
+    let mut pose = motion.pose(&config, 0.0, 0.01, now + Duration::from_millis(16));
+    for i in 2..=120 {
+        pose = motion.pose(&config, 0.0, 0.01, now + Duration::from_millis(i * 16));
+    }
+    assert!(pose.zoom < 1.005);
+}
+
+#[test]
+fn mixed_reactions_are_bounded_by_prepared_headroom_and_disable_cleanly() {
+    use crate::config::{BackgroundConfig, MidConfig};
+    use std::time::Instant;
+    let mut config = BackgroundConfig {
+        zoom: 0.2,
+        shake: 0.01,
+        mid: MidConfig {
+            enabled: true,
+            zoom: 0.25,
+            shake: 0.02,
+            ..MidConfig::default()
+        },
+        ..BackgroundConfig::default()
+    };
+    let now = Instant::now();
+    let mut motion = Motion::default();
+    motion.pose(&config, 1.0, 1.0, now);
+    for i in 1..240 {
+        let pose = motion.pose(&config, 1.0, 1.0, now + Duration::from_millis(i * 8));
+        assert!(pose.zoom <= 1.29 + 1e-6);
+        assert!(pose.offset.0.abs() <= 0.02 + 1e-6 && pose.offset.1.abs() <= 0.02 + 1e-6);
+        let (zoom, shake) = config.motion_limits();
+        let prepared = Preparation::new((5120, 2880), (1920, 1080), zoom, shake);
+        let Some(prepared) = prepared else {
+            panic!("headroom")
+        };
+        assert_eq!(prepared.size, (2477, 1394));
+        assert!(crop(prepared.size, (1920, 1080), pose.zoom, pose.offset).is_some());
+    }
+    config.mid.enabled = false;
+    config.zoom = 0.0;
+    config.shake = 0.0;
+    let rest = motion.pose(&config, 0.0, f32::NAN, now + Duration::from_secs(10));
+    assert_eq!((rest.zoom, rest.animated), (1.0, false));
 }
 
 #[test]

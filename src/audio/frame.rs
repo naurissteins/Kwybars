@@ -8,6 +8,7 @@ pub struct FrameSlot {
     bars: Box<[AtomicU32]>,
     level: AtomicU32,
     bass: AtomicU32,
+    mid_peak: AtomicU32,
     silent: AtomicBool,
     wake_wanted: AtomicBool,
 }
@@ -28,6 +29,7 @@ impl FrameSlot {
             bars: (0..bars).map(|_| AtomicU32::new(0)).collect(),
             level: AtomicU32::new(0),
             bass: AtomicU32::new(0),
+            mid_peak: AtomicU32::new(0),
             silent: AtomicBool::new(true),
             wake_wanted: AtomicBool::new(false),
         }
@@ -48,7 +50,15 @@ impl FrameSlot {
     }
 
     pub fn publish_spectrum(&self, values: &[f32], level: f32, bass: f32) -> bool {
+        self.publish_reactive(values, level, bass, 0.0)
+    }
+
+    pub fn publish_reactive(&self, values: &[f32], level: f32, bass: f32, mid: f32) -> bool {
         self.write(|slot| {
+            if mid.is_finite() && mid > 0.0 {
+                // Positive float bit order matches amplitude; preserve hits between paints.
+                slot.mid_peak.fetch_max(mid.to_bits(), Ordering::Relaxed);
+            }
             slot.bass.store(bass.to_bits(), Ordering::Relaxed);
             for (bar, value) in slot.bars.iter().zip(values) {
                 bar.store(value.to_bits(), Ordering::Relaxed);
@@ -56,6 +66,11 @@ impl FrameSlot {
             slot.level.store(level.to_bits(), Ordering::Relaxed);
             slot.silent.store(false, Ordering::Relaxed);
         })
+    }
+
+    /// drains transients once per background batch, independently of bar readers
+    pub fn take_mid_peak(&self) -> f32 {
+        f32::from_bits(self.mid_peak.swap(0, Ordering::Relaxed))
     }
 
     /// marks the capture as silent; must only be called from one thread
@@ -263,5 +278,20 @@ mod background_tests {
         assert_eq!(slot.read_into(&mut []).bass, 0.7);
         slot.publish_silence();
         assert_eq!(slot.read_into(&mut []).bass, 0.0);
+    }
+
+    #[test]
+    fn transient_peaks_survive_newer_frames_and_bar_reads_and_are_drained_once() {
+        let slot = FrameSlot::new(1);
+        slot.publish_reactive(&[0.5], 0.2, 0.1, 0.7);
+        slot.read_into(&mut [0.0]);
+        slot.publish_reactive(&[0.2], 0.1, 0.0, 0.2);
+        slot.publish_silence();
+        assert_eq!(slot.take_mid_peak(), 0.7);
+        assert_eq!(slot.take_mid_peak(), 0.0);
+        for invalid in [f32::NAN, f32::INFINITY, -1.0] {
+            slot.publish_reactive(&[0.0], 0.0, 0.0, invalid);
+        }
+        assert_eq!(slot.take_mid_peak(), 0.0);
     }
 }

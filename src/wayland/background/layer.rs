@@ -81,6 +81,7 @@ impl Surface {
             granted: false,
             previous: None,
             motion: Motion::default(),
+            mid_peak: 0.0,
             last_frame: None,
             due: None,
             retry_at: None,

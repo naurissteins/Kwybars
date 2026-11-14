@@ -13,6 +13,7 @@ const TILT_EXPONENT: f32 = 4.0 / 6.02;
 pub struct Analysis<'a> {
     pub bars: &'a [f32],
     pub bass: f32,
+    pub mid: f32,
 }
 
 /// spectrum plus tilt for one negotiated format
@@ -53,6 +54,7 @@ impl Pipeline {
     /// the fft when `peak`, the level of the new samples, is digital silence
     pub fn analyze(&mut self, peak: f32) -> Option<Analysis<'_>> {
         if peak < SILENCE_FLOOR {
+            self.reset_transients();
             return None;
         }
         let raw = self.analyzer.analyze();
@@ -63,7 +65,12 @@ impl Pipeline {
         Some(Analysis {
             bars: &self.bars,
             bass: self.analyzer.bass(),
+            mid: self.analyzer.mid(),
         })
+    }
+
+    pub fn reset_transients(&mut self) {
+        self.analyzer.reset_transients();
     }
 }
 
@@ -140,6 +147,7 @@ mod background_tests {
             low_cutoff_hz: 1000.0,
             high_cutoff_hz: 12000.0,
             bass: Some((30.0, 150.0)),
+            ..SpectrumConfig::default()
         };
         let mut pipeline = Pipeline::new(48000, 1, &config);
         for index in 0..8192 {

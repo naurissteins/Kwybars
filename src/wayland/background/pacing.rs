@@ -17,6 +17,7 @@ impl Surface {
         queue: &QueueHandle<Wayland>,
     ) -> Result<(), DrawError> {
         if self.config.source == crate::config::BackgroundSource::Sweetbg && !self.granted {
+            self.mid_peak = 0.0;
             self.animated = false;
             self.due = None;
             return Ok(());
@@ -36,7 +37,8 @@ impl Surface {
             return Ok(());
         }
         self.due = None;
-        let pose = self.motion.pose(&self.config, bass, now);
+        let mid = std::mem::take(&mut self.mid_peak);
+        let pose = self.motion.pose(&self.config, bass, mid, now);
         self.animated = pose.animated;
         let next = crop(upload.preparation.size, screen, pose.zoom, pose.offset)
             .ok_or(DrawError::TooLarge)?;

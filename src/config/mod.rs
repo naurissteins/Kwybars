@@ -24,7 +24,7 @@ pub(crate) mod tests;
 
 pub use activity::ActivityConfig;
 pub use audio::AudioConfig;
-pub use background::{BackgroundConfig, BackgroundOverrides, BackgroundSource};
+pub use background::{BackgroundConfig, BackgroundOverrides, BackgroundSource, MidConfig};
 pub use color::{ColorParseError, Rgba};
 pub use colors::{COLORS_FILE, ColorOverrides};
 pub use error::ConfigError;

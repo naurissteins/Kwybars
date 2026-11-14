@@ -81,6 +81,28 @@ impl Bands {
             *value = weights.iter().zip(bins).map(|(w, p)| w * p).sum();
         }
     }
+
+    /// positive magnitude changes in the first (transient) band
+    pub(super) fn positive_flux(&self, power: &[f32], previous: &mut [f32]) -> f32 {
+        let Some(span) = self.spans.first() else {
+            return 0.0;
+        };
+        let weights = self.weights.get(span.weights.clone()).unwrap_or_default();
+        let bins = power.get(span.first_bin..).unwrap_or_default();
+        let before = previous.get_mut(span.first_bin..).unwrap_or_default();
+        weights
+            .iter()
+            .zip(bins)
+            .zip(before)
+            .map(|((weight, power), before)| {
+                let magnitude = power.sqrt();
+                let change = (magnitude - *before).max(0.0);
+                *before = magnitude;
+                weight * change * change
+            })
+            .sum::<f32>()
+            .sqrt()
+    }
 }
 
 /// area of the unit triangle over `-1.0..=1.0` to the left of `x`
