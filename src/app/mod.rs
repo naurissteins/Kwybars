@@ -1,11 +1,13 @@
 //! startup, run, and shutdown of the overlay
 
 mod animation;
+mod deadline;
 pub mod debug;
 mod error;
 mod image;
 mod logging;
 mod reload;
+mod render;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -13,7 +15,6 @@ use std::time::{Duration, Instant};
 
 use calloop::ping::{Ping, make_ping};
 use calloop::signals::{Signal, Signals};
-use calloop::timer::{TimeoutAction, Timer};
 use calloop::{EventLoop, LoopHandle, RegistrationToken};
 use tracing::{info, warn};
 
@@ -69,6 +70,7 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
     let reloader = reload::start(&handle, config_path, &loaded);
     let warnings = loaded.messages().cloned().collect();
     let images = image::overlays(&loaded, &Overlays::default());
+    let backgrounds = image::backgrounds(&loaded, &Overlays::default(), config);
     let mut app = App {
         running: true,
         animation: Animation::new(motion, frame_time),
@@ -81,21 +83,26 @@ pub fn run(options: RunOptions) -> Result<(), AppError> {
         config: loaded.config,
         theme: loaded.theme.map(|loaded| loaded.theme),
         images,
+        backgrounds,
+        background_again: None,
         warnings,
     };
-    image::start(&handle, &mut app)?;
-    handle
-        .insert_source(signals, |event, (), app| {
-            info!("received {:?}, shutting down", event.signal());
-            app.running = false;
-        })
-        .map_err(|err| err.error)?;
-    handle
-        .insert_source(wake, |(), (), app| app.render())
-        .map_err(|err| err.error)?;
-    app.wayland.insert_source(queue, &handle, App::render)?;
+    let result = (|| {
+        image::start(&handle, &mut app)?;
+        image::start_backgrounds(&handle, &mut app)?;
+        handle
+            .insert_source(signals, |event, (), app| {
+                info!("received {:?}, shutting down", event.signal());
+                app.running = false;
+            })
+            .map_err(|err| err.error)?;
+        handle
+            .insert_source(wake, |(), (), app| app.render())
+            .map_err(|err| err.error)?;
+        app.wayland.insert_source(queue, &handle, App::render)?;
 
-    let result = dispatch(&mut event_loop, &mut app);
+        dispatch(&mut event_loop, &mut app)
+    })();
     // teardown order: the audio thread, then surfaces and buffers, then the
     // connection, which closes when the loop and its wayland source drop
     app.capture.shutdown();
@@ -117,51 +124,9 @@ struct App {
     config: Config,
     theme: Option<Theme>,
     images: Overlays,
+    backgrounds: Overlays,
+    background_again: Option<Instant>,
     warnings: Vec<String>,
-}
-
-impl App {
-    fn render(&mut self) {
-        let now = Instant::now();
-        let level = self.animation.level();
-        if self.activity.update(now, level) {
-            info!(
-                "audio {}",
-                if self.activity.is_active() {
-                    "active, showing"
-                } else {
-                    "inactive, hiding"
-                }
-            );
-        }
-        let presence = self.wayland.set_active(self.activity.is_active(), now);
-        let frame = self.animation.frame(now, presence);
-        let drawn = self.wayland.render(&frame);
-        self.animation.drawn(drawn);
-        self.watch_deadline();
-    }
-
-    fn watch_deadline(&mut self) {
-        let deadlines = [self.activity.deadline(), self.wayland.deadline()];
-        let Some(deadline) = deadlines.into_iter().flatten().min() else {
-            return;
-        };
-        if self.timer.is_some_and(|(_, at)| at <= deadline) {
-            return;
-        }
-        if let Some((token, _)) = self.timer.take() {
-            self.handle.remove(token);
-        }
-        let timer = Timer::from_deadline(deadline);
-        match self.handle.insert_source(timer, |_, (), app| {
-            app.timer = None;
-            app.render();
-            TimeoutAction::Drop
-        }) {
-            Ok(token) => self.timer = Some((token, deadline)),
-            Err(err) => warn!("could not wait for the activity deadline: {}", err.error),
-        }
-    }
 }
 
 impl AsMut<Wayland> for App {

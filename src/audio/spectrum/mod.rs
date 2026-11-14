@@ -28,6 +28,7 @@ pub struct SpectrumConfig {
     pub order: BarOrder,
     pub low_cutoff_hz: f32,
     pub high_cutoff_hz: f32,
+    pub bass: Option<(f32, f32)>,
 }
 
 impl SpectrumConfig {
@@ -37,6 +38,10 @@ impl SpectrumConfig {
             order: config.visualizer.bar_order,
             low_cutoff_hz: config.audio.low_cutoff_hz,
             high_cutoff_hz: config.audio.high_cutoff_hz,
+            bass: config.has_background().then_some((
+                config.background.low_cutoff_hz,
+                config.background.high_cutoff_hz,
+            )),
         }
     }
 }
@@ -48,6 +53,7 @@ impl Default for SpectrumConfig {
             order: BarOrder::LowToHigh,
             low_cutoff_hz: 50.0,
             high_cutoff_hz: 10_000.0,
+            bass: None,
         }
     }
 }
@@ -62,6 +68,8 @@ pub struct Analyzer {
     scratch: Vec<Complex<f32>>,
     power: Vec<f32>,
     bands: Bands,
+    bass_band: Option<Bands>,
+    bass: [f32; 1],
     bars: Vec<f32>,
     /// maps a bin magnitude so a full-scale sine reads 1.0
     scale: f32,
@@ -89,6 +97,10 @@ impl Analyzer {
             power: vec![0.0; len / 2 + 1],
             bars: vec![0.0; bands.len()],
             bands,
+            bass_band: config
+                .bass
+                .map(|(low, high)| Bands::new(1, low, high, sample_rate, len)),
+            bass: [0.0],
             window,
             scale,
             fft,
@@ -113,16 +125,26 @@ impl Analyzer {
         if transformed.is_err() {
             // buffer lengths come from the planner and never change
             self.bars.fill(0.0);
+            self.bass.fill(0.0);
             return &self.bars;
         }
         for (power, bin) in self.power.iter_mut().zip(&self.spectrum) {
             *power = bin.norm_sqr();
+        }
+        if let Some(band) = &self.bass_band {
+            band.mean_power(&self.power, &mut self.bass);
+            self.bass[0] = self.bass[0].sqrt() * self.scale;
         }
         self.bands.mean_power(&self.power, &mut self.bars);
         for bar in &mut self.bars {
             *bar = bar.sqrt() * self.scale;
         }
         &self.bars
+    }
+
+    /// raw band amplitude before visualizer tilt and ordering
+    pub fn bass(&self) -> f32 {
+        self.bass[0]
     }
 
     /// fft length in samples

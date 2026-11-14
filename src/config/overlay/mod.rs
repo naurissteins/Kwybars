@@ -68,6 +68,7 @@ pub struct OutputConfig {
     pub overlay: PlacementOverrides,
     pub visualizer: VisualizerOverrides,
     pub image_overlay: ImageOverlayOverrides,
+    pub background: super::BackgroundOverrides,
 }
 
 impl Default for OutputConfig {
@@ -78,6 +79,7 @@ impl Default for OutputConfig {
             overlay: PlacementOverrides::default(),
             visualizer: VisualizerOverrides::default(),
             image_overlay: ImageOverlayOverrides::default(),
+            background: super::BackgroundOverrides::default(),
         }
     }
 }

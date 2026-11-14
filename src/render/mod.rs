@@ -1,5 +1,6 @@
 //! painting bars into pixel buffers, free of wayland types
 
+pub mod background;
 pub mod canvas;
 pub mod damage;
 pub mod dots;

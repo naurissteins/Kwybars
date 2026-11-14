@@ -69,6 +69,7 @@ pub fn config(
     colors(report, file, &loaded);
     theme(report, &loaded);
     image(report, &loaded);
+    backgrounds(report, &loaded);
     // each file that failed above has its reason here
     for problem in &loaded.problems {
         report.error(problem);
@@ -148,4 +149,40 @@ fn image_line(
         // the reason is among the problems
         Some(_) => {}
     }
+}
+
+fn backgrounds(report: &mut Report, loaded: &Loaded) {
+    background_line(
+        report,
+        "background",
+        &loaded.config.background.image(),
+        loaded.background.as_ref(),
+    );
+    for (entry, output) in loaded.config.overlay.outputs.iter().enumerate() {
+        if output.background == crate::config::BackgroundOverrides::default() {
+            continue;
+        }
+        background_line(
+            report,
+            &format!("background on {}", output.monitor),
+            &loaded.config.background(Some(output)).image(),
+            loaded
+                .output_backgrounds
+                .get(entry)
+                .and_then(Option::as_ref),
+        );
+    }
+}
+
+fn background_line(
+    report: &mut Report,
+    label: &str,
+    settings: &ImageOverlayConfig,
+    image: Option<&LoadedImage>,
+) {
+    // the loader reports missing paths too, so the running app logs them
+    if image.is_none() && settings.enabled {
+        return;
+    }
+    image_line(report, label, settings, image);
 }

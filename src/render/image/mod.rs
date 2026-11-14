@@ -2,18 +2,15 @@
 
 mod placement;
 mod scale;
+mod source;
 #[cfg(test)]
 mod tests;
 
 pub use placement::{Child, Layout, Rect, layout};
 pub use scale::render;
+pub use source::Source;
 
-use std::fs::File;
-use std::io::BufReader;
-use std::path::Path;
 use std::sync::Arc;
-
-use image::{ImageReader, Limits, RgbaImage};
 
 use crate::config::ImageOverlayConfig;
 
@@ -29,6 +26,10 @@ pub enum ImageError {
     Decode(#[from] image::ImageError),
     #[error("{width}x{height} is over the limit of {} megapixels", MAX_PIXELS / 1_000_000)]
     TooLarge { width: u32, height: u32 },
+    #[error("unsupported decoded color type {0:?}")]
+    Color(image::ColorType),
+    #[error("decoded image dimensions do not match pixel storage")]
+    InvalidPixels,
     #[error("the image is empty")]
     Empty,
 }
@@ -65,44 +66,6 @@ impl Overlays {
         self.all()
             .map(|overlay| &overlay.source)
             .find(|held| *held == source)
-    }
-}
-
-/// a decoded image, premultiplied RGBA
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Source {
-    pixels: RgbaImage,
-}
-
-impl Source {
-    pub fn open(path: &Path) -> Result<Self, ImageError> {
-        let mut reader =
-            ImageReader::new(BufReader::new(File::open(path)?)).with_guessed_format()?;
-        let (width, height) = reader.into_dimensions()?;
-        check_size(width, height)?;
-        reader = ImageReader::new(BufReader::new(File::open(path)?)).with_guessed_format()?;
-        let mut limits = Limits::default();
-        // decoders may need working memory besides the pixels
-        limits.max_alloc = Some(MAX_PIXELS * 4 * 2);
-        reader.limits(limits);
-        Ok(Self::from_rgba(reader.decode()?.into_rgba8()))
-    }
-
-    /// premultiplies straight RGBA
-    pub fn from_rgba(mut pixels: RgbaImage) -> Self {
-        for pixel in pixels.pixels_mut() {
-            let alpha = u32::from(pixel.0[3]);
-            if alpha < 255 {
-                for channel in &mut pixel.0[..3] {
-                    *channel = ((u32::from(*channel) * alpha + 127) / 255) as u8;
-                }
-            }
-        }
-        Self { pixels }
-    }
-
-    pub fn size(&self) -> (u32, u32) {
-        self.pixels.dimensions()
     }
 }
 

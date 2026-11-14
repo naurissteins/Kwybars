@@ -15,6 +15,7 @@ pub struct Scope {
     pub activity: bool,
     pub surfaces: bool,
     pub image: bool,
+    pub background: bool,
 }
 
 impl Scope {
@@ -34,6 +35,13 @@ impl Scope {
                 || old.visualizer != new.visualizer
                 || old_theme != new_theme,
             image: old_images != new_images,
+            background: old.background != new.background
+                || old
+                    .overlay
+                    .outputs
+                    .iter()
+                    .map(|output| &output.background)
+                    .ne(new.overlay.outputs.iter().map(|output| &output.background)),
         }
     }
 
@@ -50,6 +58,7 @@ impl fmt::Display for Scope {
             (self.activity, "activity"),
             (self.surfaces, "surfaces"),
             (self.image, "image"),
+            (self.background, "background"),
         ];
         let mut first = true;
         for (_, name) in parts.iter().filter(|(changed, _)| *changed) {

@@ -13,6 +13,8 @@ const MAX_BUFFERS: usize = 3;
 /// a buffer could not be drawn or shown
 #[derive(Debug, thiserror::Error)]
 pub enum DrawError {
+    #[error("image storage: {0}")]
+    ImageIo(#[from] std::io::Error),
     #[error("surface too large")]
     TooLarge,
     #[error("shared memory pool: {0}")]

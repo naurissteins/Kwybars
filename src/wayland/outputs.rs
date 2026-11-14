@@ -81,7 +81,7 @@ impl Wayland {
             }
             keep
         });
-        for (output, entry) in wanted {
+        for &(output, entry) in &wanted {
             if !self
                 .surfaces
                 .iter()
@@ -91,6 +91,7 @@ impl Wayland {
                 self.surfaces.push(surface);
             }
         }
+        self.reconcile_backgrounds(&wanted, qh);
         for surface in &mut self.surfaces {
             let size = self.outputs.info(surface.output()).and_then(|info| {
                 let (width, height) = info.logical_size?;
@@ -140,6 +141,7 @@ impl Wayland {
 
     /// the compositor closed layer, for example because its output is going away
     pub(super) fn surface_closed(&mut self, layer: &LayerSurface) {
+        self.background_closed(layer);
         let Some(index) = self
             .surfaces
             .iter()
@@ -155,6 +157,7 @@ impl Wayland {
     /// forgets output once the compositor removed it
     pub(super) fn output_removed(&mut self, qh: &QueueHandle<Self>, output: &WlOutput) {
         self.closed.retain(|closed| closed != output);
+        self.background.closed.retain(|closed| closed != output);
         // sctk still lists the output during this call
         self.reconcile(qh, Some(output));
     }

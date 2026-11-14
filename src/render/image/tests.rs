@@ -194,3 +194,71 @@ fn files_are_decoded_and_oversized_ones_refused() {
     );
     assert!(matches!(check_size(0, 10), Err(ImageError::Empty)));
 }
+
+#[test]
+fn native_stream_matches_premultiplied_image_bytes_in_both_orders() -> Result<(), std::io::Error> {
+    let pixels = RgbaImage::from_fn(257, 20, |x, y| Rgba([x as u8, y as u8, 150, 128]));
+    let source = Source::from_rgba(pixels);
+    for order in [ByteOrder::Rgba, ByteOrder::Bgra] {
+        let mut output = Vec::new();
+        source.write_native(&mut output, order)?;
+        let expected = render(
+            &source,
+            &Layout {
+                draw: source.size(),
+                origin: (0, 0),
+            },
+            rect(0, 0, 257, 20),
+            1.0,
+            order,
+        );
+        assert_eq!(output, expected);
+    }
+    Ok(())
+}
+
+#[test]
+fn mapped_decoding_matches_image_conversion_for_supported_formats()
+-> Result<(), Box<dyn std::error::Error>> {
+    use image::{DynamicImage, ImageBuffer, Luma, LumaA, Rgb};
+    let dir = std::env::temp_dir().join(format!("kwybars-image-formats-{}", std::process::id()));
+    std::fs::create_dir_all(&dir)?;
+    let cases = [
+        DynamicImage::ImageLuma8(ImageBuffer::from_fn(7, 3, |x, y| {
+            Luma([(x * 37 + y) as u8])
+        })),
+        DynamicImage::ImageLumaA8(ImageBuffer::from_pixel(7, 3, LumaA([161, 123]))),
+        DynamicImage::ImageRgb8(ImageBuffer::from_pixel(7, 3, Rgb([12, 141, 234]))),
+        DynamicImage::ImageRgba8(ImageBuffer::from_pixel(7, 3, Rgba([21, 142, 235, 123]))),
+        DynamicImage::ImageLuma16(ImageBuffer::from_fn(7, 3, |x, y| {
+            Luma([(x * 10921 + y * 128) as u16])
+        })),
+        DynamicImage::ImageLumaA16(ImageBuffer::from_pixel(7, 3, LumaA([32768, 35132]))),
+        DynamicImage::ImageRgb16(ImageBuffer::from_pixel(7, 3, Rgb([128, 32768, 65535]))),
+        DynamicImage::ImageRgba16(ImageBuffer::from_pixel(
+            7,
+            3,
+            Rgba([129, 32767, 65534, 34567]),
+        )),
+    ];
+    for (index, image) in cases.iter().enumerate() {
+        let path = dir.join(format!("{index}.png"));
+        image.save(&path)?;
+        assert_eq!(
+            Source::open(&path)?,
+            Source::from_rgba(image::open(&path)?.into_rgba8()),
+            "{path:?}"
+        );
+    }
+    for (name, image) in [("rgb.jpg", &cases[2]), ("rgba.webp", &cases[3])] {
+        let path = dir.join(name);
+        image.save(&path)?;
+        assert_eq!(
+            Source::open(&path)?,
+            Source::from_rgba(image::open(&path)?.into_rgba8()),
+            "{path:?}"
+        );
+    }
+    std::fs::remove_dir_all(dir)?;
+    Ok(())
+}

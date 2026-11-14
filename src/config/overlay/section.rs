@@ -29,6 +29,7 @@ pub(in crate::config) struct OutputSection {
     overlay: PlacementOverrides,
     visualizer: VisualizerOverrides,
     image_overlay: ImageOverlayOverrides,
+    background: crate::config::BackgroundOverrides,
 }
 
 impl Default for OutputSection {
@@ -53,6 +54,7 @@ impl Default for OutputSection {
             overlay: PlacementOverrides::default(),
             visualizer: VisualizerOverrides::default(),
             image_overlay: ImageOverlayOverrides::default(),
+            background: crate::config::BackgroundOverrides::default(),
         }
     }
 }
@@ -112,6 +114,7 @@ impl OutputSection {
             overlay: self.overlay,
             visualizer: self.visualizer,
             image_overlay: self.image_overlay,
+            background: self.background,
         }
     }
 }

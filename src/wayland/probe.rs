@@ -19,6 +19,7 @@ const VIEWPORTER: &str = "wp_viewporter";
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Probe {
     pub layer_shell: bool,
+    pub viewporter: bool,
     pub fractional_scale: bool,
     pub outputs: Vec<ProbedOutput>,
 }
@@ -92,6 +93,7 @@ pub fn probe() -> Result<Probe, WaylandError> {
         .collect();
     Ok(Probe {
         layer_shell: has(LAYER_SHELL),
+        viewporter: has(VIEWPORTER),
         fractional_scale: has(FRACTIONAL_SCALE) && has(VIEWPORTER),
         outputs,
     })
@@ -173,6 +175,7 @@ mod tests {
     fn selection_follows_the_overlay_config() {
         let probe = Probe {
             layer_shell: true,
+            viewporter: true,
             fractional_scale: true,
             outputs: vec![
                 output("DP-1", (1920, 1080), (1920, 1080)),
