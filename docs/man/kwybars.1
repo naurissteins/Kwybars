@@ -135,7 +135,9 @@ section draws a persistent bass-reactive wallpaper. Set
 .B enabled = true
 and
 .B path
-for a PNG, JPEG, or WebP image (maximum 40 megapixels).
+for a PNG, JPEG, or WebP image (maximum 40 megapixels and 320 MB).
+Background buffers are fitted to each output's physical resolution, with room
+for zoom and shake. Full-resolution decoded pixels are released after preparation.
 It follows
 .B overlay.show_on
 and accepts per-output image and motion overrides in

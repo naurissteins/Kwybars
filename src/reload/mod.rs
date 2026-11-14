@@ -20,6 +20,7 @@ use tracing::{debug, warn};
 pub use scope::Scope;
 
 use crate::config::{self, ConfigError, Loaded, LoadedImage};
+use crate::render::image::Encoded;
 use crate::xdg;
 use targets::targets;
 
@@ -44,6 +45,7 @@ struct Sources {
     themes: Vec<PathBuf>,
     /// decoded images, reused while their files do not change
     known: Vec<LoadedImage>,
+    backgrounds: Vec<LoadedImage<Encoded>>,
 }
 
 impl Sources {
@@ -51,7 +53,8 @@ impl Sources {
         Self {
             images: loaded.image_files(),
             themes: loaded.theme_candidates.clone(),
-            known: loaded.all_images().cloned().collect(),
+            known: loaded.overlay_images().cloned().collect(),
+            backgrounds: loaded.background_images().cloned().collect(),
         }
     }
 }
@@ -185,7 +188,12 @@ impl Reloader {
         let worker = std::thread::Builder::new()
             .name("kwybars-config".to_owned())
             .spawn(move || {
-                let result = config::load_reusing(&path, &xdg::process_env, &previous.known);
+                let result = config::load_reusing(
+                    &path,
+                    &xdg::process_env,
+                    &previous.known,
+                    &previous.backgrounds,
+                );
                 let sources = match &result {
                     Ok(loaded) => Sources::of(loaded),
                     Err(_) => previous,

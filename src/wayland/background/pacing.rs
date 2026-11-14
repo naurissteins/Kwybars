@@ -33,7 +33,7 @@ impl Surface {
         self.due = None;
         let pose = self.motion.pose(&self.config, bass, now);
         self.animated = pose.animated;
-        let next = crop(upload.source.size(), screen, pose.zoom, pose.offset)
+        let next = crop(upload.preparation.size, screen, pose.zoom, pose.offset)
             .ok_or(DrawError::TooLarge)?;
         if self.previous != Some(next) {
             let Crop(x, y, width, height) = next;
@@ -46,8 +46,8 @@ impl Surface {
                 self.layer.wl_surface().damage_buffer(
                     0,
                     0,
-                    upload.source.size().0 as i32,
-                    upload.source.size().1 as i32,
+                    upload.preparation.size.0 as i32,
+                    upload.preparation.size.1 as i32,
                 );
                 self.attached = true;
             }

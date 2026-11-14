@@ -223,7 +223,7 @@ impl Wayland {
     /// destroys every surface and sends the requests before disconnecting
     pub fn shutdown(&mut self) {
         self.surfaces.clear();
-        self.background.surfaces.clear();
+        self.background.clear();
         if let Err(err) = self.connection.flush() {
             warn!("could not flush the Wayland connection: {err}");
         }
@@ -236,6 +236,7 @@ impl Wayland {
     }
 
     fn scale_changed(&mut self, surface: &ObjectId, scale: Scale) {
+        self.background_scale_changed(surface, scale);
         if let Some(surface) = self.surface_mut(surface) {
             surface.set_scale(scale);
         }

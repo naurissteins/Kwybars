@@ -216,7 +216,7 @@ fn an_unchanged_image_file_is_not_decoded_again() {
     );
     let reload = |known: &Loaded| {
         let known: Vec<_> = known.image.iter().cloned().collect();
-        load_reusing(&path, &fake_env(&[]), &known).unwrap_or_else(|err| panic!("{err}"))
+        load_reusing(&path, &fake_env(&[]), &known, &[]).unwrap_or_else(|err| panic!("{err}"))
     };
     let source = |loaded: &Loaded| match loaded.image.as_ref().map(|image| &image.source) {
         Some(Ok(source)) => Arc::clone(source),

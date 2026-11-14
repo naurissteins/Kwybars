@@ -4,7 +4,11 @@
 mod tests;
 
 mod motion;
+mod sample;
+mod size;
 pub use motion::{Motion, Response};
+pub(crate) use sample::write;
+pub use size::Preparation;
 
 /// source coordinates are quantized down to wayland's 24.8 fixed-point grid
 #[derive(Debug, Clone, Copy, PartialEq)]

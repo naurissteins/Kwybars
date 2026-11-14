@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use smithay_client_toolkit::compositor::{CompositorState, Region};
-use smithay_client_toolkit::reexports::client::QueueHandle;
+use smithay_client_toolkit::reexports::client::{QueueHandle, Proxy};
+use smithay_client_toolkit::reexports::protocols::wp::fractional_scale::v1::client::wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1;
 use smithay_client_toolkit::reexports::client::protocol::wl_output::WlOutput;
 use smithay_client_toolkit::reexports::protocols::wp::viewporter::client::wp_viewporter::WpViewporter;
 use smithay_client_toolkit::shell::WaylandSurface;
@@ -10,8 +11,10 @@ use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, La
 use super::{Surface, Wayland};
 use crate::config::BackgroundConfig;
 use crate::render::background::Motion;
-use crate::render::image::Source;
+use crate::render::image::Encoded;
 use crate::wayland::handlers::NoEvents;
+use crate::wayland::handlers::ScaleData;
+use crate::wayland::scale::Scale;
 
 impl Surface {
     #[expect(
@@ -22,17 +25,32 @@ impl Surface {
         compositor: &CompositorState,
         shell: &LayerShell,
         viewporter: &WpViewporter,
+        fractional: Option<&WpFractionalScaleManagerV1>,
         queue: &QueueHandle<Wayland>,
         output: &WlOutput,
         entry: Option<usize>,
         label: String,
         config: BackgroundConfig,
-        source: Arc<Source>,
+        source: Arc<Encoded>,
     ) -> Result<Self, std::io::Error> {
         let surface = compositor.create_surface(queue);
         let region = Region::new(compositor).map_err(std::io::Error::other)?;
         surface.set_input_region(Some(region.wl_region()));
         let viewport = viewporter.get_viewport(&surface, queue, NoEvents);
+        let fractional = fractional.map(|manager| {
+            manager.get_fractional_scale(
+                &surface,
+                queue,
+                ScaleData {
+                    surface: surface.id(),
+                },
+            )
+        });
+        let scale = if fractional.is_some() {
+            Scale::Fractional(120)
+        } else {
+            Scale::Integer(1)
+        };
         let layer = shell.create_layer_surface(
             queue,
             surface,
@@ -54,7 +72,8 @@ impl Surface {
             label,
             config,
             source,
-            uploading: None,
+            fractional,
+            scale,
             upload: None,
             screen: None,
             pending: false,

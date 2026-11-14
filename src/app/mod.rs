@@ -28,7 +28,7 @@ use crate::audio::motion::Motion;
 use crate::audio::spectrum::SpectrumConfig;
 use crate::config::{Config, Theme};
 use crate::reload::Reloader;
-use crate::render::image::Overlays;
+use crate::render::image::{Encoded, Overlays};
 use crate::wayland::Wayland;
 use crate::{config, xdg};
 use animation::Animation;
@@ -124,7 +124,7 @@ struct App {
     config: Config,
     theme: Option<Theme>,
     images: Overlays,
-    backgrounds: Overlays,
+    backgrounds: Overlays<Encoded>,
     background_again: Option<Instant>,
     warnings: Vec<String>,
 }

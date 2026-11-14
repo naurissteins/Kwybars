@@ -262,3 +262,27 @@ fn mapped_decoding_matches_image_conversion_for_supported_formats()
     std::fs::remove_dir_all(dir)?;
     Ok(())
 }
+
+#[test]
+fn compressed_snapshot_survives_replacement_and_rejects_oversized_files()
+-> Result<(), Box<dyn std::error::Error>> {
+    use super::Encoded;
+    let dir = std::env::temp_dir().join(format!("kwybars-encoded-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join("wall.png");
+    let original = RgbaImage::from_pixel(5, 3, Rgba([90, 140, 230, 128]));
+    original.save(&path)?;
+    let snapshot = Encoded::open(&path)?;
+    std::fs::write(&path, b"broken")?;
+    assert!(Encoded::open(&path).is_err());
+    std::fs::remove_file(&path)?;
+    assert_eq!(snapshot.decode()?, Source::from_rgba(original));
+    let large = dir.join("large.png");
+    std::fs::File::create(&large)?.set_len(320_000_001)?;
+    assert!(matches!(
+        Encoded::open(&large),
+        Err(ImageError::EncodedSize)
+    ));
+    std::fs::remove_dir_all(dir)?;
+    Ok(())
+}

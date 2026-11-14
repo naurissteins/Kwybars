@@ -5,6 +5,8 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
+use crate::render::image::Encoded;
+
 use super::Config;
 use super::colors;
 use super::error::ConfigError;
@@ -33,8 +35,8 @@ pub struct Loaded {
     pub colors_path: Option<PathBuf>,
     pub image: Option<LoadedImage>,
     pub output_images: Vec<Option<LoadedImage>>,
-    pub background: Option<LoadedImage>,
-    pub output_backgrounds: Vec<Option<LoadedImage>>,
+    pub background: Option<LoadedImage<Encoded>>,
+    pub output_backgrounds: Vec<Option<LoadedImage<Encoded>>>,
 }
 
 impl Loaded {
@@ -43,20 +45,26 @@ impl Loaded {
         self.warnings.iter().chain(&self.problems)
     }
 
-    pub fn all_images(&self) -> impl Iterator<Item = &LoadedImage> {
-        self.image
+    pub fn overlay_images(&self) -> impl Iterator<Item = &LoadedImage> {
+        self.image.iter().chain(self.output_images.iter().flatten())
+    }
+
+    pub fn background_images(&self) -> impl Iterator<Item = &LoadedImage<Encoded>> {
+        self.background
             .iter()
-            .chain(self.output_images.iter().flatten())
-            .chain(self.background.iter())
             .chain(self.output_backgrounds.iter().flatten())
     }
 
     /// every image file in use, each once
     pub fn image_files(&self) -> Vec<PathBuf> {
         let mut files: Vec<PathBuf> = Vec::new();
-        for image in self.all_images() {
-            if !files.contains(&image.path) {
-                files.push(image.path.clone());
+        for path in self
+            .overlay_images()
+            .map(|image| &image.path)
+            .chain(self.background_images().map(|image| &image.path))
+        {
+            if !files.contains(path) {
+                files.push(path.clone());
             }
         }
         files
@@ -79,13 +87,14 @@ pub fn themes(path: &Path, env: &dyn Fn(&str) -> Option<OsString>) -> Vec<Availa
 }
 
 pub fn load(path: &Path, env: &dyn Fn(&str) -> Option<OsString>) -> Result<Loaded, ConfigError> {
-    load_reusing(path, env, &[])
+    load_reusing(path, env, &[], &[])
 }
 
 pub fn load_reusing(
     path: &Path,
     env: &dyn Fn(&str) -> Option<OsString>,
     known: &[LoadedImage],
+    backgrounds: &[LoadedImage<Encoded>],
 ) -> Result<Loaded, ConfigError> {
     let (mut config, source, warnings) = read_config(path)?;
     let mut problems = Vec::new();
@@ -110,7 +119,7 @@ pub fn load_reusing(
         }
     };
 
-    let images = images::load(&config, path, env, known, &mut problems);
+    let images = images::load(&config, path, env, known, backgrounds, &mut problems);
 
     Ok(Loaded {
         config,

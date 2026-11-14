@@ -1,7 +1,7 @@
 //! decoded pixels live outside the allocator's retained arenas
 
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufRead, BufReader, Seek};
 use std::path::Path;
 
 use image::{
@@ -29,8 +29,11 @@ impl Source {
         let reader = ImageReader::new(BufReader::new(File::open(path)?)).with_guessed_format()?;
         let (width, height) = reader.into_dimensions()?;
         check_size(width, height)?;
-        let mut reader =
-            ImageReader::new(BufReader::new(File::open(path)?)).with_guessed_format()?;
+        Self::decode(BufReader::new(File::open(path)?))
+    }
+
+    pub(super) fn decode(reader: impl BufRead + Seek) -> Result<Self, ImageError> {
+        let mut reader = ImageReader::new(reader).with_guessed_format()?;
         let mut limits = Limits::default();
         limits.max_alloc = Some(MAX_PIXELS * 4 * 2);
         reader.limits(limits);
