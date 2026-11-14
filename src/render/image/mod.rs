@@ -1,11 +1,13 @@
-//! the image overlay: decoding, placing, and scaling, free of wayland types
+//! image sources, placement, and scaling, free of wayland types
 
+mod encoded;
 mod placement;
 mod scale;
 mod source;
 #[cfg(test)]
 mod tests;
 
+pub use encoded::Encoded;
 pub use placement::{Child, Layout, Rect, layout};
 pub use scale::render;
 pub use source::Source;
@@ -30,33 +32,64 @@ pub enum ImageError {
     Color(image::ColorType),
     #[error("decoded image dimensions do not match pixel storage")]
     InvalidPixels,
+    #[error("encoded image must be between 1 and 320000000 bytes")]
+    EncodedSize,
     #[error("the image is empty")]
     Empty,
 }
 
 /// the image to show over the bars and how to place it
-#[derive(Debug, Clone, PartialEq)]
-pub struct Overlay {
-    pub source: Arc<Source>,
+#[derive(Debug, PartialEq)]
+pub struct Overlay<T = Source> {
+    pub source: Arc<T>,
     pub config: ImageOverlayConfig,
 }
 
 /// the image of every surface, none where no image shows
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct Overlays {
-    pub base: Option<Overlay>,
-    pub outputs: Vec<Option<Overlay>>,
+#[derive(Debug, PartialEq)]
+pub struct Overlays<T = Source> {
+    pub base: Option<Overlay<T>>,
+    pub outputs: Vec<Option<Overlay<T>>>,
 }
 
-impl Overlays {
+impl<T> Clone for Overlay<T> {
+    fn clone(&self) -> Self {
+        Self {
+            source: Arc::clone(&self.source),
+            config: self.config.clone(),
+        }
+    }
+}
+
+impl<T> Clone for Overlays<T> {
+    fn clone(&self) -> Self {
+        Self {
+            base: self.base.clone(),
+            outputs: self.outputs.clone(),
+        }
+    }
+}
+
+impl<T> Default for Overlays<T> {
+    fn default() -> Self {
+        Self {
+            base: None,
+            outputs: Vec::new(),
+        }
+    }
+}
+
+impl<T> Overlays<T> {
     /// the image of a surface selected by section `entry`, or by none
-    pub fn of(&self, entry: Option<usize>) -> Option<&Overlay> {
+    pub fn of(&self, entry: Option<usize>) -> Option<&Overlay<T>> {
         match entry {
             Some(entry) => self.outputs.get(entry)?.as_ref(),
             None => self.base.as_ref(),
         }
     }
+}
 
+impl Overlays {
     fn all(&self) -> impl Iterator<Item = &Overlay> {
         self.base.iter().chain(self.outputs.iter().flatten())
     }

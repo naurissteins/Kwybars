@@ -9,6 +9,7 @@ use crate::config::{
     self, ConfigPathError, ImageOverlayConfig, ImageOverlayOverrides, Loaded, LoadedImage, Source,
     ThemeOrigin,
 };
+use crate::render::image::Encoded;
 
 /// the config file a subcommand looks at
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -178,11 +179,22 @@ fn background_line(
     report: &mut Report,
     label: &str,
     settings: &ImageOverlayConfig,
-    image: Option<&LoadedImage>,
+    image: Option<&LoadedImage<Encoded>>,
 ) {
     // the loader reports missing paths too, so the running app logs them
     if image.is_none() && settings.enabled {
         return;
     }
-    image_line(report, label, settings, image);
+    match image {
+        None => report.line(format!("{label}: disabled")),
+        Some(image) => {
+            if let Ok(source) = &image.source {
+                let (width, height) = source.size();
+                report.line(format!(
+                    "{label}: {} (ok, {width}x{height})",
+                    image.path.display()
+                ));
+            }
+        }
+    }
 }

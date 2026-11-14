@@ -7,7 +7,7 @@ use calloop::channel;
 
 use super::App;
 use crate::config::{ImageOverlayConfig, Loaded, LoadedImage};
-use crate::render::image::{Overlay, Overlays};
+use crate::render::image::{Encoded, Overlay, Overlays};
 
 /// lets image workers reach the surfaces they scale for
 pub(super) fn start(
@@ -47,10 +47,10 @@ pub(super) fn start_backgrounds(
 
 pub(super) fn backgrounds(
     loaded: &Loaded,
-    showing: &Overlays,
+    showing: &Overlays<Encoded>,
     previous: &crate::config::Config,
-) -> Overlays {
-    let make = |config, loaded: Option<&LoadedImage>, old: Option<&Overlay>| {
+) -> Overlays<Encoded> {
+    let make = |config, loaded: Option<&LoadedImage<Encoded>>, old: Option<&Overlay<Encoded>>| {
         let source = match &loaded?.source {
             Ok(source) => Arc::clone(source),
             Err(_) => Arc::clone(&old?.source),
@@ -91,14 +91,15 @@ pub(super) fn backgrounds(
     }
 }
 
-pub(super) fn same_backgrounds(left: &Overlays, right: &Overlays) -> bool {
-    let same = |left: Option<&Overlay>, right: Option<&Overlay>| match (left, right) {
-        (Some(left), Some(right)) => {
-            left.config == right.config && Arc::ptr_eq(&left.source, &right.source)
-        }
-        (None, None) => true,
-        _ => false,
-    };
+pub(super) fn same_backgrounds(left: &Overlays<Encoded>, right: &Overlays<Encoded>) -> bool {
+    let same =
+        |left: Option<&Overlay<Encoded>>, right: Option<&Overlay<Encoded>>| match (left, right) {
+            (Some(left), Some(right)) => {
+                left.config == right.config && Arc::ptr_eq(&left.source, &right.source)
+            }
+            (None, None) => true,
+            _ => false,
+        };
     left.outputs.len() == right.outputs.len()
         && same(left.base.as_ref(), right.base.as_ref())
         && left

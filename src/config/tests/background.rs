@@ -88,8 +88,8 @@ fn background_images_share_decoding_and_are_watched_and_reused()
         .ok_or("no output image")?;
     assert!(std::sync::Arc::ptr_eq(base, own));
     assert_eq!(first.image_files(), vec![dir.path().join("wall.png")]);
-    let known: Vec<_> = first.all_images().cloned().collect();
-    let again = config::load_reusing(&path, &fake_env(&[]), &known)?;
+    let known: Vec<_> = first.background_images().cloned().collect();
+    let again = config::load_reusing(&path, &fake_env(&[]), &[], &known)?;
     let again = again
         .background
         .as_ref()

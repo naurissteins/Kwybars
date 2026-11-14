@@ -63,6 +63,7 @@ impl Wayland {
                 &self.compositor,
                 &self.layer_shell,
                 viewporter,
+                self.fractional.as_ref(),
                 queue,
                 output,
                 entry,
@@ -75,6 +76,24 @@ impl Wayland {
                     "could not create background on {}: {error}",
                     self.output_label(output)
                 ),
+            }
+        }
+    }
+
+    pub(in crate::wayland) fn background_scale_changed(
+        &mut self,
+        id: &ObjectId,
+        scale: crate::wayland::scale::Scale,
+    ) {
+        if let Some(surface) = self
+            .background
+            .surfaces
+            .iter_mut()
+            .find(|surface| surface.layer.wl_surface().id() == *id)
+        {
+            let fractional = surface.fractional.is_some();
+            if matches!(scale, crate::wayland::scale::Scale::Fractional(_)) == fractional {
+                surface.scale = scale;
             }
         }
     }

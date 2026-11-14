@@ -7,13 +7,23 @@ use std::sync::Arc;
 use crate::config::{Config, ImageOverlayConfig};
 use crate::render::image;
 
-/// the image overlay's file and its pixels, or why it cannot be shown
-#[derive(Debug, Clone)]
-pub struct LoadedImage {
+/// an image file and its decoded or compressed source, or why it cannot be shown
+#[derive(Debug)]
+pub struct LoadedImage<T = image::Source> {
     pub path: PathBuf,
-    pub source: Result<Arc<image::Source>, String>,
+    pub source: Result<Arc<T>, String>,
     /// the file as it was before decoding, none when it could not be read
     pub stamp: Option<Stamp>,
+}
+
+impl<T> Clone for LoadedImage<T> {
+    fn clone(&self) -> Self {
+        Self {
+            path: self.path.clone(),
+            source: self.source.clone(),
+            stamp: self.stamp,
+        }
+    }
 }
 
 /// tells an image file apart from the one decoded last time
@@ -40,7 +50,11 @@ impl Stamp {
 }
 
 /// the result for `file` from `known` while the file is unchanged, else a decode
-fn decode_or_reuse(file: PathBuf, known: &[LoadedImage]) -> LoadedImage {
+fn decode_or_reuse<T>(
+    file: PathBuf,
+    known: &[LoadedImage<T>],
+    decode: impl FnOnce(&Path) -> Result<T, image::ImageError>,
+) -> LoadedImage<T> {
     // read before decoding, write during the decode is seen next time
     let stamp = Stamp::of(&file);
     let unchanged = known
@@ -48,9 +62,7 @@ fn decode_or_reuse(file: PathBuf, known: &[LoadedImage]) -> LoadedImage {
         .find(|image| image.path == file && stamp.is_some() && image.stamp == stamp);
     let source = match unchanged {
         Some(image) => image.source.clone(),
-        None => image::Source::open(&file)
-            .map(Arc::new)
-            .map_err(|err| err.to_string()),
+        None => decode(&file).map(Arc::new).map_err(|err| err.to_string()),
     };
     LoadedImage {
         path: file,
@@ -62,8 +74,8 @@ fn decode_or_reuse(file: PathBuf, known: &[LoadedImage]) -> LoadedImage {
 pub(super) struct Images {
     pub image: Option<LoadedImage>,
     pub outputs: Vec<Option<LoadedImage>>,
-    pub background: Option<LoadedImage>,
-    pub backgrounds: Vec<Option<LoadedImage>>,
+    pub background: Option<LoadedImage<image::Encoded>>,
+    pub backgrounds: Vec<Option<LoadedImage<image::Encoded>>>,
 }
 
 pub(super) fn load(
@@ -71,26 +83,17 @@ pub(super) fn load(
     path: &Path,
     env: &dyn Fn(&str) -> Option<OsString>,
     known: &[LoadedImage],
+    backgrounds: &[LoadedImage<image::Encoded>],
     problems: &mut Vec<String>,
 ) -> Images {
-    let mut opened: Vec<LoadedImage> = Vec::new();
-    let mut open = |settings: &ImageOverlayConfig, label: &str| {
-        let Some(file) = settings.file(path, env) else {
-            if label.starts_with("background") && settings.enabled {
-                problems.push(format!("{label}: enabled but no path is set"));
-            }
-            return None;
-        };
-        if let Some(known) = opened.iter().find(|image| image.path == file) {
-            return Some(known.clone());
-        }
-        let image = decode_or_reuse(file, known);
-        if let Err(err) = &image.source {
-            problems.push(format!("{label} {}: {err}", image.path.display()));
-        }
-        opened.push(image.clone());
-        Some(image)
+    let mut foreground = Loader {
+        known,
+        opened: Vec::new(),
+        problems,
+        decode: image::Source::open,
     };
+    let mut open =
+        |settings: &ImageOverlayConfig, label: &str| foreground.open(settings, label, path, env);
     let image = open(&config.image_overlay, "image overlay");
     let outputs = config
         .overlay
@@ -98,6 +101,14 @@ pub(super) fn load(
         .iter()
         .map(|output| open(&config.image(Some(output)), "image overlay"))
         .collect();
+    let mut loader = Loader {
+        known: backgrounds,
+        opened: Vec::new(),
+        problems,
+        decode: image::Encoded::open,
+    };
+    let mut open =
+        |settings: &ImageOverlayConfig, label: &str| loader.open(settings, label, path, env);
     let mut background = open(&config.background.image(), "background");
     let mut backgrounds: Vec<_> = config
         .overlay
@@ -129,5 +140,40 @@ pub(super) fn load(
         outputs,
         background,
         backgrounds,
+    }
+}
+
+struct Loader<'a, T, F> {
+    known: &'a [LoadedImage<T>],
+    opened: Vec<LoadedImage<T>>,
+    problems: &'a mut Vec<String>,
+    decode: F,
+}
+
+impl<T, F: Fn(&Path) -> Result<T, image::ImageError>> Loader<'_, T, F> {
+    fn open(
+        &mut self,
+        settings: &ImageOverlayConfig,
+        label: &str,
+        path: &Path,
+        env: &dyn Fn(&str) -> Option<OsString>,
+    ) -> Option<LoadedImage<T>> {
+        let Some(file) = settings.file(path, env) else {
+            if label.starts_with("background") && settings.enabled {
+                self.problems
+                    .push(format!("{label}: enabled but no path is set"));
+            }
+            return None;
+        };
+        if let Some(known) = self.opened.iter().find(|image| image.path == file) {
+            return Some(known.clone());
+        }
+        let image = decode_or_reuse(file, self.known, &self.decode);
+        if let Err(err) = &image.source {
+            self.problems
+                .push(format!("{label} {}: {err}", image.path.display()));
+        }
+        self.opened.push(image.clone());
+        Some(image)
     }
 }
