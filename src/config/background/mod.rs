@@ -1,4 +1,7 @@
-//! `[background]`: persistent wallpaper and its independent bass response
+//! persistent wallpaper, bass response and optional midrange transients
+
+mod mid;
+pub use mid::{MidConfig, MidOverrides};
 
 use serde::Deserialize;
 
@@ -8,6 +11,7 @@ use super::{ImageFit, ImageOverlayConfig};
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct BackgroundConfig {
+    pub mid: MidConfig,
     pub source: BackgroundSource,
     pub enabled: bool,
     pub path: Option<String>,
@@ -24,6 +28,7 @@ pub struct BackgroundConfig {
 impl Default for BackgroundConfig {
     fn default() -> Self {
         Self {
+            mid: MidConfig::default(),
             source: BackgroundSource::File,
             enabled: false,
             path: None,
@@ -40,6 +45,14 @@ impl Default for BackgroundConfig {
 }
 
 impl BackgroundConfig {
+    pub fn motion_limits(&self) -> (f32, f32) {
+        if self.mid.enabled {
+            (self.zoom.max(self.mid.zoom), self.shake.max(self.mid.shake))
+        } else {
+            (self.zoom, self.shake)
+        }
+    }
+
     pub fn image(&self) -> ImageOverlayConfig {
         ImageOverlayConfig {
             enabled: self.enabled && self.source == BackgroundSource::File,
@@ -50,7 +63,10 @@ impl BackgroundConfig {
     }
 
     pub(crate) fn normalize(&mut self, warnings: &mut Vec<String>) {
+        self.mid.normalize(warnings);
+        let mid = self.mid.clone();
         let mut overrides = BackgroundOverrides {
+            mid: MidOverrides::default(),
             source: Some(self.source),
             enabled: Some(self.enabled),
             path: self.path.clone(),
@@ -65,6 +81,7 @@ impl BackgroundConfig {
         };
         overrides.normalize("background", false, warnings);
         *self = overrides.over(&Self::default());
+        self.mid = mid;
         if self.high_cutoff_hz < self.low_cutoff_hz * 2.0 {
             self.high_cutoff_hz = self.low_cutoff_hz * 2.0;
             warnings.push(format!(
@@ -78,6 +95,7 @@ impl BackgroundConfig {
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct BackgroundOverrides {
+    pub mid: MidOverrides,
     pub source: Option<BackgroundSource>,
     pub enabled: Option<bool>,
     pub path: Option<String>,
@@ -107,11 +125,14 @@ impl BackgroundOverrides {
             attack_ms,
             release_ms
         );
+        config.mid = self.mid.over(&base.mid);
         config.path = self.path.clone().or_else(|| base.path.clone());
         config
     }
 
     pub(crate) fn normalize(&mut self, table: &str, output: bool, warnings: &mut Vec<String>) {
+        self.mid
+            .normalize(&format!("{table}.mid"), output, warnings);
         let mut bounds = Bounds::new(table, warnings);
         bounds.within("sensitivity", &mut self.sensitivity, 0.0, 1000.0);
         bounds.within("threshold", &mut self.threshold, 0.0, 1.0);

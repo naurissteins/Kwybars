@@ -115,11 +115,12 @@ impl Surface {
         queue: &QueueHandle<Wayland>,
     ) -> Result<(), DrawError> {
         if let Some(screen) = self.screen {
+            let (zoom, shake) = self.config.motion_limits();
             let preparation = Preparation::new(
                 self.source.size(),
                 self.scale.buffer_size(screen),
-                self.config.zoom,
-                self.config.shake,
+                zoom,
+                shake,
             );
             if let Some(preparation) = preparation {
                 if let Some(upload) = uploads.find(&self.source, preparation) {

@@ -113,3 +113,16 @@ zoom = 0.04
 shake = 0.0
 attack_ms = 35
 release_ms = 220
+
+# Midrange hits, independent of the bass settings above
+# Global cutoffs, motion can also be set in [output.DP-1.background.mid].
+[background.mid]
+enabled = false
+low_cutoff_hz = 250
+high_cutoff_hz = 4000
+sensitivity = 20.0
+threshold = 0.001
+zoom = 0.0
+shake = 0.003
+attack_ms = 8
+release_ms = 110

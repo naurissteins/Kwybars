@@ -29,6 +29,7 @@ pub struct SpectrumConfig {
     pub low_cutoff_hz: f32,
     pub high_cutoff_hz: f32,
     pub bass: Option<(f32, f32)>,
+    pub mid: Option<(f32, f32)>,
 }
 
 impl SpectrumConfig {
@@ -42,6 +43,10 @@ impl SpectrumConfig {
                 config.background.low_cutoff_hz,
                 config.background.high_cutoff_hz,
             )),
+            mid: config.has_mid_background().then_some((
+                config.background.mid.low_cutoff_hz,
+                config.background.mid.high_cutoff_hz,
+            )),
         }
     }
 }
@@ -54,6 +59,7 @@ impl Default for SpectrumConfig {
             low_cutoff_hz: 50.0,
             high_cutoff_hz: 10_000.0,
             bass: None,
+            mid: None,
         }
     }
 }
@@ -70,6 +76,10 @@ pub struct Analyzer {
     bands: Bands,
     bass_band: Option<Bands>,
     bass: [f32; 1],
+    mid_band: Option<Bands>,
+    mid_previous: Vec<f32>,
+    mid: f32,
+    mid_history: bool,
     bars: Vec<f32>,
     /// maps a bin magnitude so a full-scale sine reads 1.0
     scale: f32,
@@ -101,6 +111,16 @@ impl Analyzer {
                 .bass
                 .map(|(low, high)| Bands::new(1, low, high, sample_rate, len)),
             bass: [0.0],
+            mid_band: config
+                .mid
+                .map(|(low, high)| Bands::new(1, low, high, sample_rate, len)),
+            mid_previous: if config.mid.is_some() {
+                vec![0.0; len / 2 + 1]
+            } else {
+                Vec::new()
+            },
+            mid: 0.0,
+            mid_history: false,
             window,
             scale,
             fft,
@@ -126,6 +146,7 @@ impl Analyzer {
             // buffer lengths come from the planner and never change
             self.bars.fill(0.0);
             self.bass.fill(0.0);
+            self.reset_transients();
             return &self.bars;
         }
         for (power, bin) in self.power.iter_mut().zip(&self.spectrum) {
@@ -134,6 +155,10 @@ impl Analyzer {
         if let Some(band) = &self.bass_band {
             band.mean_power(&self.power, &mut self.bass);
             self.bass[0] = self.bass[0].sqrt() * self.scale;
+        }
+        if let Some(band) = &self.mid_band {
+            self.mid = band.positive_flux(&self.power, &mut self.mid_previous) * self.scale;
+            self.mid_history = true;
         }
         self.bands.mean_power(&self.power, &mut self.bars);
         for bar in &mut self.bars {
@@ -145,6 +170,18 @@ impl Analyzer {
     /// raw band amplitude before visualizer tilt and ordering
     pub fn bass(&self) -> f32 {
         self.bass[0]
+    }
+
+    pub fn mid(&self) -> f32 {
+        self.mid
+    }
+
+    pub fn reset_transients(&mut self) {
+        if self.mid_history {
+            self.mid_previous.fill(0.0);
+            self.mid_history = false;
+        }
+        self.mid = 0.0;
     }
 
     /// fft length in samples

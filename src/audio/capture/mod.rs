@@ -63,6 +63,7 @@ impl Shared {
             values.map(|frame| frame.bars),
             level,
             values.map_or(0.0, |frame| frame.bass),
+            values.map_or(0.0, |frame| frame.mid),
         ) && let Some(waker) = &self.waker
         {
             waker.ping();
@@ -71,7 +72,7 @@ impl Shared {
 
     #[cfg(test)]
     fn store(&self, frames: &FrameSlot, values: Option<&[f32]>, level: f32) -> bool {
-        self.store_frame(frames, values, level, 0.0)
+        self.store_frame(frames, values, level, 0.0, 0.0)
     }
 
     fn store_frame(
@@ -80,10 +81,11 @@ impl Shared {
         values: Option<&[f32]>,
         level: f32,
         bass: f32,
+        mid: f32,
     ) -> bool {
         let before = frames.level();
         let wanted = match values {
-            Some(values) => frames.publish_spectrum(values, level, bass),
+            Some(values) => frames.publish_reactive(values, level, bass, mid),
             None if !frames.is_silent() => frames.publish_silence(),
             None => false,
         };

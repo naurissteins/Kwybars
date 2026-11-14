@@ -1,3 +1,5 @@
+mod mid;
+
 use std::f32::consts::TAU;
 
 use super::{Analyzer, SpectrumConfig, fft_len};
@@ -133,7 +135,14 @@ fn one_value_per_bar() {
 
 #[test]
 fn analyzing_does_not_reallocate() {
-    let mut analyzer = analyzer(64, 2);
+    let mut analyzer = Analyzer::new(
+        RATE,
+        2,
+        &SpectrumConfig {
+            mid: Some((250.0, 4000.0)),
+            ..SpectrumConfig::default()
+        },
+    );
     let before = (
         analyzer.input.as_ptr(),
         analyzer.spectrum.as_ptr(),
@@ -141,6 +150,8 @@ fn analyzing_does_not_reallocate() {
         analyzer.power.as_ptr(),
         analyzer.bars.as_ptr(),
         analyzer.bars.capacity(),
+        analyzer.mid_previous.as_ptr(),
+        analyzer.mid_previous.capacity(),
     );
     for round in 0..50 {
         feed_sine(&mut analyzer, 100.0 + round as f32 * 50.0, 0.8, 2);
@@ -153,6 +164,8 @@ fn analyzing_does_not_reallocate() {
         analyzer.power.as_ptr(),
         analyzer.bars.as_ptr(),
         analyzer.bars.capacity(),
+        analyzer.mid_previous.as_ptr(),
+        analyzer.mid_previous.capacity(),
     );
     assert_eq!(before, after);
 }
@@ -161,9 +174,16 @@ fn analyzing_does_not_reallocate() {
 #[test]
 #[ignore = "timing, run in release"]
 fn analyze_cost() {
-    for (rate, bars) in [(48_000, 50), (48_000, 256), (96_000, 50)] {
+    for (rate, bars, mid) in [
+        (48_000, 50, false),
+        (48_000, 50, true),
+        (48_000, 256, true),
+        (96_000, 50, true),
+    ] {
         let config = SpectrumConfig {
             bars,
+            bass: Some((30.0, 150.0)),
+            mid: mid.then_some((250.0, 4000.0)),
             ..SpectrumConfig::default()
         };
         let mut analyzer = Analyzer::new(rate, 2, &config);
@@ -175,7 +195,7 @@ fn analyze_cost() {
         }
         let micros = start.elapsed().as_secs_f64() * 1e6 / f64::from(rounds);
         println!(
-            "{rate} Hz, {bars} bars, fft {}: {micros:.1} us per analyze",
+            "{rate} Hz, {bars} bars, mid {mid}, fft {}: {micros:.1} us per analyze",
             analyzer.fft_len()
         );
     }

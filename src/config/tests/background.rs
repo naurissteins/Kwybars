@@ -120,3 +120,74 @@ fn sweetbg_source_is_opt_in_inherited_and_does_not_require_a_path()
     assert!(config::parse("[background]\nsource = \"unknown\"").is_err());
     Ok(())
 }
+
+#[test]
+fn midrange_is_opt_in_inherits_and_only_uses_global_cutoffs()
+-> Result<(), Box<dyn std::error::Error>> {
+    let old = config::parse("[background]\nenabled = true\n")?.config;
+    assert!(!old.has_mid_background());
+    assert_eq!(old.background.motion_limits(), (0.04, 0.0));
+    let parsed = config::parse(
+        r#"
+[overlay]
+layer = "bottom"
+[background]
+enabled = true
+[background.mid]
+enabled = true
+low_cutoff_hz = 500
+high_cutoff_hz = 3000
+sensitivity = 30
+[output.DP-1.background.mid]
+shake = 0.005
+low_cutoff_hz = 800
+[output.DP-2.background.mid]
+enabled = false
+"#,
+    )?;
+    assert!(parsed.config.has_mid_background());
+    let one = parsed
+        .config
+        .background(parsed.config.overlay.outputs.first());
+    assert_eq!(
+        (one.mid.low_cutoff_hz, one.mid.high_cutoff_hz),
+        (500.0, 3000.0)
+    );
+    assert_eq!((one.mid.sensitivity, one.mid.shake), (30.0, 0.005));
+    assert!(
+        !parsed
+            .config
+            .background(parsed.config.overlay.outputs.get(1))
+            .mid
+            .enabled
+    );
+    assert_eq!(parsed.warnings.len(), 1);
+    assert!(parsed.warnings[0].contains("output.DP-1.background.mid.low_cutoff_hz"));
+    let per_output = config::parse(
+        "[background]\nenabled = true\n[output.DP-1.background.mid]\nenabled = true\n",
+    )?;
+    assert!(per_output.config.has_mid_background());
+    assert!(config::parse("[background.mid]\nenabled = \"yes\"").is_err());
+    Ok(())
+}
+
+#[test]
+fn midrange_values_are_clamped_with_named_warnings_and_own_defaults()
+-> Result<(), Box<dyn std::error::Error>> {
+    let parsed = config::parse(
+        "[background.mid]\nenabled = true\nlow_cutoff_hz = 10000\nhigh_cutoff_hz = 0\nsensitivity = nan\nthreshold = -1\nzoom = 1\nshake = 1\nattack_ms = 0\nrelease_ms = 6000\n",
+    )?;
+    let mid = &parsed.config.background.mid;
+    assert_eq!((mid.low_cutoff_hz, mid.high_cutoff_hz), (10000.0, 20000.0));
+    assert_eq!((mid.sensitivity, mid.threshold), (20.0, 0.0));
+    assert_eq!((mid.zoom, mid.shake), (0.25, 0.02));
+    assert_eq!((mid.attack_ms, mid.release_ms), (1, 5000));
+    assert!(
+        parsed
+            .warnings
+            .iter()
+            .all(|warning| warning.starts_with("background.mid."))
+    );
+    assert!(!parsed.config.has_mid_background());
+    Ok(())
+}
