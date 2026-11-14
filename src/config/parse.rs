@@ -5,7 +5,6 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 use serde_ignored::Path;
 
-use super::Config;
 use super::activity::{self, ActivityTable, DaemonTable};
 use super::audio::AudioConfig;
 use super::compat;
@@ -13,6 +12,7 @@ use super::image::ImageOverlayConfig;
 use super::overlay::{self, OutputSection, OverlayTable};
 use super::theme::ThemeChoice;
 use super::visualizer::{VisualizerConfig, VisualizerOverrides};
+use super::{BackgroundConfig, Config};
 
 /// a parsed config plus warnings about keys that were ignored or fixed
 #[derive(Debug)]
@@ -43,6 +43,7 @@ struct ConfigFile {
     activity: ActivityTable,
     daemon: DaemonTable,
     audio: AudioConfig,
+    background: BackgroundConfig,
 }
 
 /// parses config text; unknown keys become warnings, bad types become errors
@@ -62,6 +63,10 @@ pub fn parse(raw: &str) -> Result<Parsed, ParseError> {
     })?;
     warnings.extend(compat::removed_warnings(&removed));
     let config = build(file, &mut warnings)?;
+    if config.background.enabled && config.overlay.layer == super::Layer::Background {
+        warnings.push("background: set overlay.layer = \"bottom\" to guarantee the bars appear above the wallpaper".to_owned());
+    }
+
     Ok(Parsed { config, warnings })
 }
 
@@ -76,6 +81,7 @@ fn build(file: ConfigFile, warnings: &mut Vec<String>) -> Result<Config, ParseEr
         activity,
         daemon,
         mut audio,
+        mut background,
     } = file;
 
     // [visualizer] wins over the root shorthand
@@ -96,6 +102,7 @@ fn build(file: ConfigFile, warnings: &mut Vec<String>) -> Result<Config, ParseEr
     image_overlay.normalize(warnings);
     let activity = activity::resolve(activity, daemon, warnings);
     audio.normalize(warnings);
+    background.normalize(warnings);
 
     Ok(Config {
         overlay,
@@ -103,6 +110,7 @@ fn build(file: ConfigFile, warnings: &mut Vec<String>) -> Result<Config, ParseEr
         image_overlay,
         activity,
         audio,
+        background,
     })
 }
 

@@ -1,3 +1,4 @@
+mod background;
 mod compat;
 mod examples;
 mod load;

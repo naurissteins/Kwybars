@@ -30,7 +30,7 @@ use tracing::debug;
 use super::Wayland;
 use super::scale::Scale;
 
-/// user data for objects that send no events
+/// protocol events that require no application state changes
 pub struct NoEvents;
 
 /// user data of a surface's wp_fractional_scale_v1
@@ -56,6 +56,21 @@ impl Dispatch2<WlCallback, Wayland> for SyncData {
         {
             surface.synced();
         }
+    }
+}
+
+// Background buffers are immutable; release events require no recycling or writes.
+impl Dispatch2<smithay_client_toolkit::reexports::client::protocol::wl_buffer::WlBuffer, Wayland>
+    for NoEvents
+{
+    fn event(
+        &self,
+        _: &mut Wayland,
+        _: &smithay_client_toolkit::reexports::client::protocol::wl_buffer::WlBuffer,
+        _: smithay_client_toolkit::reexports::client::protocol::wl_buffer::Event,
+        _: &Connection,
+        _: &QueueHandle<Wayland>,
+    ) {
     }
 }
 
@@ -162,6 +177,7 @@ impl CompositorHandler for Wayland {
         surface: &wl_surface::WlSurface,
         _: u32,
     ) {
+        self.background_frame(&surface.id());
         if let Some(surface) = self.surface_mut(&surface.id()) {
             surface.frame_done();
         }
@@ -230,6 +246,7 @@ impl LayerShellHandler for Wayland {
         configure: LayerSurfaceConfigure,
         _: u32,
     ) {
+        self.background_configure(layer, configure.new_size);
         if let Some(surface) = self
             .surfaces
             .iter_mut()

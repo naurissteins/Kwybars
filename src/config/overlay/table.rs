@@ -120,6 +120,11 @@ pub fn resolve(
         output.visualizer.normalize(&table, warnings);
         let table = format!("output.{}.image_overlay", output.monitor);
         output.image_overlay.normalize(&table, warnings);
+        output.background.normalize(
+            &format!("output.{}.background", output.monitor),
+            true,
+            warnings,
+        );
     }
 
     let legacy = LegacySelection {

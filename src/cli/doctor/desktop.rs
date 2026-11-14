@@ -40,6 +40,10 @@ pub fn compositor(report: &mut Report, probe: Result<&Probe, &String>, config: O
     } else {
         "fractional scale: not supported, whole-number scales are used"
     });
+    if config.is_some_and(Config::has_background) && !probe.viewporter {
+        report
+            .error("background: the compositor does not support wp_viewporter; bars can still run");
+    }
     let default = OverlayConfig::default();
     outputs(
         report,

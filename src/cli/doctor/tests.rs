@@ -18,6 +18,7 @@ fn output(name: &str) -> ProbedOutput {
 fn desk() -> Probe {
     Probe {
         layer_shell: true,
+        viewporter: true,
         fractional_scale: true,
         outputs: vec![output("DP-1"), output("DP-4")],
     }

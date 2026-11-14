@@ -26,7 +26,7 @@ Usage: kwybars [OPTIONS] [COMMAND]
 Runs the Kwybars audio visualizer overlay.
 
 Commands:
-  validate-config      Check the config, colors.toml, theme, and image overlay
+  validate-config      Check the config, colors.toml, theme, and images
   list-themes          List the themes the config can name
   doctor               Check the config and what Kwybars needs from the desktop
   switch-config <FILE> Make the config path a link to FILE

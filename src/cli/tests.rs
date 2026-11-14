@@ -258,6 +258,7 @@ fn a_good_config_passes_validation() {
             ),
             "theme: nord (built-in)".to_owned(),
             "image overlay: disabled".to_owned(),
+            "background: disabled".to_owned(),
             "config validation passed".to_owned(),
         ]
     );

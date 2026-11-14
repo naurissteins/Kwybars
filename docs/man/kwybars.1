@@ -114,6 +114,7 @@ If no config exists, built-in defaults are used. The sections are
 .BR [overlay] ,
 .BR [visualizer] ,
 .BR [image_overlay] ,
+.BR [background] ,
 .BR [activity] ,
 and
 .BR [audio] .
@@ -123,10 +124,41 @@ The full reference is at
 .PP
 The config,
 .IR colors.toml ,
-the theme file, and the overlay image are watched and reloaded while
+the theme file, and the overlay and background images are watched and reloaded while
 .B kwybars
 runs. A config that fails to load leaves the running one active, and the
 error is written to the log.
+.PP
+An optional
+.B [background]
+section draws a persistent bass-reactive wallpaper. Set
+.B enabled = true
+and
+.B path
+for a PNG, JPEG, or WebP image (maximum 40 megapixels).
+It follows
+.B overlay.show_on
+and accepts per-output image and motion overrides in
+.BR [output.NAME.background] .
+.B low_cutoff_hz
+and
+.B high_cutoff_hz
+select the global bass range (defaults 30 and 150 Hz).
+.BR sensitivity ,
+.BR threshold ,
+.BR zoom ,
+.BR shake ,
+.BR attack_ms ,
+and
+.B release_ms
+control its response independently of the bars.
+The default maximum zoom is 4 percent; shake defaults to zero.
+Background animation uses the visualizer frame rate and requires wp_viewporter.
+At silence the image stays visible and stops animating.
+Use
+.B overlay.layer = "bottom"
+to keep bars above the background; ordering against other wallpaper programs
+on the background layer depends on the compositor.
 .SH FILES
 .TP
 .I ~/.config/kwybars/config.toml

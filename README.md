@@ -31,10 +31,11 @@ https://github.com/user-attachments/assets/5fe84372-86be-49a8-b9c0-6564e81f1eaa
 -   Frame layout for top+bottom, left+right, or all monitor edges at once
 -   Polygon layout for triangle, square, hexagon, and similar shapes
 -   Transparent image overlay for Rainmeter-style compositions
+-   Optional bass-reactive wallpaper with smooth zoom and shake
 -   Smooth fade in/out on audio activity
 -   Hot reload config changes (no restart needed)
 -   Built-in themes and optional custom theme palettes (`~/.config/kwybars/themes/*.toml`)
--   Shows and hides itself with audio activity, with no work done while silent
+-   Shows and hides its bars with audio activity, with no animation work while silent
 -   Fractional scaling and monitor hotplug
 -   Built-in checks: `kwybars doctor`, `kwybars validate-config`
 

@@ -1,5 +1,6 @@
 //! wayland connection, outputs, and one layer surface per selected output
 
+mod background;
 mod error;
 mod handlers;
 mod outputs;
@@ -42,6 +43,7 @@ use handlers::NoEvents;
 use scale::Scale;
 use surface::{ImageGlobals, OutputSurface};
 
+pub use background::Ready as BackgroundReady;
 pub use surface::ImageReady;
 
 /// the compositor connection and every overlay surface
@@ -57,6 +59,7 @@ pub struct Wayland {
     subcompositor: Option<SubcompositorState>,
     alpha: Option<WpAlphaModifierV1>,
     images: Overlays,
+    background: background::Backgrounds,
     image_jobs: Option<Sender<ImageReady>>,
     config: Config,
     theme: Option<Theme>,
@@ -106,6 +109,7 @@ impl Wayland {
             subcompositor,
             alpha,
             images: Overlays::default(),
+            background: background::Backgrounds::default(),
             image_jobs: None,
             config,
             theme,
@@ -165,6 +169,7 @@ impl Wayland {
         self.surfaces
             .iter()
             .filter_map(OutputSurface::deadline)
+            .chain(self.background.deadline())
             .min()
     }
 
@@ -218,6 +223,7 @@ impl Wayland {
     /// destroys every surface and sends the requests before disconnecting
     pub fn shutdown(&mut self) {
         self.surfaces.clear();
+        self.background.surfaces.clear();
         if let Err(err) = self.connection.flush() {
             warn!("could not flush the Wayland connection: {err}");
         }

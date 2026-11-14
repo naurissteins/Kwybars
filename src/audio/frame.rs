@@ -7,6 +7,7 @@ pub struct FrameSlot {
     sequence: AtomicU64,
     bars: Box<[AtomicU32]>,
     level: AtomicU32,
+    bass: AtomicU32,
     silent: AtomicBool,
     wake_wanted: AtomicBool,
 }
@@ -17,6 +18,7 @@ pub struct FrameInfo {
     pub number: u64,
     pub silent: bool,
     pub level: f32,
+    pub bass: f32,
 }
 
 impl FrameSlot {
@@ -25,6 +27,7 @@ impl FrameSlot {
             sequence: AtomicU64::new(0),
             bars: (0..bars).map(|_| AtomicU32::new(0)).collect(),
             level: AtomicU32::new(0),
+            bass: AtomicU32::new(0),
             silent: AtomicBool::new(true),
             wake_wanted: AtomicBool::new(false),
         }
@@ -41,7 +44,12 @@ impl FrameSlot {
     /// stores a new frame of sound analyzed from audio peaking at `level`,
     /// must only be called from one thread
     pub fn publish(&self, values: &[f32], level: f32) -> bool {
+        self.publish_spectrum(values, level, 0.0)
+    }
+
+    pub fn publish_spectrum(&self, values: &[f32], level: f32, bass: f32) -> bool {
         self.write(|slot| {
+            slot.bass.store(bass.to_bits(), Ordering::Relaxed);
             for (bar, value) in slot.bars.iter().zip(values) {
                 bar.store(value.to_bits(), Ordering::Relaxed);
             }
@@ -54,6 +62,7 @@ impl FrameSlot {
     pub fn publish_silence(&self) -> bool {
         self.write(|slot| {
             slot.level.store(0, Ordering::Relaxed);
+            slot.bass.store(0, Ordering::Relaxed);
             slot.silent.store(true, Ordering::Relaxed);
         })
     }
@@ -108,12 +117,14 @@ impl FrameSlot {
             }
             let silent = self.silent.load(Ordering::Relaxed);
             let level = f32::from_bits(self.level.load(Ordering::Relaxed));
+            let bass = f32::from_bits(self.bass.load(Ordering::Relaxed));
             fence(Ordering::Acquire);
             if self.sequence.load(Ordering::Relaxed) == before {
                 return FrameInfo {
                     number: before / 2,
                     silent,
                     level,
+                    bass,
                 };
             }
         }
@@ -135,6 +146,7 @@ mod tests {
             number,
             silent,
             level,
+            bass: 0.0,
         };
         assert_eq!(slot.read_into(&mut out), info(0, true, 0.0));
         assert_eq!(out, [0.0; 3]);
@@ -237,5 +249,19 @@ mod tests {
         }
         assert!(writer.join().is_ok());
         assert!(sleeps > 0);
+    }
+}
+
+#[cfg(test)]
+mod background_tests {
+    use super::FrameSlot;
+
+    #[test]
+    fn silence_clears_the_bass_even_though_bar_storage_is_retained() {
+        let slot = FrameSlot::new(1);
+        slot.publish_spectrum(&[0.5], 0.2, 0.7);
+        assert_eq!(slot.read_into(&mut []).bass, 0.7);
+        slot.publish_silence();
+        assert_eq!(slot.read_into(&mut []).bass, 0.0);
     }
 }

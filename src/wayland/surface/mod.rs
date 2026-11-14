@@ -1,6 +1,6 @@
 //! one layer surface on one output, with its scale and shared-memory buffers
 
-mod buffers;
+pub(super) mod buffers;
 mod draw;
 mod image;
 mod layer;

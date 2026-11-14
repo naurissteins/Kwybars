@@ -2,6 +2,7 @@
 
 mod activity;
 mod audio;
+mod background;
 mod bounds;
 mod color;
 mod colors;
@@ -23,6 +24,7 @@ pub(crate) mod tests;
 
 pub use activity::ActivityConfig;
 pub use audio::AudioConfig;
+pub use background::{BackgroundConfig, BackgroundOverrides};
 pub use color::{ColorParseError, Rgba};
 pub use colors::{COLORS_FILE, ColorOverrides};
 pub use error::ConfigError;
@@ -52,4 +54,5 @@ pub struct Config {
     pub image_overlay: ImageOverlayConfig,
     pub activity: ActivityConfig,
     pub audio: AudioConfig,
+    pub background: BackgroundConfig,
 }

@@ -107,6 +107,22 @@ impl PlacementOverrides {
 }
 
 impl Config {
+    pub fn background(&self, output: Option<&OutputConfig>) -> super::BackgroundConfig {
+        output.map_or_else(
+            || self.background.clone(),
+            |output| output.background.over(&self.background),
+        )
+    }
+
+    pub fn has_background(&self) -> bool {
+        self.background.enabled
+            || self
+                .overlay
+                .outputs
+                .iter()
+                .any(|output| self.background(Some(output)).enabled)
+    }
+
     /// the image settings of a surface; `output` is its `[output.NAME]` section, if any
     pub fn image(&self, output: Option<&OutputConfig>) -> ImageOverlayConfig {
         match output {

@@ -52,18 +52,38 @@ impl Shared {
         }
     }
 
-    fn publish(&self, frames: &FrameSlot, values: Option<&[f32]>, level: f32) {
-        if self.store(frames, values, level)
-            && let Some(waker) = &self.waker
+    fn publish(
+        &self,
+        frames: &FrameSlot,
+        values: Option<super::pipeline::Analysis<'_>>,
+        level: f32,
+    ) {
+        if self.store_frame(
+            frames,
+            values.map(|frame| frame.bars),
+            level,
+            values.map_or(0.0, |frame| frame.bass),
+        ) && let Some(waker) = &self.waker
         {
             waker.ping();
         }
     }
 
+    #[cfg(test)]
     fn store(&self, frames: &FrameSlot, values: Option<&[f32]>, level: f32) -> bool {
+        self.store_frame(frames, values, level, 0.0)
+    }
+
+    fn store_frame(
+        &self,
+        frames: &FrameSlot,
+        values: Option<&[f32]>,
+        level: f32,
+        bass: f32,
+    ) -> bool {
         let before = frames.level();
         let wanted = match values {
-            Some(values) => frames.publish(values, level),
+            Some(values) => frames.publish_spectrum(values, level, bass),
             None if !frames.is_silent() => frames.publish_silence(),
             None => false,
         };

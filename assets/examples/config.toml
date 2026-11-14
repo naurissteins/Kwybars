@@ -95,3 +95,18 @@ low_cutoff_hz = 50
 high_cutoff_hz = 10000
 # 0 follows the audio exactly, higher values (up to 0.95) move more calmly.
 smoothing = 0.7
+
+# Optional bass-reactive wallpaper. Stays visible at silence and stops animating.
+# Follows overlay.show_on. Set overlay.layer = "bottom" to keep bars above it.
+# [output.DP-1.background] can override the image and motion settings.
+[background]
+enabled = false
+path = ""
+low_cutoff_hz = 30
+high_cutoff_hz = 150
+sensitivity = 6.7
+threshold = 0.012
+zoom = 0.04
+shake = 0.0
+attack_ms = 35
+release_ms = 220

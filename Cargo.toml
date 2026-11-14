@@ -16,6 +16,7 @@ image = { version = "0.25", default-features = false, features = [
 ] }
 inotify = { version = "0.11.5", default-features = false }
 lexopt = "0.3"
+memmap2 = { version = "0.9", default-features = false }
 pipewire = "0.10"
 realfft = { version = "3.5", default-features = false, features = [
     "avx",

@@ -51,10 +51,7 @@ impl Sources {
         Self {
             images: loaded.image_files(),
             themes: loaded.theme_candidates.clone(),
-            known: (loaded.image.iter())
-                .chain(loaded.output_images.iter().flatten())
-                .cloned()
-                .collect(),
+            known: loaded.all_images().cloned().collect(),
         }
     }
 }

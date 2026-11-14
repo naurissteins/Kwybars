@@ -111,22 +111,43 @@ impl App {
             warn!("no config file, using built-in defaults");
         }
         let images = image::overlays(&loaded, &self.images);
+        let backgrounds = image::backgrounds(&loaded, &self.backgrounds, &self.config);
+        let background_images_changed = !image::same_backgrounds(&backgrounds, &self.backgrounds);
         let config = loaded.config;
         let theme = loaded.theme.map(|loaded| loaded.theme);
-        let scope = Scope::between(
+        let mut scope = Scope::between(
             (&self.config, self.theme.as_ref(), &self.images),
             (&config, theme.as_ref(), &images),
         );
+        scope.background |= background_images_changed;
         if scope.is_empty() {
             info!("config reloaded, nothing changed");
             return;
         }
         info!("config reloaded, updating {scope}");
 
+        self.apply_audio(&config, scope);
+        if scope.surfaces || scope.background {
+            self.wayland
+                .reconfigure(config.clone(), theme.clone(), Instant::now());
+        }
+        if scope.image {
+            self.wayland.set_images(images.clone());
+        }
+        if scope.background {
+            self.wayland.set_backgrounds(backgrounds.clone());
+        }
+        self.backgrounds = backgrounds;
+        self.config = config;
+        self.theme = theme;
+        self.images = images;
+        self.render();
+    }
+    fn apply_audio(&mut self, config: &crate::config::Config, scope: Scope) {
         let frame_time = frame_time(config.visualizer.framerate);
-        let dynamics = DynamicsConfig::from_config(&config);
+        let dynamics = DynamicsConfig::from_config(config);
         if scope.analysis {
-            let spectrum = SpectrumConfig::from_config(&config);
+            let spectrum = SpectrumConfig::from_config(config);
             let bars = spectrum.bars;
             let settings = CaptureSettings {
                 interval: frame_time,
@@ -148,16 +169,5 @@ impl App {
             self.capture
                 .set_activity_threshold(config.activity.threshold);
         }
-        if scope.surfaces {
-            self.wayland
-                .reconfigure(config.clone(), theme.clone(), Instant::now());
-        }
-        if scope.image {
-            self.wayland.set_images(images.clone());
-        }
-        self.config = config;
-        self.theme = theme;
-        self.images = images;
-        self.render();
     }
 }
