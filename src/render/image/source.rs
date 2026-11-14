@@ -5,7 +5,8 @@ use std::io::{BufRead, BufReader, Seek};
 use std::path::Path;
 
 use image::{
-    ColorType, GenericImageView, ImageBuffer, ImageDecoder, ImageReader, Limits, Rgba, RgbaImage,
+    ColorType, GenericImageView, ImageBuffer, ImageDecoder, ImageFormat, ImageReader, Limits, Rgba,
+    RgbaImage,
 };
 use memmap2::MmapMut;
 
@@ -26,20 +27,19 @@ pub struct Source {
 
 impl Source {
     pub fn open(path: &Path) -> Result<Self, ImageError> {
-        let reader = ImageReader::new(BufReader::new(File::open(path)?)).with_guessed_format()?;
-        let (width, height) = reader.into_dimensions()?;
-        check_size(width, height)?;
         Self::decode(BufReader::new(File::open(path)?))
     }
 
     pub(super) fn decode(reader: impl BufRead + Seek) -> Result<Self, ImageError> {
         let mut reader = ImageReader::new(reader).with_guessed_format()?;
+        if reader.format() == Some(ImageFormat::Png) {
+            return super::png::decode(reader.into_inner());
+        }
         let mut limits = Limits::default();
         limits.max_alloc = Some(MAX_PIXELS * 4 * 2);
         reader.limits(limits);
         let decoder = reader.into_decoder()?;
         let (width, height) = decoder.dimensions();
-        // Recheck after reopening: the file may have been replaced between reads.
         check_size(width, height)?;
         let color = decoder.color_type();
         let len = usize::try_from(decoder.total_bytes()).map_err(|_| ImageError::InvalidPixels)?;
@@ -48,6 +48,15 @@ impl Source {
         }
         let mut decoded = MmapMut::map_anon(len)?;
         decoder.read_image(&mut decoded)?;
+        Self::from_decoded((width, height), color, decoded)
+    }
+
+    pub(super) fn from_decoded(
+        size: (u32, u32),
+        color: ColorType,
+        decoded: MmapMut,
+    ) -> Result<Self, ImageError> {
+        let (width, height) = size;
         let pixels = if color == ColorType::Rgba8 {
             decoded
         } else {
