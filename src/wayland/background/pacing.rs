@@ -16,6 +16,11 @@ impl Surface {
         interval: Duration,
         queue: &QueueHandle<Wayland>,
     ) -> Result<(), DrawError> {
+        if self.config.source == crate::config::BackgroundSource::Sweetbg && !self.granted {
+            self.animated = false;
+            self.due = None;
+            return Ok(());
+        }
         let (Some(screen), Some(upload)) = (self.screen, self.upload.as_ref()) else {
             return Ok(());
         };

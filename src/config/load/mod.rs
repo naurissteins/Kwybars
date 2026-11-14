@@ -14,6 +14,7 @@ use super::parse::{ParseError, parse};
 use super::theme::{self, AvailableTheme, LoadedTheme, ThemeChoice, ThemeOrigin};
 mod images;
 pub use images::LoadedImage;
+pub(crate) use images::background as load_background_image;
 
 /// where a loaded config came from
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

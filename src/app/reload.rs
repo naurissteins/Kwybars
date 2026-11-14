@@ -107,6 +107,7 @@ impl App {
             }
         }
         self.warnings = warnings;
+        self.sweetbg_failed = false;
         if loaded.source == Source::Defaults {
             warn!("no config file, using built-in defaults");
         }

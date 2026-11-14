@@ -8,6 +8,7 @@ use super::{ImageFit, ImageOverlayConfig};
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct BackgroundConfig {
+    pub source: BackgroundSource,
     pub enabled: bool,
     pub path: Option<String>,
     pub low_cutoff_hz: f32,
@@ -23,6 +24,7 @@ pub struct BackgroundConfig {
 impl Default for BackgroundConfig {
     fn default() -> Self {
         Self {
+            source: BackgroundSource::File,
             enabled: false,
             path: None,
             low_cutoff_hz: 30.0,
@@ -40,7 +42,7 @@ impl Default for BackgroundConfig {
 impl BackgroundConfig {
     pub fn image(&self) -> ImageOverlayConfig {
         ImageOverlayConfig {
-            enabled: self.enabled,
+            enabled: self.enabled && self.source == BackgroundSource::File,
             path: self.path.clone(),
             fit: ImageFit::Cover,
             ..ImageOverlayConfig::default()
@@ -49,6 +51,7 @@ impl BackgroundConfig {
 
     pub(crate) fn normalize(&mut self, warnings: &mut Vec<String>) {
         let mut overrides = BackgroundOverrides {
+            source: Some(self.source),
             enabled: Some(self.enabled),
             path: self.path.clone(),
             low_cutoff_hz: Some(self.low_cutoff_hz),
@@ -75,6 +78,7 @@ impl BackgroundConfig {
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct BackgroundOverrides {
+    pub source: Option<BackgroundSource>,
     pub enabled: Option<bool>,
     pub path: Option<String>,
     pub low_cutoff_hz: Option<f32>,
@@ -92,6 +96,7 @@ impl BackgroundOverrides {
         let mut config = base.clone();
         macro_rules! apply { ($($field:ident),*) => { $(if let Some(value) = self.$field { config.$field = value; })* }; }
         apply!(
+            source,
             enabled,
             low_cutoff_hz,
             high_cutoff_hz,
@@ -136,4 +141,12 @@ impl BackgroundOverrides {
             .filter(|path| !path.is_empty())
             .map(str::to_owned);
     }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BackgroundSource {
+    #[default]
+    File,
+    Sweetbg,
 }

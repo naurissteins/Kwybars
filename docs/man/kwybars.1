@@ -131,7 +131,13 @@ error is written to the log.
 .PP
 An optional
 .B [background]
-section draws a persistent bass-reactive wallpaper. Set
+section draws a persistent bass-reactive wallpaper.
+.B source = "sweetbg"
+follows Sweetbg cover images through its native subscription and hands rendering
+back when Kwybars disconnects. Other fit modes stay with Sweetbg.
+The default
+.B source = "file"
+uses an explicit image path. Set
 .B enabled = true
 and
 .B path

@@ -24,11 +24,12 @@ pub(crate) mod tests;
 
 pub use activity::ActivityConfig;
 pub use audio::AudioConfig;
-pub use background::{BackgroundConfig, BackgroundOverrides};
+pub use background::{BackgroundConfig, BackgroundOverrides, BackgroundSource};
 pub use color::{ColorParseError, Rgba};
 pub use colors::{COLORS_FILE, ColorOverrides};
 pub use error::ConfigError;
 pub use image::{ImageOverlayConfig, ImageOverlayOverrides};
+pub(crate) use load::load_background_image;
 pub use load::{
     Loaded, LoadedImage, Source, colors_candidates, link_target, load, load_reusing, themes,
 };

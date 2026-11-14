@@ -98,3 +98,25 @@ fn background_images_share_decoding_and_are_watched_and_reused()
     assert!(std::sync::Arc::ptr_eq(base, again));
     Ok(())
 }
+
+#[test]
+fn sweetbg_source_is_opt_in_inherited_and_does_not_require_a_path()
+-> Result<(), Box<dyn std::error::Error>> {
+    use crate::config::BackgroundSource;
+    let dir = TempDir::new("sweetbg-config");
+    let path = dir.write("config.toml", "[background]\nenabled = true\nsource = \"sweetbg\"\n[output.DP-2.background]\nsource = \"file\"\nenabled = false\n");
+    let loaded = config::load(&path, &fake_env(&[]))?;
+    assert!(loaded.problems.is_empty(), "{:?}", loaded.problems);
+    assert!(loaded.config.uses_sweetbg());
+    assert_eq!(loaded.config.background.source, BackgroundSource::Sweetbg);
+    assert_eq!(
+        loaded
+            .config
+            .background(loaded.config.overlay.outputs.first())
+            .source,
+        BackgroundSource::File
+    );
+    assert_eq!(Config::default().background.source, BackgroundSource::File);
+    assert!(config::parse("[background]\nsource = \"unknown\"").is_err());
+    Ok(())
+}

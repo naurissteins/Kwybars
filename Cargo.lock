@@ -360,6 +360,7 @@ dependencies = [
  "pipewire",
  "png",
  "realfft",
+ "rustix",
  "serde",
  "serde_ignored",
  "smithay-client-toolkit",

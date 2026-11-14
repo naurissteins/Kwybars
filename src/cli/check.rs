@@ -156,7 +156,7 @@ fn backgrounds(report: &mut Report, loaded: &Loaded) {
     background_line(
         report,
         "background",
-        &loaded.config.background.image(),
+        &loaded.config.background,
         loaded.background.as_ref(),
     );
     for (entry, output) in loaded.config.overlay.outputs.iter().enumerate() {
@@ -166,7 +166,7 @@ fn backgrounds(report: &mut Report, loaded: &Loaded) {
         background_line(
             report,
             &format!("background on {}", output.monitor),
-            &loaded.config.background(Some(output)).image(),
+            &loaded.config.background(Some(output)),
             loaded
                 .output_backgrounds
                 .get(entry)
@@ -178,9 +178,15 @@ fn backgrounds(report: &mut Report, loaded: &Loaded) {
 fn background_line(
     report: &mut Report,
     label: &str,
-    settings: &ImageOverlayConfig,
+    settings: &crate::config::BackgroundConfig,
     image: Option<&LoadedImage<Encoded>>,
 ) {
+    if settings.enabled && settings.source == crate::config::BackgroundSource::Sweetbg {
+        report.line(format!(
+            "{label}: sweetbg (cover images, native subscription)"
+        ));
+        return;
+    }
     // the loader reports missing paths too, so the running app logs them
     if image.is_none() && settings.enabled {
         return;

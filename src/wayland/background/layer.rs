@@ -78,6 +78,7 @@ impl Surface {
             screen: None,
             pending: false,
             attached: false,
+            granted: false,
             previous: None,
             motion: Motion::default(),
             last_frame: None,

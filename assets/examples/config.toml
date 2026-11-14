@@ -100,6 +100,9 @@ smoothing = 0.7
 # Follows overlay.show_on. Set overlay.layer = "bottom" to keep bars above it.
 # [output.DP-1.background] can override the image and motion settings.
 [background]
+# "sweetbg" follows Sweetbg cover wallpapers, path is ignored in that mode.
+# (only Sweetbg wallpaper engine is supported: https://github.com/sweetwm/sweetbg )
+source = "file"      # file or sweetbg
 enabled = false
 path = ""
 low_cutoff_hz = 30
