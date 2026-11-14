@@ -358,6 +358,7 @@ dependencies = [
  "lexopt",
  "memmap2",
  "pipewire",
+ "png",
  "realfft",
  "serde",
  "serde_ignored",

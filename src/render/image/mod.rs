@@ -2,6 +2,7 @@
 
 mod encoded;
 mod placement;
+mod png;
 mod scale;
 mod source;
 #[cfg(test)]
@@ -26,6 +27,8 @@ pub enum ImageError {
     Read(#[from] std::io::Error),
     #[error("{0}")]
     Decode(#[from] image::ImageError),
+    #[error("{0}")]
+    Png(#[from] ::png::DecodingError),
     #[error("{width}x{height} is over the limit of {} megapixels", MAX_PIXELS / 1_000_000)]
     TooLarge { width: u32, height: u32 },
     #[error("unsupported decoded color type {0:?}")]
